@@ -401,6 +401,52 @@ export const CODES = {
     description: 'A task exposes loading, error, value and retry, and nothing else.',
     fix: 'Use one of loading, error, value or retry.',
   },
+  PUI2330: {
+    severity: 'error',
+    title: 'Not a validator',
+    description:
+      'validate= takes validator names — required, email, min(n), max(n) and pattern("…") — and each one takes the arguments it declares.',
+    fix: 'Write validate=required, or a list such as validate=[required, email].',
+  },
+  PUI2331: {
+    severity: 'error',
+    title: 'submit() outside a form',
+    description:
+      'submit() validates the form around it and then runs that form\'s handler, so it only means something inside one.',
+    fix: 'Wrap the fields and the button in a form, and give the form an "on submit:" handler.',
+  },
+  PUI2332: {
+    severity: 'error',
+    title: 'validate= outside a form',
+    description:
+      'A validator runs when a form submits. A field that is not in a form has nothing to validate it, so the rule would be silently ignored.',
+    fix: 'Put the field inside a form, or remove validate=.',
+  },
+  PUI2333: {
+    severity: 'error',
+    title: 'Form has no submit handler',
+    description: 'Something inside the form calls submit(), but the form declares no "on submit:" body to run.',
+    fix: 'Add "on submit:" under the form, or remove the submit() call.',
+  },
+  PUI2334: {
+    severity: 'error',
+    title: 'submit() inside its own handler',
+    description: 'The form\'s submit handler cannot submit the form again: validating would re-enter the same body.',
+    fix: 'Call submit() from a button inside the form instead.',
+  },
+  PUI2335: {
+    severity: 'error',
+    title: 'Form inside a form',
+    description:
+      'A nested form would own its own validation and its own submit handler, so "the form" would stop having one meaning.',
+    fix: 'Flatten the two forms into one, or move the inner one into its own screen.',
+  },
+  PUI2336: {
+    severity: 'error',
+    title: 'submit() takes no arguments',
+    description: 'submit() runs the form it is written in; there is nothing to pass it.',
+    fix: 'Write submit() on its own.',
+  },
   PUI2320: {
     severity: 'error',
     title: 'Unknown screen in navigate',
@@ -453,6 +499,20 @@ export const CODES = {
     title: 'Unused state',
     description: 'This state variable is declared but never read or written.',
     fix: 'Remove it, or use it.',
+  },
+  PUI2408: {
+    severity: 'warning',
+    title: 'Submit handler never triggered',
+    description:
+      'The form declares an "on submit:" body, but nothing inside it calls submit(), so the body cannot run.',
+    fix: 'Call submit() from a button inside the form.',
+  },
+  PUI2409: {
+    severity: 'warning',
+    title: 'Form validates nothing',
+    description:
+      'No field in this form declares validate=, so the validation gate always passes and submit() is an ordinary call.',
+    fix: 'Add validate= to the fields that must be checked, or drop the form.',
   },
   PUI2405: {
     severity: 'warning',

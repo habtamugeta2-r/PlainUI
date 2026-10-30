@@ -389,9 +389,29 @@ A text field. Bind it to state with bind=<name>.
 | `autofocus` | `bool` | Focus this field when the screen opens. |
 | `helper` | `string` | Helper text under the field. |
 | `counter` | `bool` | Show a character counter. |
+| `validate` | `validators` | Validators checked when the enclosing form submits: required, email, min(n), max(n), pattern("…"). → `TextFormField.validator` |
 
 ```plainui
 input bind=email label="Email" keyboard=email
+```
+
+### `form`
+
+A group of inputs, submitted only when every field in it is valid.
+
+- **Arguments:** no arguments
+- **Children:** any number of children
+- **Events:** submit, tap, longTap, doubleTap, hover
+
+```plainui
+form:
+    column gap=8:
+        input bind=email validate=[required, email] label="Email"
+        button "Sign in":
+            on tap: submit()
+
+    on submit:
+        signIn(email)
 ```
 
 ### `toggle`

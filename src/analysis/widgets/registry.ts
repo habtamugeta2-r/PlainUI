@@ -20,7 +20,9 @@ export type PropKind =
   | 'enum'
   | 'styleName'
   | 'iconName'
-  | 'expr';
+  | 'expr'
+  /** A validator or list of validators (`required`, `min(8)`); checked by the form checker. */
+  | 'validators';
 
 export interface PropSpec {
   readonly name: string;
@@ -364,9 +366,33 @@ const SPECS: readonly WidgetSpec[] = [
       { name: 'autofocus', kind: 'bool', summary: 'Focus this field when the screen opens.' },
       { name: 'helper', kind: 'string', summary: 'Helper text under the field.' },
       { name: 'counter', kind: 'bool', summary: 'Show a character counter.' },
+      {
+        name: 'validate',
+        kind: 'validators',
+        summary: 'Validators checked when the enclosing form submits: required, email, min(n), max(n), pattern("…").',
+        mapsTo: 'TextFormField.validator',
+      },
     ],
     events: ['change', 'submit', 'focus', 'blur'],
     example: 'input bind=email label="Email" keyboard=email',
+  },
+  {
+    tag: 'form',
+    summary: 'A group of inputs, submitted only when every field in it is valid.',
+    group: 'input',
+    children: 'multi',
+    args: [],
+    props: [],
+    events: ['submit'],
+    example:
+      'form:\n' +
+      '    column gap=8:\n' +
+      '        input bind=email validate=[required, email] label="Email"\n' +
+      '        button "Sign in":\n' +
+      '            on tap: submit()\n' +
+      '\n' +
+      '    on submit:\n' +
+      '        signIn(email)',
   },
   {
     tag: 'toggle',
