@@ -184,6 +184,9 @@ function analyse(tokens: readonly Token[]): TokenMeta[] {
       if (token.value === ':') {
         if (ternaryColon) ternaryPending = false;
         else inType = true;
+      } else if (token.value === '->') {
+        // A host declaration's return type is a type annotation too: `-> Future<List<String>>`.
+        inType = true;
       } else if (token.value === '?') {
         if (!inType) ternaryPending = true;
       } else if (token.value === '=') {
