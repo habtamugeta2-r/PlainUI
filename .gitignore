@@ -19,3 +19,6 @@ tests/fixtures/**/generated/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# scratch
+scratch/

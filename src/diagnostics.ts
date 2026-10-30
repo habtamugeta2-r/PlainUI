@@ -138,6 +138,16 @@ export const CODES = {
     description: 'A state declaration must be written "state <name>: <Type> = <initial value>".',
     fix: 'For example: state count: int = 0',
   },
+  PUI1026: {
+    title: 'Statement not allowed here',
+    description: 'This statement is only valid in a different position, for example "set" outside an event handler or a declaration inside a block.',
+    fix: 'See the hint for where this statement belongs.',
+  },
+  PUI1027: {
+    title: 'Declaration inside a block',
+    description: 'Screens, components, styles and imports live at the top level of a file, not inside a screen or component.',
+    fix: 'Move the declaration to the top level.',
+  },
   PUI1024: {
     title: 'Missing block',
     description: 'A construct that requires an indented block is missing one.',

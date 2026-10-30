@@ -56,7 +56,9 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   'import',
   'screen',
   'component',
-  'style',
+  // NOTE: `style` is deliberately *not* a keyword. It is a contextual keyword recognised by the
+  // parser at the top level, because `style=heading` is a universal property. Lexing it as a
+  // keyword would make the most common property in the language unparseable.
   'state',
   'on',
   'set',
