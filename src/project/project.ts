@@ -7,7 +7,7 @@
  * contents, so the CLI can read from disk and the playground can read from `localStorage`.
  */
 
-import type { ComponentDecl, Program } from '../frontend/ast.ts';
+import type { ComponentDecl, Program, TokenDecl } from '../frontend/ast.ts';
 import { check, type CheckOptions } from '../analysis/check.ts';
 import { generateFlutter } from '../codegen/flutter.ts';
 import type { Diagnostic } from '../analysis/diagnostics.ts';
@@ -113,7 +113,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
   const declaredNames = new Map<string, string>();
   for (const [path, entry] of parsed) {
     for (const decl of entry.program.decls) {
-      if (decl.kind === 'Style') continue;
+      if (decl.kind === 'Style' || decl.kind === 'Theme') continue;
       if (!declaredNames.has(decl.name)) declaredNames.set(decl.name, path);
     }
   }
@@ -122,6 +122,8 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     readonly plainuiComponents: Map<string, ComponentDecl>;
     readonly plainuiEdges: Map<string, string>; // import path as written -> target source path
     readonly hostRoots: Set<string>;
+    /** Design tokens declared by imported files: a theme is shared by importing it. */
+    readonly plainuiTokens: Map<string, TokenDecl>;
   }
 
   const resolutions = new Map<string, ImportResolution>();
@@ -130,6 +132,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     const components = new Map<string, ComponentDecl>();
     const edges = new Map<string, string>();
     const hostRoots = new Set<string>();
+    const tokens = new Map<string, TokenDecl>();
 
     for (const imp of entry.program.imports) {
       if (extensionOf(imp.path) === '.pui') {
@@ -147,6 +150,9 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
         }
         for (const decl of targetEntry.program.decls) {
           if (decl.kind === 'Component') components.set(decl.name, decl);
+          if (decl.kind === 'Theme') {
+            for (const token of decl.tokens) if (!tokens.has(token.name)) tokens.set(token.name, token);
+          }
         }
       } else {
         const stem = basename(imp.path, true);
@@ -155,7 +161,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
       }
     }
 
-    resolutions.set(path, { plainuiComponents: components, plainuiEdges: edges, hostRoots });
+    resolutions.set(path, { plainuiComponents: components, plainuiEdges: edges, hostRoots, plainuiTokens: tokens });
   }
 
   // ---- cache ------------------------------------------------------------------------------
@@ -198,6 +204,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     const resolution = resolutions.get(path)!;
     const result = check(source, entry.program, {
       externalComponents: resolution.plainuiComponents,
+      externalTokens: resolution.plainuiTokens,
       hostRoots: resolution.hostRoots,
       externalNames: new Map([...declaredNames].filter(([name, file]) => file !== path)),
     });

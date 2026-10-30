@@ -42,6 +42,7 @@ import type { Analysis } from '../analysis/check.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
 import { BUILTIN_STYLES } from '../analysis/targets.ts';
+import type { TaskDecl, ThemeDecl, TokenDecl } from '../frontend/ast.ts';
 import type { WidgetSpec } from '../analysis/widgets/registry.ts';
 import {
   arg,
@@ -241,10 +242,12 @@ class FlutterGenerator {
     // emitted (an unused private const would be an `unused_element` warning in Dart).
     const declSections: string[] = [];
     for (const decl of this.analysis.program.decls) {
-      if (decl.kind === 'Style') continue;
+      if (decl.kind === 'Style' || decl.kind === 'Theme') continue;
       declSections.push(this.emitDecl(decl));
     }
 
+    const themeSection = this.emitTheme();
+    if (themeSection.length > 0) sections.push(themeSection);
     const styleSection = this.emitStyles();
     if (styleSection.length > 0) sections.push(styleSection);
     sections.push(...declSections);
@@ -265,6 +268,93 @@ class FlutterGenerator {
     ].join('\n');
 
     return { code: `${banner}\n${sections.join('\n\n')}\n`, imports };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Design tokens
+  // ------------------------------------------------------------------------------------------
+
+  /**
+   * `theme App:` becomes two classes:
+   *
+   *   - `AppTokens` — every token as a `static const`, so host code can reach the palette without
+   *     copying hex strings around;
+   *   - `AppTheme` — that palette applied to Flutter's own widgets, so `ElevatedButton` and friends
+   *     match the design instead of Material's defaults.
+   *
+   * Use sites are still inlined as literals (`padding=md` → `16`), which keeps generated trees
+   * `const` and makes the same source produce the same values in every target.
+   */
+  private emitTheme(): string {
+    const theme = this.analysis.theme;
+    if (theme === undefined) return '';
+    const base = sanitizeName(theme.name);
+
+    const fields: string[] = [];
+    for (const token of theme.tokens) {
+      const field = sanitizeName(token.name);
+      const comment = `  /// \`${token.categoryText} ${token.name}\``;
+      const declaration =
+        token.category === 'color'
+          ? `  static const Color ${field} = ${this.color(token.value)};`
+          : `  static const double ${field} = ${this.num(token.value)};`;
+      fields.push(`${comment}\n${declaration}`);
+    }
+    if (fields.length === 0) return '';
+
+    const parts = [
+      `/// Design tokens from \`theme ${theme.name}\` — generated, do not edit.\nabstract final class ${base}Tokens {\n${fields.join('\n\n')}\n}`,
+    ];
+
+    const scheme = this.themeColorScheme(theme, base);
+    if (scheme !== undefined) {
+      parts.push(
+        [
+          `/// The palette above, applied to Flutter's own widgets.`,
+          `///`,
+          `///     MaterialApp(theme: ${base}Theme.light, home: ...)`,
+          `abstract final class ${base}Theme {`,
+          `  static ColorScheme get colorScheme => ${scheme};`,
+          ``,
+          `  static ThemeData get light => ThemeData(colorScheme: colorScheme);`,
+          `}`,
+        ].join('\n'),
+      );
+    }
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * Material names its scheme slots after the role, a design system names its tokens after the
+   * brand. The mapping is a small, documented convention rather than a guess about semantics:
+   * `brand`/`primary` fills `primary`, `surface`/`background` fills `surface`, and so on. When no
+   * token matches, the first colour seeds the scheme.
+   */
+  private themeColorScheme(theme: ThemeDecl, base: string): string | undefined {
+    const colors = theme.tokens.filter((token) => token.category === 'color');
+    if (colors.length === 0) return undefined;
+    const pick = (...names: readonly string[]): TokenDecl | undefined =>
+      colors.find((token) => names.includes(token.name));
+    const args: string[] = [];
+    const slot = (slotName: string, ...names: readonly string[]): void => {
+      const token = pick(...names);
+      if (token !== undefined) args.push(`${slotName}: ${base}Tokens.${sanitizeName(token.name)}`);
+    };
+    slot('primary', 'brand', 'primary');
+    slot('surface', 'surface', 'background');
+    slot('onSurface', 'ink', 'text', 'onSurface');
+    slot('error', 'danger', 'error');
+    if (args.length === 0) {
+      args.push(`seedColor: ${base}Tokens.${sanitizeName(colors[0]!.name)}`);
+    }
+    return `ColorScheme.light(${args.join(', ')})`;
+  }
+
+  /** A token used where a value belongs (`padding=md`, `color=brand`), or nothing. */
+  private tokenOf(expr: Expr): TokenDecl | undefined {
+    if (expr.kind !== 'Ident' || this.scope.has(expr.name)) return undefined;
+    return this.analysis.tokens.get(expr.name);
   }
 
   // ------------------------------------------------------------------------------------------
@@ -326,7 +416,7 @@ class FlutterGenerator {
 
     this.declName = decl.name;
     const isComponent = decl.kind === 'Component';
-    const hasState = decl.state.length > 0;
+    const hasState = decl.state.length > 0 || decl.tasks.length > 0;
     const stateClassName = `_${decl.name}State`;
 
     // Parameters are fields on the widget; inside a State they are reached through `widget.`.
@@ -337,6 +427,10 @@ class FlutterGenerator {
     for (const state of decl.state) {
       const type = this.analysis.stateTypes.get(decl.name)?.get(state.name) ?? DYNAMIC;
       this.scope.set(state.name, { emittedName: state.name, type });
+    }
+    for (const task of decl.tasks) {
+      const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
+      this.scope.set(task.name, { emittedName: this.taskField(task.name, 'value'), type: { kind: 'task', value } });
     }
 
     // Build the tree first: emitting it records controller requirements.
@@ -434,10 +528,23 @@ class FlutterGenerator {
     for (const state of decl.state) {
       lines.push(`  ${this.stateField(state)}`);
     }
+    for (const field of this.taskFields(decl)) lines.push(field);
     for (const [stateName, controllerName] of controllers) {
       lines.push(`  late final TextEditingController ${controllerName} = TextEditingController(text: ${stateName});`);
     }
     lines.push('');
+
+    if (decl.tasks.length > 0) {
+      // Tasks start when the screen does. This is the whole point of the construct: nobody has to
+      // remember to kick off the load, and nobody can forget to handle its failure.
+      lines.push('  @override');
+      lines.push('  void initState() {');
+      lines.push('    super.initState();');
+      if (controllers.length > 0) lines.push('    _syncControllers();');
+      for (const task of decl.tasks) lines.push(`    ${this.taskLoader(task.name)}();`);
+      lines.push('  }');
+      lines.push('');
+    }
 
     if (controllers.length > 0) {
       lines.push('  @override');
@@ -456,6 +563,11 @@ class FlutterGenerator {
       lines.push('');
     }
 
+    for (const task of decl.tasks) {
+      lines.push(...this.taskLoaderMethod(task));
+      lines.push('');
+    }
+
     lines.push('  @override');
     lines.push('  Widget build(BuildContext context) {');
     if (controllers.length > 0) lines.push('    _syncControllers();');
@@ -463,6 +575,95 @@ class FlutterGenerator {
     lines.push('  }');
     lines.push('}');
     return lines;
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Tasks
+  // ------------------------------------------------------------------------------------------
+
+  /** The three fields a task owns, plus its loader. Names are private to the generated State. */
+  private taskField(name: string, part: 'value' | 'error' | 'loading'): string {
+    const base = `_${sanitizeName(name)}`;
+    if (part === 'value') return base;
+    return `${base}${part === 'error' ? 'Error' : 'Loading'}`;
+  }
+
+  private taskLoader(name: string): string {
+    return `_load${capitalize(sanitizeName(name))}`;
+  }
+
+  /** The declarations of every task: value, error and loading flag. */
+  private taskFields(decl: ScreenDecl | ComponentDecl): string[] {
+    const lines: string[] = [];
+    for (const task of decl.tasks) {
+      const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
+      const valueText = task.typeText ?? typeToText(value);
+      lines.push(`  ${valueText}? ${this.taskField(task.name, 'value')};`);
+      lines.push(`  String? ${this.taskField(task.name, 'error')};`);
+      lines.push(`  bool ${this.taskField(task.name, 'loading')} = true;`);
+    }
+    return lines;
+  }
+
+  /**
+   * The loader for one task. Three details matter more than they look:
+   *
+   *   - the flag and the error are reset on every run, so a retry shows loading rather than the
+   *     previous failure;
+   *   - `mounted` is checked after the await, because a screen can be popped while a load is in
+   *     flight and `setState` after that throws;
+   *   - the error is captured as text, so the tree can render it without a nullable-object dance.
+   */
+  private taskLoaderMethod(task: TaskDecl): string[] {
+    const field = (part: 'value' | 'error' | 'loading'): string => this.taskField(task.name, part);
+    const lines: string[] = [];
+    lines.push(`  Future<void> ${this.taskLoader(task.name)}() async {`);
+    lines.push('    setState(() {');
+    lines.push(`      ${field('loading')} = true;`);
+    lines.push(`      ${field('error')} = null;`);
+    lines.push('    });');
+    lines.push('    try {');
+    lines.push(`      final result = await ${this.expr(task.init)};`);
+    lines.push('      if (!mounted) return;');
+    lines.push('      setState(() {');
+    lines.push(`        ${field('value')} = result;`);
+    lines.push(`        ${field('loading')} = false;`);
+    lines.push('      });');
+    lines.push('    } catch (error) {');
+    lines.push('      if (!mounted) return;');
+    lines.push('      setState(() {');
+    lines.push(`        ${field('error')} = error.toString();`);
+    lines.push(`        ${field('loading')} = false;`);
+    lines.push('      });');
+    lines.push('    }');
+    lines.push('  }');
+    return lines;
+  }
+
+  /** A task member used as a value: `items.loading`, `items.error`, `items.value`, `items.retry`. */
+  private taskMember(expr: Extract<Expr, { kind: 'Member' }>): string | undefined {
+    if (expr.object.kind !== 'Ident') return undefined;
+    const entry = this.scope.get(expr.object.name);
+    if (entry === undefined || entry.type.kind !== 'task') return undefined;
+    switch (expr.name) {
+      case 'value': {
+        // A list-valued task reads as an empty list until its load completes, so `items.value` can
+        // be iterated and asked `.isEmpty` without a null dance in every screen. Other value types
+        // stay nullable, and `items.value != null` is the gate for those.
+        const field = this.taskField(expr.object.name, 'value');
+        const value = entry.type.value;
+        if (value.kind === 'list') return `(${field} ?? const <${typeToText(value.element)}>[])`;
+        return field;
+      }
+      case 'error':
+        return this.taskField(expr.object.name, 'error');
+      case 'loading':
+        return this.taskField(expr.object.name, 'loading');
+      case 'retry':
+        return this.taskLoader(expr.object.name);
+      default:
+        return undefined;
+    }
   }
 
   private stateField(state: StateDecl): string {
@@ -528,7 +729,15 @@ class FlutterGenerator {
   }
 
   private emitForItem(node: ForNode): string {
-    const iterable = this.expr(node.iterable);
+    const raw = this.expr(node.iterable);
+    // `items.value` is nullable until the task finishes, so iterate it defensively rather than
+    // emitting a loop over `List<T>?`, which does not compile. The element type keeps the loop
+    // variable typed, so `text item` still knows it is showing a String.
+    const iterableType = this.typeOf(node.iterable);
+    const iterable =
+      iterableType.kind === 'nullable'
+        ? `(${raw} ?? const <${iterableType.inner.kind === 'list' ? typeToText(iterableType.inner.element) : 'dynamic'}>[])`
+        : raw;
     const types = this.analysis.loopTypes.get(node);
     const savedScope = this.scope;
     this.scope = new Map(savedScope);
@@ -543,7 +752,11 @@ class FlutterGenerator {
       this.scope.set(node.indexName, { emittedName: node.indexName, type: types?.get(node.indexName) ?? INT });
     }
     this.scope.set(node.itemName, { emittedName: node.itemName, type: types?.get(node.itemName) ?? DYNAMIC });
-    const body = this.emitBodySingle(node.body);
+    const key = node.key === undefined ? undefined : this.expr(node.key);
+    const emitted = this.emitBodySingle(node.body);
+    // A key wraps the row rather than decorating whatever widget happens to be first inside it, so
+    // `for … key=item.id:` works the same whether the row is one element or five.
+    const body = key === undefined ? emitted : dartCall('KeyedSubtree', [`key: ValueKey(${key})`, `child: ${emitted}`]);
     this.scope = savedScope;
     return `${header}\n${indentAll(body, 2)}`;
   }
@@ -1296,8 +1509,14 @@ class FlutterGenerator {
   private textContent(expr: Expr): string {
     const code = this.expr(expr);
     const type = this.typeOf(expr);
+    // Nullable first: `isStringType` looks through `?`, and a nullable value passed to `Text` is a
+    // compile error in Dart rather than a blank line. A task's `error` is exactly that case.
+    if (type.kind === 'nullable') {
+      if (isStringType(type.inner)) return `(${code} ?? '')`;
+      if (type.inner.kind === 'list') return `${paren(code)}?.join(', ') ?? ''`;
+      return `${paren(code)}?.toString() ?? ''`;
+    }
     if (isStringType(type)) return code;
-    if (type.kind === 'nullable' && isStringType(type.inner)) return `(${code} ?? '')`;
     if (type.kind === 'list') return `${paren(code)}.join(', ')`;
     return `${paren(code)}.toString()`;
   }
@@ -1305,6 +1524,16 @@ class FlutterGenerator {
   private typeOf(expr: Expr): UiType {
     if (expr.kind === 'Ident') {
       return this.scope.get(expr.name)?.type ?? DYNAMIC;
+    }
+    if (expr.kind === 'Member' && expr.object.kind === 'Ident') {
+      const owner = this.scope.get(expr.object.name);
+      if (owner !== undefined && owner.type.kind === 'task') {
+        if (expr.name === 'value') {
+          return owner.type.value.kind === 'list' ? owner.type.value : { kind: 'nullable', inner: owner.type.value };
+        }
+        if (expr.name === 'error') return { kind: 'nullable', inner: STRING };
+        if (expr.name === 'loading') return BOOL;
+      }
     }
     if (expr.kind === 'Paren') return this.typeOf(expr.inner);
     if (expr.kind === 'String') return STRING;
@@ -1356,10 +1585,16 @@ class FlutterGenerator {
         return this.color(expr);
       case 'Ident': {
         const entry = this.scope.get(expr.name);
-        return entry?.emittedName ?? expr.name;
+        if (entry !== undefined) return entry.emittedName;
+        const token = this.analysis.tokens.get(expr.name);
+        if (token !== undefined) return token.category === 'color' ? this.color(token.value) : this.num(token.value);
+        return expr.name;
       }
-      case 'Member':
+      case 'Member': {
+        const task = this.taskMember(expr);
+        if (task !== undefined) return task;
         return `${this.expr(expr.object)}.${expr.name}`;
+      }
       case 'Call': {
         const args = expr.args.map((a) => (a.name === undefined ? this.expr(a.value) : `${a.name}: ${this.expr(a.value)}`));
         return `${this.expr(expr.callee)}(${args.join(', ')})`;
@@ -1381,6 +1616,8 @@ class FlutterGenerator {
   }
 
   private num(expr: Expr): string {
+    const token = this.tokenOf(expr);
+    if (token !== undefined) return this.num(token.value);
     if (expr.kind === 'Number') return expr.raw;
     if (expr.kind === 'Unary' && expr.op === '-' && expr.operand.kind === 'Number') return `-${expr.operand.raw}`;
     return paren(this.expr(expr));
@@ -1394,6 +1631,8 @@ class FlutterGenerator {
   }
 
   private color(expr: Expr): string {
+    const token = this.tokenOf(expr);
+    if (token !== undefined) return this.color(token.value);
     if (expr.kind === 'Color') {
       const hex = expr.raw.slice(1);
       if (hex.length === 3) {
@@ -1417,6 +1656,8 @@ class FlutterGenerator {
   }
 
   private insets(expr: Expr): string {
+    const token = this.tokenOf(expr);
+    if (token !== undefined) return this.insets(token.value);
     if (expr.kind === 'Number') return `const EdgeInsets.all(${expr.raw})`;
     if (expr.kind === 'List') {
       const nums = expr.items.map((item) => (item.kind === 'Number' ? item.raw : this.expr(item)));

@@ -15,7 +15,29 @@ could go wrong — the second half matters more.
 | Tests | 200+, no mocks, no network, no Flutter SDK required |
 | Real Flutter verification | `flutter-verify.yml` — generate, `dart analyze`, widget test |
 
+## The plan in one line
+
+Flutter depth first, then a target abstraction proven by Jetpack Compose, then breadth. The reasoning
+and the rules — capability tiers, the type system, the state model, the four-point definition of
+"supported" — are in [`09-vision.md`](09-vision.md); this page is the order of work and the risks.
+
 ## Next, in order
+
+### 0. Flutter depth — in progress
+
+Feature work on the one target we can verify end to end, in this order:
+
+- **design tokens** — a `theme` block: colours, spacing, radii, referenced by name (`padding=md`,
+  `color=brand`), resolved by the compiler and lowered per target,
+- ~~**`task`** — async as a language construct with `loading` / `error` / `value`~~ — done
+  (`docs/01-language-spec.md` §3.5, `examples/async`, verified by `flutter-verify.yml`),
+- **navigation** — `navigate` / `back` with screen parameters checked at compile time,
+- **list identity** — `for … key=item.id`,
+- **forms** — typed validation on `input`, gated by a `form` scope,
+- **typed interop** — host components declared with signatures so calls are still checked.
+
+The gate for leaving this phase is named in the vision document: a non-trivial app (navigation +
+tokens + async + forms + lists) written without dropping into Dart for anything routine.
 
 ### 1. A `build_runner` builder
 
@@ -55,17 +77,18 @@ What is missing is the part that needs research rather than plumbing:
 - **go-to-definition and references.** These need a name index across the project, which is the
   same index a build_runner integration would want.
 
-### 3. More targets
+### 3. A target abstraction, then Compose
 
-`src/codegen/html.ts` shows that a target is one file. The interesting ones:
+`src/codegen/html.ts` shows that a target is one file, but "one file" is not yet "one contract": the
+front end still carries Flutter knowledge (`DART_RESERVED_WORDS`, `FLUTTER_TYPE_NAMES`, the keyboard
+and icon tables). That moves behind a `Target` interface — vocabulary, keywords, type names, enum
+maps, capability set — and a generated capability matrix that the tests assert against.
 
-- **Jetpack Compose** — the closest mapping (`Column`, `Row`, `remember { mutableStateOf }`).
-  Kotlin's `when` and trailing lambdas fit the tree well.
-- **React/TSX** — cheap to generate, but the state and event model needs a decision:
-  `useState` per declaration is the honest mapping.
-- **SwiftUI** — the reason PlainUI's syntax looks the way it does; mostly a translation table.
-
-The AST holds no framework nouns, so the work is a registry variant plus an emitter, not a fork.
+**Jetpack Compose is the second target**, chosen because it is the closest mapping to Flutter and
+therefore the sharpest test of the state model: if `derived` lowers to `derivedStateOf` and `task`
+to `produceState` without hand-written special cases, the abstraction is real. React/TSX, Svelte,
+Vue, Angular and SwiftUI come after, each with the four things a target needs (registry, generator,
+CI verification, generated documentation) — see [`09-vision.md`](09-vision.md).
 
 ### 4. ~~Watch mode that watches (not polls)~~ — done
 

@@ -22,7 +22,7 @@ screen Todo:
                     set draft = ""
 
         column gap=8:
-            for index, task in tasks:
+            for index, task in tasks key=task:
                 TaskRow(task):
                     button "Finish" variant=text size=12:
                         on tap:

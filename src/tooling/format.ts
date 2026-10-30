@@ -47,7 +47,10 @@ const SPACED = new Set([
 ]);
 
 /** Lines on which `=` is spaced (`state a = 1`); everywhere else it is tight (`gap=8`). */
-const SPACED_EQ_FIRST = new Set(['state', 'set']);
+const SPACED_EQ_FIRST = new Set(['state', 'set', 'task']);
+
+/** Theme token lines (`color brand = #2563eb`) are spaced too, but only in that exact shape. */
+const TOKEN_CATEGORIES = new Set(['color', 'space', 'spacing', 'radius']);
 
 /** Tokens after which an operator must be unary. */
 const OPERATOR_LIKE_KEYWORDS = new Set(['in', 'if', 'elif', 'else', 'for', 'on', 'set', 'slot', 'state', 'import']);
@@ -202,7 +205,12 @@ function analyse(tokens: readonly Token[]): TokenMeta[] {
 }
 
 function formatTokens(tokens: readonly Token[]): string {
-  const spacedEquals = tokens[0]!.kind === 'keyword' && SPACED_EQ_FIRST.has(tokens[0]!.value);
+  const spacedEquals =
+    // `task` is a contextual keyword (an ident token), so the check is on the value, not the kind.
+    SPACED_EQ_FIRST.has(tokens[0]!.value) ||
+    // `color brand = #2563eb` but `color=#2563eb` (a style property): only the first has three
+    // tokens before the value.
+    (TOKEN_CATEGORIES.has(tokens[0]!.value) && tokens[1]?.kind === 'ident' && tokens[2]?.value === '=');
   const meta = analyse(tokens);
   let out = '';
   for (let i = 0; i < tokens.length; i++) {

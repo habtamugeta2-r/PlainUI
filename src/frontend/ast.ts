@@ -180,6 +180,24 @@ export interface Arg {
   readonly value: Expr;
 }
 
+/**
+ * `task items: List<Todo> = loadTodos()` — an async value owned by the screen.
+ *
+ * A task is a value with three readable parts — `items.loading`, `items.error`, `items.value` — and
+ * one action, `items.retry()`. The compiler owns the state machine, so no screen can forget to render
+ * a failure or leave a load flag set.
+ */
+export interface TaskDecl {
+  readonly kind: 'Task';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly typeText?: string;
+  readonly typeSpan?: Span;
+  /** The expression to await. Normally a call to a host function. */
+  readonly init: Expr;
+}
+
 export interface EventHandler {
   readonly kind: 'Event';
   readonly span: Span;
@@ -225,6 +243,14 @@ export interface ForNode {
   readonly indexName?: string;
   readonly indexSpan?: Span;
   readonly iterable: Expr;
+  /**
+   * `for item in items key=item.id:` — the identity of each row.
+   *
+   * Without a key, Flutter reuses widget state by position, so removing row 2 makes row 3 look like
+   * row 2: the classic "the text field kept the wrong text" bug. Supplying a key is how a `.pui`
+   * file says what a row *is*.
+   */
+  readonly key?: Expr;
   readonly body: readonly Node[];
 }
 
@@ -235,7 +261,7 @@ export interface SlotNode {
 
 /** Nodes may appear in a body. `State`/`Event` are only legal in specific positions and are
  *  checked by the validator rather than the parser, which keeps error messages semantic. */
-export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | EventHandler;
+export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | TaskDecl | EventHandler;
 
 // ---------------------------------------------------------------------------------------------
 // Actions (event bodies)
@@ -281,6 +307,7 @@ export interface ScreenDecl {
   readonly name: string;
   readonly nameSpan: Span;
   readonly state: readonly StateDecl[];
+  readonly tasks: readonly TaskDecl[];
   readonly body: readonly Node[];
 }
 
@@ -291,6 +318,7 @@ export interface ComponentDecl {
   readonly nameSpan: Span;
   readonly params: readonly Param[];
   readonly state: readonly StateDecl[];
+  readonly tasks: readonly TaskDecl[];
   readonly body: readonly Node[];
 }
 
@@ -302,7 +330,41 @@ export interface StyleDecl {
   readonly props: readonly Prop[];
 }
 
-export type Decl = ScreenDecl | ComponentDecl | StyleDecl;
+/**
+ * The three kinds of value a design token can hold. The category is what decides where the token
+ * may be referenced: `color` where a colour is expected, `space` and `radius` where a number is.
+ */
+export type TokenCategory = 'color' | 'space' | 'radius';
+
+export interface TokenDecl {
+  readonly kind: 'Token';
+  readonly span: Span;
+  readonly category: TokenCategory;
+  /** The word the source used (`space` and `spacing` are both accepted). */
+  readonly categoryText: string;
+  readonly categorySpan: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly value: Expr;
+}
+
+/**
+ * `theme App:` — design tokens, declared once per file.
+ *
+ * Tokens are resolved by the compiler rather than at run time: a source-to-source compiler that
+ * inlines `padding=md` to `16` keeps generated code const, keeps every target identical, and makes
+ * a token impossible to misspell at run time. Runtime theming (dark mode) is a separate, later
+ * step, and it arrives as a second token set rather than as a change to what a token is.
+ */
+export interface ThemeDecl {
+  readonly kind: 'Theme';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly tokens: readonly TokenDecl[];
+}
+
+export type Decl = ScreenDecl | ComponentDecl | StyleDecl | ThemeDecl;
 
 export interface Program {
   readonly kind: 'Program';
@@ -323,6 +385,7 @@ export type UiType =
   | { readonly kind: 'num' }
   | { readonly kind: 'bool' }
   | { readonly kind: 'list'; readonly element: UiType }
+  | { readonly kind: 'task'; readonly value: UiType }
   | { readonly kind: 'map' }
   | { readonly kind: 'dynamic' }
   | { readonly kind: 'named'; readonly name: string }
@@ -363,6 +426,8 @@ export function typeToText(type: UiType): string {
       return 'double';
     case 'num':
       return 'num';
+    case 'task':
+      return typeToText(type.value);
     case 'bool':
       return 'bool';
     case 'list':

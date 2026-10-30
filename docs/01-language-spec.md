@@ -92,8 +92,8 @@ import "./components/profile_card.pui"            // another PlainUI file
 * `package:` and `dart:` URIs pass through unchanged.
 * Relative paths are resolved **from the directory of the `.pui` file**, and re-based by the
   generator so they remain correct from the generated file's location.
-* A `.pui` import makes that file's components available; importing a `.pui` that does not exist
-  is an error (`PUI2102`).
+* A `.pui` import makes that file's components **and its design tokens** available; importing a
+  `.pui` that does not exist is an error (`PUI2102`).
 
 ### 2.1 Screens
 
@@ -136,6 +136,46 @@ Styles accept the text properties `size`, `weight`, `color`, `family`, `letterSp
 `lineHeight`, `italic`. Unknown properties are errors (`PUI2301`). Built-in style names —
 `display`, `heading`, `subheading`, `body`, `caption`, `label`, `secondary` — may be used without
 declaring anything and are overridable.
+
+### 2.4 Themes and design tokens
+
+A file may declare one theme. The theme names the values a design system uses, so screens refer to
+`brand` and `md` instead of repeating `#2563eb` and `16`.
+
+```
+theme App:
+
+    color brand = #2563eb
+    color surface = #ffffff
+    color ink = #0f172a
+    color danger = #dc2626
+
+    space sm = 8
+    space md = 16
+    space lg = 24
+
+    radius card = 12
+```
+
+* Three categories: `color`, `space` (`spacing` is accepted as a spelling of the same thing) and
+  `radius`. A colour token takes a colour literal (`PUI2306`); a space or radius token takes a
+  number (`PUI2306`).
+* One theme per file (`PUI2307`); duplicate token names are errors (`PUI2305`), including against a
+  token from an imported theme.
+* Tokens are in scope for the whole file — including `style` declarations written above the theme —
+  and for any file that imports it.
+* A token may be referenced wherever a value is expected: any colour position (`color=brand`) or
+  number position (`padding=md`, `gap=sm`, `radius=card`, `padding=[md, sm]`). A token in the wrong
+  kind of slot is an error (`PUI2304`), not a value of the wrong type in the output.
+* Tokens are **values, not variables**: `set md = 4` is an error (`PUI2114`), and a state variable
+  with a token's name is an error (`PUI2309`).
+
+Tokens are resolved by the compiler, not at run time. `padding=md` becomes `16` in the generated
+code, which keeps generated widget trees `const` and makes every target produce the same values from
+the same source. The Flutter target additionally emits the palette as data — `AppTokens.brand` — and
+a `ThemeData` (`AppTheme.light`) built from it, so Flutter's own widgets use the design; the HTML
+target publishes the same values as CSS custom properties (`--pui-brand`). Runtime theming, such as
+switching to a dark token set, is a separate feature and is not part of this one.
 
 ---
 
@@ -203,6 +243,20 @@ for index, product in products:
 The single-name form binds each element; the two-name form binds `index, value` and requires an
 `Iterable` (`PUI2402` says so if the compiler can prove otherwise from a literal).
 
+`key=` names each row's identity, which is what keeps widget state attached to the right row when
+the list changes:
+
+```
+for product in products key=product.id:
+    ProductRow(product)
+```
+
+Without a key, a framework reuses widgets by position: delete row 2 and row 3 inherits its scroll
+offset, its text field, its animation. The key is a value expression, checked in the loop's scope, so
+`key=product.id` and `key=index` are both legal — the first is almost always what you want. Keys lower
+to `KeyedSubtree(key: ValueKey(...))` around the row in Flutter; the HTML preview has no
+reconciliation, so it ignores them.
+
 ### 3.4 State
 
 ```
@@ -217,7 +271,47 @@ state items: List<String> = []
 * State is private to the screen or component instance. It is not shared between instances.
 * Duplicate names are errors (`PUI2003`).
 
-### 3.5 Events
+### 3.5 Tasks
+
+Asynchronous values are declared with `task`, not assembled from a flag, a nullable field and a
+`try`/`catch` in a handler.
+
+```
+screen Tasks:
+
+    task items: List<Todo> = loadTodos()
+
+    if items.loading:
+        progress
+
+    elif items.error != null:
+        text items.error color=danger
+        button "Try again":
+            on tap:
+                items.retry()
+
+    else:
+        for item in items.value:
+            text item.title
+```
+
+* `task <name>: <Type> = <call>` is only valid at the **top level** of a screen or component
+  (`PUI2002`), and the value must be a call, because a call is what can be awaited and re-run
+  (`PUI2310`).
+* The type is optional but strongly recommended: it is what `items.value` is typed as, and what a
+  `for` over it uses for the loop variable.
+* A task exposes exactly four parts (`PUI2312`):
+  * `items.loading` — `bool`, true while a load is in flight, including during a retry;
+  * `items.error` — `String?`, the failure text of the last attempt, cleared when a new one starts;
+  * `items.value` — the loaded value. For a `List<T>` it reads as an empty list before the first
+    load finishes, so `for item in items.value` and `items.value.isEmpty` need no null handling;
+    for any other type it is nullable, and `items.value != null` is the gate;
+  * `items.retry()` — runs the load again, resetting the error first.
+* A task starts when its screen is created. It cannot be assigned (`PUI2311`); `retry()` is the
+  only way to run it again. A task and a state variable may not share a name (`PUI2003`).
+* A load that completes after the screen is gone is discarded instead of updating a disposed widget.
+
+### 3.6 Events
 
 ```
 button "Sign In":

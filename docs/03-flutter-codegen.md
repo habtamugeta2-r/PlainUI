@@ -37,7 +37,7 @@ class Counter extends StatefulWidget { … }
 | PlainUI | Dart |
 | --- | --- |
 | `screen Home:` with no state | `class Home extends StatelessWidget` |
-| `screen Home:` with `state` | `StatefulWidget` + `_HomeState` |
+| `screen Home:` with `state` or a `task` | `StatefulWidget` + `_HomeState` |
 | `component Card(title: String, children: List<Widget>):` | `StatelessWidget` with `final` fields and a `const` constructor |
 | `component …` with `state` | `StatefulWidget` |
 | `style price:` | `const TextStyle _puiStyle<Name>`, emitted only when referenced |
@@ -157,6 +157,58 @@ class _CounterState extends State<Counter> {
 `_syncControllers()` at the top of `build`. Controllers are declared `late final` so the
 initializer can read the state field without ordering games. Everything else about state is
 plain Dart fields and `setState`.
+
+## Tasks
+
+One `task` declaration becomes three fields, an `initState` call, and a loader:
+
+```dart
+class _TasksState extends State<Tasks> {
+  List<String>? _items;
+  String? _itemsError;
+  bool _itemsLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItems();
+  }
+
+  Future<void> _loadItems() async {
+    setState(() {
+      _itemsLoading = true;
+      _itemsError = null;
+    });
+    try {
+      final result = await loadItems();
+      if (!mounted) return;
+      setState(() {
+        _items = result;
+        _itemsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _itemsError = error.toString();
+        _itemsLoading = false;
+      });
+    }
+  }
+}
+```
+
+`items.loading`, `items.error`, `items.value` and `items.retry()` are the only four expressions that
+become these fields; anything else on a task is a compile error (`PUI2312`). A list-valued task reads
+as `(_items ?? const <String>[])`, so a `for` over `items.value` runs before the first load completes
+instead of throwing, and `items.error` inside `text` is emitted as `(_itemsError ?? '')` because
+`Text` does not take a nullable string.
+
+Two details are deliberate rather than incidental:
+
+* `if (!mounted) return;` after the `await` — a screen can be popped while a load is in flight, and
+  `setState` on a disposed `State` throws;
+* the flag and the error are reset *before* the await, so a retry shows a spinner rather than the
+  previous failure.
 
 ## Text styles
 

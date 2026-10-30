@@ -119,6 +119,12 @@ function describeDecl(decl: Decl, lines: string[]): void {
       lines.push(`style ${decl.name}`);
       for (const prop of decl.props) lines.push(`  ${prop.name}=${describeExpr(prop.value)}`);
       break;
+    case 'Theme':
+      lines.push(`theme ${decl.name}`);
+      for (const token of decl.tokens) {
+        lines.push(`  ${token.categoryText} ${token.name} = ${describeExpr(token.value)}`);
+      }
+      break;
   }
 }
 

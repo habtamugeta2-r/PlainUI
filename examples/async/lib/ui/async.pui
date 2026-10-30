@@ -1,0 +1,48 @@
+// `task`: an async value the compiler drives. Nothing here manages a loading flag by hand.
+
+import "../data.dart"
+
+theme Async:
+
+    color danger = #dc2626
+    color muted = #64748b
+    space sm = 8
+    space md = 16
+
+screen Async:
+
+    task tasks: List<String> = loadTasks("")
+
+    state filter: String = ""
+
+    column padding=md gap=sm:
+
+        text "Tasks" style=heading
+
+        input bind=filter placeholder="Filter, or type boom to fail"
+
+        if tasks.loading:
+
+            row gap=sm:
+                progress
+                text "Loading…" style=caption
+
+        elif tasks.error != null:
+
+            column gap=sm:
+                text tasks.error color=danger
+                button "Try again":
+                    on tap:
+                        tasks.retry()
+
+        elif tasks.value.isEmpty:
+
+            text "Nothing matches." style=caption
+
+        else:
+
+            for index, task in tasks.value:
+
+                row gap=sm:
+                    text "${index + 1}." style=caption
+                    text task

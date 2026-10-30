@@ -6,6 +6,32 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Design tokens.** A file may declare one `theme` with `color`, `space` and `radius` tokens, and
+  refer to them by name wherever a value is expected: `padding=md`, `color=brand`,
+  `radius=card`, `padding=[md, sm]`. Tokens are compile-time values shared by importing the file
+  that declares them, so a design system is one `.pui` file and not a copy in every screen.
+
+  The Flutter target emits the palette as data (`AppTokens.brand`) and as a `ThemeData`
+  (`AppTheme.light`) so Flutter's own widgets match the design; the HTML target publishes the same
+  values as CSS custom properties (`--pui-brand`). A token used as the wrong kind of value is an
+  error (`PUI2304`) rather than a mistyped literal in the output, and a token cannot be assigned
+  (`PUI2114`).
+
+- **`task` — async as a language construct.** `task items: List<Todo> = loadTodos()` declares a
+  value the compiler loads for you, exposing `items.loading`, `items.error`, `items.value` and
+  `items.retry()`. The generated state machine resets the previous error before each attempt and
+  checks `mounted` after the await, so a screen popped mid-load cannot throw; a list-valued task
+  reads as an empty list until its first load completes, so `for item in items.value` needs no null
+  handling. Assigning to a task is an error (`PUI2311`), as is any part it does not expose
+  (`PUI2312`). The new `examples/async` project is analyzed and widget-tested in CI against a real
+  `Future`.
+
+- **List identity.** `for item in items key=item.id:` gives each row a stable identity, lowered to
+  `KeyedSubtree(key: ValueKey(...))` around the row. Without it a framework reuses widgets by
+  position, which is how a deleted row's scroll offset or text field state ends up on its neighbour.
+
 ### Fixed
 
 - **`icon` names are translated to Material's spelling.** `icon heart` used to emit `Icons.heart`,
@@ -14,9 +40,13 @@ All notable changes to PlainUI are recorded here. The format follows
   already correct pass through untouched.
 - **No more unnecessary `package:flutter/services.dart` import.** `TextInputType` comes with
   `material.dart`, so every file with a `keyboard=` hint carried an import the analyzer flagged.
+- **`text` of a nullable string now compiles.** `isStringType` looks through `?`, so `text someString`
+  emitted `Text(String?)`; it now emits `(value ?? '')`.
 - **`plainui watch` no longer misses saves made while the first build runs.** Watching starts
   before the first compile, so a save that lands during it queues a rebuild instead of joining
   polling's baseline snapshot and never being reported.
+- **The HTML preview no longer repeats a CSS property** when a widget's own style and the universal
+  wrapper both set it (a `card` with `background=` emitted `background:` twice).
 - **`plainui watch` picks up a file created inside a new directory** (`mkdir parts && … >
   parts/a.pui` gave the file no event of its own), and ignores the generated output directory so a
   build cannot trigger the next one. `PLAINUI_WATCH_MODE=recursive|per-directory|polling` forces a

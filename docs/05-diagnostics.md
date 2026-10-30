@@ -54,6 +54,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2111`](#pui2111) | error | Invalid enum value |
 | [`PUI2112`](#pui2112) | error | await outside an event handler |
 | [`PUI2113`](#pui2113) | error | Statement does nothing |
+| [`PUI2114`](#pui2114) | error | Assignment to a design token |
 | [`PUI2206`](#pui2206) | error | Not a Dart type |
 | [`PUI2205`](#pui2205) | error | slot outside a component |
 | [`PUI2201`](#pui2201) | error | Missing required parameter |
@@ -61,6 +62,14 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2204`](#pui2204) | error | Slot without a children parameter |
 | [`PUI2301`](#pui2301) | error | Unknown style property |
 | [`PUI2302`](#pui2302) | error | Unknown style |
+| [`PUI2304`](#pui2304) | error | Token used in the wrong slot |
+| [`PUI2305`](#pui2305) | error | Duplicate token |
+| [`PUI2306`](#pui2306) | error | Token value has the wrong shape |
+| [`PUI2307`](#pui2307) | error | More than one theme in a file |
+| [`PUI2310`](#pui2310) | error | Task does not await a call |
+| [`PUI2311`](#pui2311) | error | Assignment to a task |
+| [`PUI2312`](#pui2312) | error | Unknown task member |
+| [`PUI2309`](#pui2309) | error | State shadowing a token |
 | [`PUI2402`](#pui2402) | error | Loop over a non-iterable |
 | [`PUI2403`](#pui2403) | warning | Multiple children in a single-child element |
 | [`PUI2404`](#pui2404) | warning | Unused state |
@@ -425,6 +434,14 @@ A statement in an event handler that is not a call has no effect.
 
 *Fix:* Call a host function, for example save().
 
+### PUI2114
+
+**Assignment to a design token** — error
+
+Design tokens are compile-time values, not variables, so they cannot be assigned.
+
+*Fix:* Keep the mutable value in "state", or use a different token.
+
 ## Types
 
 ### PUI2206
@@ -484,6 +501,70 @@ A style block only accepts text properties.
 The style name is neither a built-in style nor declared in this file.
 
 *Fix:* Declare it with "style <name>:", or use one of the built-in names.
+
+### PUI2304
+
+**Token used in the wrong slot** — error
+
+Design tokens carry a category: a colour token belongs where a colour is expected, a space or radius token where a number is. This one was used in the other kind of slot.
+
+*Fix:* Use a token of the expected category, or write the literal value.
+
+### PUI2305
+
+**Duplicate token** — error
+
+Two tokens in scope share a name, so a reference would be ambiguous.
+
+*Fix:* Rename one of them, here or in the imported theme.
+
+### PUI2306
+
+**Token value has the wrong shape** — error
+
+A colour token needs a colour literal and a space or radius token needs a number.
+
+*Fix:* Write the token as #RRGGBB, or as a number such as 16.
+
+### PUI2307
+
+**More than one theme in a file** — error
+
+A `.pui` file declares one theme; the tokens of that theme are in scope for the whole file.
+
+*Fix:* Move the extra theme into its own file and import it.
+
+### PUI2310
+
+**Task does not await a call** — error
+
+A task is defined by the future it awaits, so its value must be a call that produces one.
+
+*Fix:* Write the task as a host call, for example: task items: List<Todo> = loadTodos()
+
+### PUI2311
+
+**Assignment to a task** — error
+
+A task is driven by the compiler: it loads on creation and reloads through retry().
+
+*Fix:* Call retry() to load it again, or keep the mutable value in "state".
+
+### PUI2312
+
+**Unknown task member** — error
+
+A task exposes loading, error, value and retry, and nothing else.
+
+*Fix:* Use one of loading, error, value or retry.
+
+### PUI2309
+
+**State shadowing a token** — error
+
+A state variable with the same name as a design token would hide the token inside its screen.
+
+*Fix:* Rename the state variable, or rename the token.
 
 ## Warnings about intent
 

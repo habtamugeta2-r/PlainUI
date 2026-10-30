@@ -309,6 +309,12 @@ export const CODES = {
     description: 'A statement in an event handler that is not a call has no effect.',
     fix: 'Call a host function, for example save().',
   },
+  PUI2114: {
+    severity: 'error',
+    title: 'Assignment to a design token',
+    description: 'Design tokens are compile-time values, not variables, so they cannot be assigned.',
+    fix: 'Keep the mutable value in "state", or use a different token.',
+  },
   PUI2206: {
     severity: 'error',
     title: 'Not a Dart type',
@@ -350,6 +356,56 @@ export const CODES = {
     title: 'Unknown style',
     description: 'The style name is neither a built-in style nor declared in this file.',
     fix: 'Declare it with "style <name>:", or use one of the built-in names.',
+  },
+
+  PUI2304: {
+    severity: 'error',
+    title: 'Token used in the wrong slot',
+    description:
+      'Design tokens carry a category: a colour token belongs where a colour is expected, a space or radius token where a number is. This one was used in the other kind of slot.',
+    fix: 'Use a token of the expected category, or write the literal value.',
+  },
+  PUI2305: {
+    severity: 'error',
+    title: 'Duplicate token',
+    description: 'Two tokens in scope share a name, so a reference would be ambiguous.',
+    fix: 'Rename one of them, here or in the imported theme.',
+  },
+  PUI2306: {
+    severity: 'error',
+    title: 'Token value has the wrong shape',
+    description: 'A colour token needs a colour literal and a space or radius token needs a number.',
+    fix: 'Write the token as #RRGGBB, or as a number such as 16.',
+  },
+  PUI2307: {
+    severity: 'error',
+    title: 'More than one theme in a file',
+    description: 'A `.pui` file declares one theme; the tokens of that theme are in scope for the whole file.',
+    fix: 'Move the extra theme into its own file and import it.',
+  },
+  PUI2310: {
+    severity: 'error',
+    title: 'Task does not await a call',
+    description: 'A task is defined by the future it awaits, so its value must be a call that produces one.',
+    fix: 'Write the task as a host call, for example: task items: List<Todo> = loadTodos()',
+  },
+  PUI2311: {
+    severity: 'error',
+    title: 'Assignment to a task',
+    description: 'A task is driven by the compiler: it loads on creation and reloads through retry().',
+    fix: 'Call retry() to load it again, or keep the mutable value in "state".',
+  },
+  PUI2312: {
+    severity: 'error',
+    title: 'Unknown task member',
+    description: 'A task exposes loading, error, value and retry, and nothing else.',
+    fix: 'Use one of loading, error, value or retry.',
+  },
+  PUI2309: {
+    severity: 'error',
+    title: 'State shadowing a token',
+    description: 'A state variable with the same name as a design token would hide the token inside its screen.',
+    fix: 'Rename the state variable, or rename the token.',
   },
 
   // ---------------------------------------------------------------- warnings

@@ -1,5 +1,22 @@
 // Every built-in element in one screen: a reference you can render.
 
+// The palette, the spacing scale and the radii live here, once. Everything below refers to them by
+// name, so the gallery is also the reference for what a design token looks like in practice.
+theme Gallery:
+
+    color brand = #2563eb
+    color accent = #16a34a
+    color danger = #dc2626
+    color surface = #ffffff
+    color ink = #0f172a
+
+    space xs = 4
+    space sm = 8
+    space md = 16
+    space lg = 24
+
+    radius card = 12
+
 style mono:
     fontFamily=monospace
     size=13
@@ -15,7 +32,7 @@ screen Gallery:
 
         scroll:
 
-            column padding=20 gap=16:
+            column padding=lg gap=md:
 
                 text "Typography" style=heading
                 text "display" style=display
@@ -84,9 +101,9 @@ screen Gallery:
                     button "Full width" fullWidth
                     button "Disabled" disabled
 
-                row gap=8:
+                row gap=sm:
                     icon star
-                    icon heart color=#dc2626
+                    icon heart color=danger
                     icon settings size=32
 
                 divider
@@ -97,8 +114,21 @@ screen Gallery:
                 text "dark = ${dark}"
 
                 progress value=0.6
-                progress color=#16a34a
+                progress color=accent
 
                 row gap=12 cross=center:
                     progress
                     text "loading…" style=caption
+
+                divider
+
+                text "Design tokens" style=heading
+                text "the same names in Dart (GalleryTokens) and in CSS (--pui-brand)" style=caption
+
+                row gap=sm:
+                    card padding=md background=brand radius=card:
+                        text "brand" color=surface
+                    card padding=md background=accent radius=card:
+                        text "accent" color=surface
+                    card padding=md background=danger radius=card:
+                        text "danger" color=surface

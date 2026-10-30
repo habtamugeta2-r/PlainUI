@@ -35,8 +35,23 @@ import type {
   SetAction,
   StateDecl,
   StyleDecl,
+  TaskDecl,
+  ThemeDecl,
+  TokenCategory,
+  TokenDecl,
 } from './ast.ts';
 import { DiagnosticBag } from '../analysis/diagnostics.ts';
+
+/**
+ * The category words a theme accepts, and the token kind each one declares. `spacing` is an alias
+ * for `space` because both spellings read naturally in a design system.
+ */
+export const THEME_CATEGORIES: Readonly<Record<string, TokenCategory>> = {
+  color: 'color',
+  space: 'space',
+  spacing: 'space',
+  radius: 'radius',
+};
 import { type Token, tokenize } from './lexer.ts';
 import { booleanPropNames } from '../analysis/widgets/registry.ts';
 import { type SourceFile, type Span, span, textOf } from './source.ts';
@@ -189,6 +204,9 @@ class Parser {
       } else if (this.atKeyword('component')) {
         sawDecl = true;
         decls.push(this.parseComponent());
+      } else if (this.at('ident') && this.peek().value === 'theme') {
+        sawDecl = true;
+        decls.push(this.parseTheme());
       } else if (this.at('ident') && this.peek().value === 'style') {
         sawDecl = true;
         decls.push(this.parseStyle());
@@ -198,7 +216,7 @@ class Parser {
           'PUI1015',
           `unexpected ${describeToken(token)} at the top level`,
           token.span,
-          'only import, screen, component and style may appear here',
+          'only import, screen, component, theme and style may appear here',
         );
         this.skipLine();
       }
@@ -233,13 +251,14 @@ class Parser {
     const nameToken = this.expectIdent('for the screen');
     this.expectOp(':', 'to open the screen body');
     const body = this.parseNodeBody();
-    const { state, rest } = splitState(body);
+    const { state, tasks, rest } = splitState(body);
     return {
       kind: 'Screen',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
       name: nameToken.value,
       nameSpan: nameToken.span,
       state,
+      tasks,
       body: rest,
     };
   }
@@ -253,7 +272,7 @@ class Parser {
     }
     this.expectOp(':', 'to open the component body');
     const body = this.parseNodeBody();
-    const { state, rest } = splitState(body);
+    const { state, tasks, rest } = splitState(body);
     return {
       kind: 'Component',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
@@ -261,6 +280,7 @@ class Parser {
       nameSpan: nameToken.span,
       params,
       state,
+      tasks,
       body: rest,
     };
   }
@@ -356,6 +376,97 @@ class Parser {
     };
   }
 
+  /**
+   * `theme App:` followed by one token per line:
+   *
+   *     theme App:
+   *         color brand = #2563eb
+   *         space md = 16
+   *         radius card = 12
+   *
+   * The category word decides both the value's shape and where the token may be used, so a
+   * malformed line is a parse error rather than a checker surprise.
+   */
+  private parseTheme(): ThemeDecl {
+    const keyword = this.advance(); // the contextual `theme` name
+    const nameToken = this.expectIdent('for the theme');
+    const tokens: TokenDecl[] = [];
+
+    if (!this.atOp(':')) {
+      this.error('PUI1007', 'expected ":" to open the theme body', this.peek().span, 'for example: theme App:');
+      this.skipLine();
+      return { kind: 'Theme', span: span(keyword.span.start, nameToken.span.end), name: nameToken.value, nameSpan: nameToken.span, tokens };
+    }
+    const colon = this.advance();
+    if (this.at('newline')) this.advance();
+    if (!this.at('indent')) {
+      this.error('PUI1008', 'empty theme block', colon.span, 'indent one token per line under this ":"');
+      return { kind: 'Theme', span: span(keyword.span.start, nameToken.span.end), name: nameToken.value, nameSpan: nameToken.span, tokens };
+    }
+
+    this.advance(); // indent
+    while (!this.at('dedent') && !this.atEnd()) {
+      if (this.at('newline')) {
+        this.advance();
+        continue;
+      }
+      const before = this.pos;
+      const token = this.parseTokenDecl();
+      if (token !== undefined) tokens.push(token);
+      this.expectNewline('after a theme token');
+      if (this.pos === before) this.advance();
+    }
+    if (this.at('dedent')) this.advance();
+
+    const end = tokens.length > 0 ? tokens[tokens.length - 1]!.span.end : nameToken.span.end;
+    return { kind: 'Theme', span: span(keyword.span.start, end), name: nameToken.value, nameSpan: nameToken.span, tokens };
+  }
+
+  /** One `category name = value` line inside a theme. */
+  private parseTokenDecl(): TokenDecl | undefined {
+    const categoryToken = this.peek();
+    const category = THEME_CATEGORIES[categoryToken.value];
+    if (category === undefined) {
+      this.error(
+        'PUI1007',
+        `expected a token category, found ${describeToken(categoryToken)}`,
+        categoryToken.span,
+        'a token line reads: color brand = #2563eb, space md = 16, or radius card = 12',
+      );
+      this.skipLine();
+      return undefined;
+    }
+    this.advance();
+    const nameToken = this.expectIdent('for the token');
+
+    if (!this.atOp('=')) {
+      this.error('PUI1007', `token "${nameToken.value}" needs a value`, this.peek().span, 'for example: space md = 16');
+      this.skipLine();
+      return {
+        kind: 'Token',
+        span: span(categoryToken.span.start, nameToken.span.end),
+        category,
+        categoryText: categoryToken.value,
+        categorySpan: categoryToken.span,
+        name: nameToken.value,
+        nameSpan: nameToken.span,
+        value: { kind: 'Null', span: nameToken.span },
+      };
+    }
+    this.advance();
+    const value = this.parseExpression();
+    return {
+      kind: 'Token',
+      span: span(categoryToken.span.start, value.span.end),
+      category,
+      categoryText: categoryToken.value,
+      categorySpan: categoryToken.span,
+      name: nameToken.value,
+      nameSpan: nameToken.span,
+      value,
+    };
+  }
+
   // ------------------------------------------------------------------------------------------
   // Bodies
   // ------------------------------------------------------------------------------------------
@@ -414,6 +525,12 @@ class Parser {
 
   private parseNodeStatement(): Node | undefined {
     const token = this.peek();
+
+    // `task items: List<Todo> = loadTodos()` — contextual, like `style`, because `task` is a good
+    // name for other things and the shape is unambiguous: `task` followed by a name.
+    if (token.kind === 'ident' && token.value === 'task' && this.peek(1).kind === 'ident') {
+      return this.parseTask();
+    }
 
     if (token.kind === 'keyword') {
       switch (token.value) {
@@ -668,16 +785,25 @@ class Parser {
     }
 
     const iterable = this.parseExpression();
+    // `key=<expr>` names the row's identity; it is parsed after the iterable because it refers to
+    // the loop variable, which only exists from here on.
+    let key: Expr | undefined;
+    if (this.at('ident') && this.peek().value === 'key' && this.peek(1).value === '=') {
+      this.advance(); // key
+      this.advance(); // =
+      key = this.parseExpression();
+    }
     this.expectOp(':', 'to open the loop body');
     const body = this.parseNodeBody();
 
     return {
       kind: 'For',
-      span: span(keyword.span.start, endOfBody(body, iterable.span.end)),
+      span: span(keyword.span.start, endOfBody(body, (key ?? iterable).span.end)),
       itemName,
       itemSpan,
       ...(indexName === undefined || indexSpan === undefined ? {} : { indexName, indexSpan }),
       iterable,
+      ...(key === undefined ? {} : { key }),
       body,
     };
   }
@@ -685,6 +811,56 @@ class Parser {
   // ------------------------------------------------------------------------------------------
   // State and events
   // ------------------------------------------------------------------------------------------
+
+  /**
+   * `task items: List<Todo> = loadTodos()`
+   *
+   * The type annotation is optional (it defaults to dynamic) but is what makes `items.value`
+   * checkable and what lets a `for` over it know its element type.
+   */
+  private parseTask(): TaskDecl {
+    const keyword = this.advance();
+    const nameToken = this.expectIdent('for the task');
+    let typeText: string | undefined;
+    let typeSpan: Span | undefined;
+
+    if (this.atOp(':')) {
+      this.advance();
+      const collected = this.collectTypeText(new Set(['=']));
+      typeText = collected.text;
+      typeSpan = collected.span;
+      if (typeText.length === 0) {
+        this.error('PUI1023', 'expected a type after ":"', nameToken.span, 'for example: task items: List<Todo> = loadTodos()');
+      }
+    }
+
+    if (!this.atOp('=')) {
+      this.error('PUI1023', `task "${nameToken.value}" needs a value to await`, this.peek().span, 'for example: task items: List<Todo> = loadTodos()');
+      this.skipLine();
+      return {
+        kind: 'Task',
+        span: span(keyword.span.start, nameToken.span.end),
+        name: nameToken.value,
+        nameSpan: nameToken.span,
+        ...(typeText === undefined ? {} : { typeText }),
+        ...(typeSpan === undefined ? {} : { typeSpan }),
+        init: { kind: 'Call', span: nameToken.span, callee: { kind: 'Ident', span: nameToken.span, name: nameToken.value }, args: [] },
+      };
+    }
+    this.advance();
+    const init = this.parseExpression();
+    this.expectNewline('after the task declaration');
+
+    return {
+      kind: 'Task',
+      span: span(keyword.span.start, init.span.end),
+      name: nameToken.value,
+      nameSpan: nameToken.span,
+      ...(typeText === undefined ? {} : { typeText }),
+      ...(typeSpan === undefined ? {} : { typeSpan }),
+      init,
+    };
+  }
 
   private parseState(): StateDecl {
     const keyword = this.advance();
@@ -1143,14 +1319,16 @@ function endOfBody(items: readonly { span: Span }[], fallback: number): number {
   return items.length === 0 ? fallback : items[items.length - 1]!.span.end;
 }
 
-function splitState(body: readonly Node[]): { state: StateDecl[]; rest: Node[] } {
+function splitState(body: readonly Node[]): { state: StateDecl[]; tasks: TaskDecl[]; rest: Node[] } {
   const state: StateDecl[] = [];
+  const tasks: TaskDecl[] = [];
   const rest: Node[] = [];
   for (const node of body) {
     if (node.kind === 'State') state.push(node);
+    else if (node.kind === 'Task') tasks.push(node);
     else rest.push(node);
   }
-  return { state, rest };
+  return { state, tasks, rest };
 }
 
 function propAsNode(prop: Prop): { span: Span } {
