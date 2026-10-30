@@ -352,7 +352,7 @@ button "Retry":
 
 * The event name must be one the widget supports (`PUI2101`), either natively or through the
   generic event set: `tap`, `longTap`, `doubleTap`, `hover` on every element; `change`,
-  `submit`, `focus`, `blur` on input-like widgets.
+  `focus`, `blur` on input-like widgets; `submit` on `form` (§3.7).
 * At most one handler per event per element (`PUI2103`).
 * A handler containing `await` is emitted as an `async` closure automatically.
 
@@ -365,6 +365,7 @@ button "Retry":
 | `f(a, b)` | Call a host function or an expression statement. |
 | `navigate Screen(name: value)` | Open a screen (`PUI2320`, `PUI2322`). |
 | `back()` | Close the current screen (`PUI2323`). |
+| `submit()` | Validate the enclosing `form`, then run its handler (`PUI2331`). |
 | `if cond:` … `else:` | Conditional actions. |
 
 `set` may only target a state variable declared in the enclosing screen or component
@@ -393,6 +394,59 @@ screen Detail(id: String, title: String = "Task"):
   `back()` takes no arguments (`PUI2323`).
 * A project that navigates also gets `plainui_routes.dart`: a map from screen name to widget, for
   host code that has a name (a deep link, a notification) and no import.
+
+### 3.7 Forms and validation
+
+```
+form:
+
+    column gap=12:
+
+        input bind=email label="Email" keyboard=email validate=[required, email]
+        input bind=password label="Password" secret validate=[required, min(8)]
+
+        button "Create account":
+            on tap: submit()
+
+    on submit:
+        set feedback = "Welcome, ${email}"
+```
+
+```
+form:
+    <elements>
+    on submit:
+        <actions>
+```
+
+* `form` is a container and an owner: it holds a validation key, and it declares exactly what
+  happens when validation passes, in its own `on submit:` body (`PUI2333`).
+* `validate=` on `input` takes a validator or a list of them, applied in the order written:
+
+  | Validator | Argument | Fails when |
+  |---|---|---|
+  | `required` | — | The field is empty. |
+  | `email` | — | The value is not `x@y.z`. |
+  | `min(n)` | integer | Fewer than `n` characters. |
+  | `max(n)` | integer | More than `n` characters. |
+  | `pattern("…")` | string literal | The value does not match the regular expression. |
+
+  Names and arguments are checked (`PUI2330`), so a misspelt validator with a suggestion is an
+  error rather than a rule that silently never runs.
+* An empty field short-circuits: it is `required`'s failure if `required` is present, and valid
+  otherwise. `min(8)` on an optional field does not fire before the visitor has typed anything.
+* `submit()` takes no arguments (`PUI2336`) and is an action, never a value (`PUI2331`). It is the
+  only route into the form's handler, and it validates first — which is why there is no way to run
+  the handler against unvalidated input.
+* `submit()` outside a form is an error (`PUI2331`), and so is `validate=` outside one (`PUI2332`):
+  a rule that nothing would ever run is not a rule.
+* A form inside a form is an error (`PUI2335`), as is `submit()` inside the form's own handler
+  (`PUI2334`, which would validate and re-enter the body).
+* A form with a `submit()` but no `on submit:` body is an error (`PUI2333`); a form whose handler
+  nothing calls (`PUI2408`) or that validates no field (`PUI2409`) is a warning.
+
+Whitespace, trimming and message wording belong to the target: the generated validators trim
+before testing, and the messages above are what the Flutter generator emits (`03-flutter-codegen`).
 
 ---
 

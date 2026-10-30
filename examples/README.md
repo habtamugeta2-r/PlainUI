@@ -9,6 +9,7 @@ Each directory is a complete Flutter project skeleton that uses PlainUI for its 
 | [`gallery`](gallery) | Every built-in element and property in one scrollable screen |
 | [`async`](async) | A `task`: loading, error and retry states the compiler owns; a `Race` screen where a retry outruns the load it replaced |
 | [`navigation`](navigation) | Two screens in two files: parameters, `navigate`, `back()`, and the generated route table |
+| [`forms`](forms) | A `form` whose fields declare `validate=`, and `submit()` — the only way into the handler, and always behind the gate |
 
 They are compiled by `tests/examples.test.ts`, so they cannot drift.
 

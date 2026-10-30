@@ -1,0 +1,28 @@
+// The other half of validation: an optional field.
+//
+// Neither rule uses `required`, so an empty field passes and the rules only apply to what was
+// actually typed. That is a property of the generated validator, not of the handler.
+
+screen Profile:
+
+    state phone: String = ""
+    state bio: String = ""
+    state saved: String = ""
+
+    form:
+
+        column padding=16 gap=12:
+
+            text "Your profile" style=heading
+
+            input bind=phone label="Mobile" keyboard=phone helper="Nine digits, or leave it empty" validate=pattern("^[0-9]{9}$")
+            input bind=bio label="Bio" multiline maxLines=3 validate=max(80)
+
+            if saved != "":
+                text saved style=caption
+
+            button "Save":
+                on tap: submit()
+
+        on submit:
+            set saved = "Saved."

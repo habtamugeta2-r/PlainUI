@@ -51,12 +51,14 @@ jobs:
 
           # Each example keeps its own directory: generated files import their siblings, so
           # they must stay together.
-          mkdir -p lib/counter lib/todo lib/gallery lib/async lib/navigation
+          mkdir -p lib/counter lib/todo lib/gallery lib/async lib/navigation lib/forms
           cp ../examples/counter/lib/generated/*.dart lib/counter/
           cp ../examples/todo/lib/generated/*.dart lib/todo/
           cp ../examples/gallery/lib/generated/*.dart lib/gallery/
           # Navigation: two screens in two files plus the project route table, which imports both.
           cp ../examples/navigation/lib/generated/*.dart lib/navigation/
+          # Forms: two screens that validate before their handlers run.
+          cp ../examples/forms/lib/generated/*.dart lib/forms/
           # The async example awaits a real host function; the generated file imports it as
           # `../data.dart`, so the host module lands one level up from the generated file.
           cp ../examples/async/lib/generated/*.dart lib/async/
@@ -72,6 +74,8 @@ jobs:
           import 'gallery/gallery.pui.dart';
           import 'navigation/detail.pui.dart' as navigation_detail;
           import 'navigation/home.pui.dart' as navigation_home;
+          import 'forms/signup.pui.dart' as forms_signup;
+          import 'forms/profile.pui.dart' as forms_profile;
 
           /// Instantiates every generated screen. If the generated constructors or widget trees
           /// are wrong, this file does not compile.
@@ -84,6 +88,8 @@ jobs:
                 const navigation_home.Home(),
                 // A screen with parameters: the constructor is generated from the parameter list.
                 const navigation_detail.Detail(id: '1'),
+                const forms_signup.Signup(),
+                const forms_profile.Profile(),
               ];
 
           void main() => runApp(const MaterialApp(home: _Screens()));
@@ -101,7 +107,7 @@ jobs:
           # `run:` steps execute with `bash -e`, so a non-zero exit would end the step before the
           # findings could be captured. `|| status=$?` keeps the status and the output.
           status=0
-          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/async lib/navigation lib/data.dart lib/verify.dart \
+          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/async lib/navigation lib/forms lib/data.dart lib/verify.dart \
             > /tmp/analyze.log 2>&1 || status=$?
           cat /tmp/analyze.log
           if [ "$status" -ne 0 ]; then
@@ -136,6 +142,8 @@ jobs:
           import 'package:verify_app/navigation/home.pui.dart' as navigation_home;
           import 'package:verify_app/navigation/plainui_routes.dart';
           import 'package:verify_app/async/race.pui.dart' as race_example;
+          import 'package:verify_app/forms/signup.pui.dart' as forms_signup;
+          import 'package:verify_app/forms/profile.pui.dart' as forms_profile;
 
           void main() {
             testWidgets('the counter renders and reacts to a tap', (tester) async {
@@ -204,6 +212,47 @@ jobs:
               await tester.pumpAndSettle();
               expect(find.text('Tasks'), findsOneWidget);
               expect(find.text('Item 1'), findsNothing);
+            });
+
+            testWidgets('a form validates before its handler runs', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: forms_signup.Signup())));
+
+              // submit() validates, fails, and the handler is skipped — the handler is inside the
+              // `if`, so there is no path that reaches it without validating first.
+              await tester.tap(find.text('Create account'));
+              await tester.pumpAndSettle();
+              expect(find.text('Welcome, alice'), findsNothing);
+              expect(find.text('This field is required'), findsNWidgets(3));
+
+              // The validator that is not `required` reports its own message.
+              await tester.enterText(find.byType(TextFormField).at(0), 'not-an-email');
+              await tester.enterText(find.byType(TextFormField).at(1), 'alice');
+              await tester.enterText(find.byType(TextFormField).at(2), 'hunter2!');
+              await tester.tap(find.text('Create account'));
+              await tester.pumpAndSettle();
+              expect(find.text('Enter a valid email address'), findsOneWidget);
+              expect(find.text('Welcome, alice'), findsNothing);
+
+              // Every rule satisfied: the same tap now runs the handler.
+              await tester.enterText(find.byType(TextFormField).at(0), 'alice@example.com');
+              await tester.tap(find.text('Create account'));
+              await tester.pumpAndSettle();
+              expect(find.text('Welcome, alice'), findsOneWidget);
+            });
+
+            testWidgets('an optional field passes when it is empty', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: forms_profile.Profile())));
+
+              // Neither field is `required`, so empty input is valid and the handler runs.
+              await tester.tap(find.text('Save'));
+              await tester.pumpAndSettle();
+              expect(find.text('Saved.'), findsOneWidget);
+
+              // Once something is typed, the rule applies to it.
+              await tester.enterText(find.byType(TextFormField).at(0), '123');
+              await tester.tap(find.text('Save'));
+              await tester.pumpAndSettle();
+              expect(find.text('Enter a value in the expected format'), findsOneWidget);
             });
 
             testWidgets('the route table opens a screen by name', (tester) async {

@@ -1,0 +1,37 @@
+// A form: the fields declare their own rules, the button submits, and the compiler emits the gate.
+//
+// Nothing here remembers to validate before running the handler, because there is nowhere else to
+// run it: `submit()` is the only route into `on submit:`, and it always validates first.
+
+theme Signup:
+
+    color danger = #dc2626
+    color success = #16a34a
+    space sm = 8
+    space md = 16
+
+screen Signup:
+
+    state email: String = ""
+    state handle: String = ""
+    state password: String = ""
+    state done: bool = false
+
+    form:
+
+        column padding=md gap=sm:
+
+            text "Create an account" style=heading
+
+            input bind=email label="Email" keyboard=email validate=[required, email]
+            input bind=handle label="Username" helper="3-16 lowercase letters, digits or _" validate=[required, pattern("^[a-z0-9_]{3,16}$")]
+            input bind=password label="Password" secret validate=[required, min(8)]
+
+            if done:
+                text "Welcome, ${handle}" color=success
+
+            button "Create account":
+                on tap: submit()
+
+        on submit:
+            set done = true

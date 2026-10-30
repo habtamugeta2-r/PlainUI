@@ -125,7 +125,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Forms and validation',
     size: 'L',
-    status: 'next',
+    status: 'done',
     acceptance:
       'Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; ' +
       'an invalid submission is impossible to express, not merely discouraged.',
@@ -136,7 +136,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Typed interop',
     size: 'M',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'Host components and imports are declared with signatures, and calls to them are type-checked ' +
       'rather than passed through.',

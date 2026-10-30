@@ -69,6 +69,13 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2310`](#pui2310) | error | Task does not await a call |
 | [`PUI2311`](#pui2311) | error | Assignment to a task |
 | [`PUI2312`](#pui2312) | error | Unknown task member |
+| [`PUI2330`](#pui2330) | error | Not a validator |
+| [`PUI2331`](#pui2331) | error | submit() outside a form |
+| [`PUI2332`](#pui2332) | error | validate= outside a form |
+| [`PUI2333`](#pui2333) | error | Form has no submit handler |
+| [`PUI2334`](#pui2334) | error | submit() inside its own handler |
+| [`PUI2335`](#pui2335) | error | Form inside a form |
+| [`PUI2336`](#pui2336) | error | submit() takes no arguments |
 | [`PUI2320`](#pui2320) | error | Unknown screen in navigate |
 | [`PUI2321`](#pui2321) | error | Navigation outside an event handler |
 | [`PUI2322`](#pui2322) | error | Wrong arguments for the target screen |
@@ -77,6 +84,8 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2402`](#pui2402) | error | Loop over a non-iterable |
 | [`PUI2403`](#pui2403) | warning | Multiple children in a single-child element |
 | [`PUI2404`](#pui2404) | warning | Unused state |
+| [`PUI2408`](#pui2408) | warning | Submit handler never triggered |
+| [`PUI2409`](#pui2409) | warning | Form validates nothing |
 | [`PUI2405`](#pui2405) | warning | Unused component parameter |
 | [`PUI2406`](#pui2406) | info | External host widget |
 | [`PUI2407`](#pui2407) | warning | Anonymous use of a screen |
@@ -562,6 +571,62 @@ A task exposes loading, error, value and retry, and nothing else.
 
 *Fix:* Use one of loading, error, value or retry.
 
+### PUI2330
+
+**Not a validator** — error
+
+validate= takes validator names — required, email, min(n), max(n) and pattern("…") — and each one takes the arguments it declares.
+
+*Fix:* Write validate=required, or a list such as validate=[required, email].
+
+### PUI2331
+
+**submit() outside a form** — error
+
+submit() validates the form around it and then runs that form's handler, so it only means something inside one.
+
+*Fix:* Wrap the fields and the button in a form, and give the form an "on submit:" handler.
+
+### PUI2332
+
+**validate= outside a form** — error
+
+A validator runs when a form submits. A field that is not in a form has nothing to validate it, so the rule would be silently ignored.
+
+*Fix:* Put the field inside a form, or remove validate=.
+
+### PUI2333
+
+**Form has no submit handler** — error
+
+Something inside the form calls submit(), but the form declares no "on submit:" body to run.
+
+*Fix:* Add "on submit:" under the form, or remove the submit() call.
+
+### PUI2334
+
+**submit() inside its own handler** — error
+
+The form's submit handler cannot submit the form again: validating would re-enter the same body.
+
+*Fix:* Call submit() from a button inside the form instead.
+
+### PUI2335
+
+**Form inside a form** — error
+
+A nested form would own its own validation and its own submit handler, so "the form" would stop having one meaning.
+
+*Fix:* Flatten the two forms into one, or move the inner one into its own screen.
+
+### PUI2336
+
+**submit() takes no arguments** — error
+
+submit() runs the form it is written in; there is nothing to pass it.
+
+*Fix:* Write submit() on its own.
+
 ### PUI2320
 
 **Unknown screen in navigate** — error
@@ -627,6 +692,22 @@ This element renders one child; extra children are wrapped in a column by the ge
 This state variable is declared but never read or written.
 
 *Fix:* Remove it, or use it.
+
+### PUI2408
+
+**Submit handler never triggered** — warning
+
+The form declares an "on submit:" body, but nothing inside it calls submit(), so the body cannot run.
+
+*Fix:* Call submit() from a button inside the form.
+
+### PUI2409
+
+**Form validates nothing** — warning
+
+No field in this form declares validate=, so the validation gate always passes and submit() is an ordinary call.
+
+*Fix:* Add validate= to the fields that must be checked, or drop the form.
 
 ### PUI2405
 

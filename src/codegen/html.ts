@@ -1006,6 +1006,23 @@ class HtmlEmitter {
         return;
       }
 
+      case 'form': {
+        // A real <form> would submit (and navigate) in a preview that has no submit handler, so the
+        // container is a div that records what the gate would validate. What does map to HTML —
+        // `required` and `pattern` — is emitted on the fields themselves.
+        const validators = [...new Set(this.validatorsOf(element))];
+        this.open('div', [['class', 'pui-form'], ['data-form', validators.length === 0 ? 'validated' : validators.join(' ')]], [
+          'display: flex',
+          'flex-direction: column',
+          'gap: 12px',
+          'margin: 0',
+          ...this.universalStyles(element),
+        ]);
+        this.renderChildren(element.children);
+        this.close('div');
+        return;
+      }
+
       case 'input': {
         const label = this.name(element, 'label');
         const bound = this.boundValue(element);
@@ -1028,11 +1045,18 @@ class HtmlEmitter {
           this.line(escapeHtml(value));
           this.close('textarea');
         } else {
+          const validators = this.validatorsOf(element);
+          const pattern = validators.find((name) => name.startsWith('pattern('));
           this.void_('input', [
             ['type', this.bool(element, 'secret') ? 'password' : INPUT_TYPES[this.name(element, 'keyboard') ?? 'text'] ?? 'text'],
             ['value', value],
             ['placeholder', placeholder],
             ['autofocus', this.bool(element, 'autofocus') ? '' : undefined],
+            // HTML boolean attribute: `required="required"` is the form every tool accepts.
+            ['required', validators.includes('required') ? 'required' : undefined],
+            // `pattern` is the one validator HTML can enforce itself, so it becomes the attribute.
+            ['pattern', pattern === undefined ? undefined : pattern.slice('pattern('.length, -1).replace(/^["']|["']$/g, '')],
+            ['data-validate', validators.length === 0 ? undefined : validators.join(' ')],
           ], [
             'font: inherit',
             'padding: 10px 12px',
@@ -1140,6 +1164,32 @@ class HtmlEmitter {
     const cross = this.name(element, 'cross');
     const value = cross === undefined ? undefined : ALIGN[cross];
     return value === undefined ? [] : [`align-items: ${value}`];
+  }
+
+  /**
+   * The validator names on a field or form, as written: `required`, `email`, `min(8)`, `pattern("…")`.
+   *
+   * The preview cannot run the gate — there is no Dart and no form state — so it states the rules
+   * instead: `required` and `pattern` become real HTML attributes, and everything else is kept in
+   * `data-validate` for whoever is reading the preview.
+   */
+  private validatorsOf(element: import('../frontend/ast.ts').ElementNode): string[] {
+    if (element.tag === 'form') {
+      const found: string[] = [];
+      const visit = (nodes: readonly Node[]): void => {
+        for (const node of nodes) {
+          if (node.kind !== 'Element') continue;
+          found.push(...this.validatorsOf(node));
+          visit(node.children);
+        }
+      };
+      visit(element.children);
+      return found;
+    }
+    const prop = element.props.find((candidate) => candidate.name === 'validate');
+    if (prop === undefined) return [];
+    const items = prop.value.kind === 'List' ? prop.value.items : [prop.value];
+    return items.map((item) => describeExpr(item)).map((text) => text.replace(/\s+/g, ''));
   }
 
   private eventNames(element: { events: readonly import('../frontend/ast.ts').EventHandler[] }): string | undefined {

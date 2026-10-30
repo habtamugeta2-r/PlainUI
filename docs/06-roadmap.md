@@ -7,8 +7,8 @@ could go wrong — the second half matters more.
 
 | Area | State |
 | --- | --- |
-| Language, parser, checker | 60 diagnostic codes, suggestions everywhere, error recovery |
-| Flutter generator | 25 elements, universal properties, gestures, bound inputs, styles |
+| Language, parser, checker | 85 diagnostic codes, suggestions everywhere, error recovery |
+| Flutter generator | 25 elements, universal properties, gestures, bound inputs, forms, styles |
 | Project compilation | imports, re-basing, duplicate detection, deterministic output |
 | CLI | build, check, watch, format, init, ast, tokens, explain, widgets, lsp |
 | Tooling | formatter, playground (browser), golden files, examples, generated docs |
@@ -46,7 +46,9 @@ Feature work on the one target we can verify end to end, in this order:
   `flutter-verify.yml`),
 - ~~**latest-wins task cancellation** — a retry during an in-flight load cannot lose to the older
   result~~ — done (`docs/01-language-spec.md` §3.5, races in `examples/async`),
-- **forms** — typed validation on `input`, gated by a `form` scope,
+- ~~**forms** — typed validation on `input`, gated by a `form` scope; `submit()` cannot reach the
+  handler without validating~~ — done (`docs/01-language-spec.md` §3.7,
+  `docs/03-flutter-codegen.md` §Forms, `examples/forms`, tapped through in `flutter-verify.yml`),
 - **typed interop** — host components declared with signatures so calls are still checked,
 - **`derived`** and **`effect on <state>`** — the rest of the state model, per
   [`10-decisions.md`](10-decisions.md) B1 and B2.

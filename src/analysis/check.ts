@@ -216,6 +216,16 @@ class Checker {
   readonly loopTypes = new Map<ForNode, Map<string, UiType>>();
   readonly tokens = new Map<string, TokenDecl>();
   theme: ThemeDecl | undefined;
+  /**
+   * The forms enclosing the element being checked, innermost last.
+   *
+   * `submit()` and `validate=` are only meaningful with a form around them, and "around" is
+   * syntactic: the gate is generated where the form is written, so a button that is not inside the
+   * form cannot submit it — the compiler says so instead of the runtime.
+   */
+  private readonly formStack: FormContext[] = [];
+  /** True while checking a form's own `on submit:` body, where `submit()` would recurse. */
+  private inOwnSubmitHandler = false;
 
   constructor(file: SourceFile, program: Program, options: CheckOptions, bag: DiagnosticBag) {
     this.file = file;
@@ -720,12 +730,18 @@ class Checker {
 
     for (const prop of el.props) this.checkPropValue(prop, resolved, scope, false);
 
+    if (resolved.kind === 'builtin' && resolved.spec.tag === 'form') {
+      this.checkForm(el, resolved.spec, scope, ctx);
+      return;
+    }
+
     switch (resolved.kind) {
       case 'builtin':
         this.checkBuiltinArgs(el, resolved.spec, scope);
         this.checkChildrenPolicy(el, resolved.spec.children.length === 0 ? 'none' : resolved.spec.children);
         this.checkEvents(el, eventsFor(resolved.spec), scope, resolved.spec, false);
         this.checkBinding(el, resolved.spec, scope);
+        if (resolved.spec.tag === 'input') this.checkValidators(el, scope);
         break;
       case 'component':
         this.checkComponentCall(el, resolved.decl, scope, resolved.external);
@@ -754,7 +770,11 @@ class Checker {
       }
     }
 
-    // Children: any element may contain control flow and nested elements.
+    this.checkChildren(el, scope, ctx);
+  }
+
+  /** Children of an element: any element may contain control flow and nested elements. */
+  private checkChildren(el: ElementNode, scope: Scope, ctx: DeclContext): void {
     const childScope = scope;
     for (const child of el.children) {
       if (child.kind === 'State') {
@@ -968,8 +988,10 @@ class Checker {
       } else {
         this.checkValueShape(spec, prop.value, prop.name);
         this.checkTokenUses(spec, prop.value, prop.name);
-        // `style=heading`, enum values and `bind=email` name things, they do not reference them.
-        const namesSomething = spec.kind === 'enum' || spec.kind === 'styleName' || prop.name === 'bind';
+        // `style=heading`, enum values, `bind=email` and `validate=email` name things, they do not
+        // reference them: the identifier is a validator, not a state variable.
+        const namesSomething =
+          spec.kind === 'enum' || spec.kind === 'styleName' || spec.kind === 'validators' || prop.name === 'bind';
         if (namesSomething) return;
       }
     } else if (resolved.kind === 'component') {
@@ -1067,6 +1089,9 @@ class Checker {
       }
       case 'styleName':
       case 'iconName':
+      case 'validators':
+        // Shape is the form checker's job: it knows the validator names and their arguments.
+        break;
       case 'expr':
         break;
     }
@@ -1078,6 +1103,8 @@ class Checker {
     scope: Scope,
     spec: WidgetSpec | undefined,
     allowGenericOnly: boolean,
+    /** Which handler is being checked, for events whose body may not re-trigger themselves. */
+    isSelfTriggering?: (name: string) => boolean,
   ): void {
     const seen = new Set<string>();
     for (const event of el.events) {
@@ -1108,7 +1135,10 @@ class Checker {
               ]),
               parent: scope,
             };
+      const previous = this.inOwnSubmitHandler;
+      this.inOwnSubmitHandler = isSelfTriggering?.(event.name) ?? false;
       this.checkActions(event.actions, actionScope);
+      this.inOwnSubmitHandler = previous;
     }
     void spec;
   }
@@ -1212,6 +1242,18 @@ class Checker {
               'write it as its own statement inside the handler: navigate Detail(id: x)',
             );
           }
+          let assignsSubmit = false;
+          walkExpr(action.value, (inner) => {
+            if (isSubmitCall(inner)) assignsSubmit = true;
+          });
+          if (assignsSubmit) {
+            this.error(
+              'PUI2331',
+              'submit() has no value',
+              action.value.span,
+              'call it as its own statement inside the handler that submits the form',
+            );
+          }
           this.checkExpr(action.value, scope, 'value', true);
           break;
         }
@@ -1230,6 +1272,187 @@ class Checker {
           break;
       }
     }
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Forms
+  // ------------------------------------------------------------------------------------------
+
+  /**
+   * `form:` — a group of fields whose submission is gated by validation.
+   *
+   * The gate is generated, not written: `submit()` anywhere inside the form expands to "validate
+   * every field, then run the form's `on submit:` body". That is why the checks below are strict
+   * about where the pieces live — a `submit()` that cannot see a form, or a form whose handler
+   * nothing triggers, would both compile into something that looks fine and does nothing.
+   */
+  private checkForm(el: ElementNode, spec: WidgetSpec, scope: Scope, ctx: DeclContext): void {
+    this.checkChildrenPolicy(el, spec.children);
+    const handler = el.events.find((event) => event.name === 'submit');
+    if (this.formStack.length > 0) {
+      this.error(
+        'PUI2335',
+        'a form cannot contain another form',
+        el.tagSpan,
+        'flatten them into one form, or move the inner one into its own screen',
+      );
+    }
+
+    const context: FormContext = { span: el.span, handler, submitUsed: { value: false }, validatedField: { value: false } };
+    this.formStack.push(context);
+
+    // The handler belongs to the form, so `submit()` inside it would run it again: check it with the
+    // recursion flag set, and check the rest of the form normally.
+    const previous = this.inOwnSubmitHandler;
+    this.checkEvents(el, eventsFor(spec), scope, spec, false, (name) => name === 'submit');
+    this.inOwnSubmitHandler = previous;
+
+    this.checkChildren(el, scope, ctx);
+    this.formStack.pop();
+
+    if (handler === undefined && context.submitUsed.value) {
+      this.error(
+        'PUI2333',
+        'this form has no "on submit:" handler',
+        el.tagSpan,
+        'add one under the form, or remove the submit() call',
+      );
+    }
+    if (handler !== undefined && !context.submitUsed.value) {
+      this.warning(
+        'PUI2408',
+        'the form’s submit handler is never triggered',
+        handler.nameSpan,
+        'call submit() from a button inside the form',
+      );
+    }
+    if (handler !== undefined && !context.validatedField.value) {
+      this.warning(
+        'PUI2409',
+        'this form validates nothing, so submit() always runs',
+        el.tagSpan,
+        'add validate= to its fields, or drop the form',
+      );
+    }
+  }
+
+  /**
+   * `validate=[required, email]` on an input inside a form.
+   *
+   * Validators are checked here rather than in the registry because their arguments matter: `min`
+   * needs a number, `pattern` needs a literal regular expression, and a misspelt name has an obvious
+   * suggestion.
+   */
+  private checkValidators(el: ElementNode, scope: Scope): void {
+    const prop = el.props.find((candidate) => candidate.name === 'validate');
+    if (prop === undefined) return;
+    const form = this.formStack[this.formStack.length - 1];
+    if (form === undefined) {
+      this.error(
+        'PUI2332',
+        '"validate" needs an enclosing form to run it',
+        prop.nameSpan,
+        'wrap the fields in a form and give it an "on submit:" handler',
+      );
+      return;
+    }
+    form.validatedField.value = true;
+
+    const items = prop.value.kind === 'List' ? prop.value.items : [prop.value];
+    for (const item of items) {
+      const name = item.kind === 'Ident' ? item.name : item.kind === 'Call' && item.callee.kind === 'Ident' ? item.callee.name : undefined;
+      if (name === undefined) {
+        this.error(
+          'PUI2330',
+          'this is not a validator',
+          item.span,
+          'write a validator name, for example validate=[required, email]',
+        );
+        continue;
+      }
+      const spec = VALIDATORS[name];
+      if (spec === undefined) {
+        this.error(
+          'PUI2330',
+          `unknown validator "${name}"`,
+          item.span,
+          didYouMean(name, VALIDATOR_NAMES) ?? `validators: ${listOf(VALIDATOR_NAMES)}`,
+        );
+        continue;
+      }
+      this.checkValidatorArgs(name, spec, item, scope);
+    }
+  }
+
+  private checkValidatorArgs(name: string, spec: ValidatorSpec, expr: Expr, scope: Scope): void {
+    const args = expr.kind === 'Call' ? expr.args : [];
+    if (expr.kind === 'Call') {
+      for (const arg of args) {
+        if (arg.name !== undefined) {
+          this.error('PUI2330', `"${name}" takes a position, not the name "${arg.name}"`, arg.span, `write ${name}(${spec.arguments.join(', ')})`);
+        }
+      }
+    }
+    if (args.length !== spec.arguments.length) {
+      this.error(
+        'PUI2330',
+        `"${name}" takes ${spec.arguments.length === 0 ? 'no arguments' : `${spec.arguments.length} argument(s): ${spec.arguments.join(', ')}`}`,
+        expr.span,
+        spec.arguments.length === 0 ? `write ${name}` : `for example ${name}(${spec.example})`,
+      );
+      return;
+    }
+    for (const [index, arg] of args.entries()) {
+      const kind = spec.arguments[index]!;
+      if (kind === 'number') {
+        if (!isNumericLiteral(arg.value)) {
+          this.error('PUI2330', `"${name}" takes a number`, arg.value.span, `for example ${name}(${spec.example})`);
+        }
+      } else if (arg.value.kind !== 'String') {
+        this.error('PUI2330', `"${name}" takes a string literal`, arg.value.span, `for example ${name}(${spec.example})`);
+      }
+      this.checkExpr(arg.value, scope, 'value', false);
+    }
+  }
+
+  /** `submit()` — runs the enclosing form's handler, but only when the form validates. */
+  private checkSubmit(expr: CallExpr, allowAwait: boolean): void {
+    if (expr.args.length > 0) {
+      this.error('PUI2336', 'submit() takes no arguments', expr.args[0]!.span, 'write submit() on its own');
+    }
+    if (!allowAwait) {
+      this.error(
+        'PUI2331',
+        'submit() has no value',
+        expr.span,
+        'call it as its own statement inside the handler that submits the form',
+      );
+      return;
+    }
+    const form = this.formStack[this.formStack.length - 1];
+    if (form === undefined) {
+      this.error(
+        'PUI2331',
+        'submit() is only allowed inside a form',
+        expr.span,
+        'wrap the fields and the button in a form, and give the form an "on submit:" handler',
+      );
+      return;
+    }
+    if (this.inOwnSubmitHandler) {
+      this.error(
+        'PUI2334',
+        'submit() inside the form’s own submit handler would run it again',
+        expr.span,
+        'call submit() from a button, not from the handler it runs',
+      );
+      return;
+    }
+    if (form.handler === undefined) {
+      this.error('PUI2333', 'this form has no "on submit:" handler', expr.span, 'add one under the form, or remove the submit() call');
+      return;
+    }
+    form.submitUsed.value = true;
   }
 
   // ------------------------------------------------------------------------------------------
@@ -1390,6 +1613,10 @@ class Checker {
         return;
       }
       case 'Call': {
+        if (isSubmitCall(expr)) {
+          this.checkSubmit(expr, allowAwait);
+          return;
+        }
         const navigation = navigationName(expr);
         if (navigation === 'navigate') {
           this.checkNavigate(expr, scope, allowAwait);
@@ -1479,6 +1706,46 @@ class Checker {
 // --------------------------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------------------------
+
+interface FormContext {
+  readonly span: Span;
+  readonly handler: EventHandler | undefined;
+  /** Whether some handler inside the form calls `submit()`. */
+  readonly submitUsed: { value: boolean };
+  /** Whether some field inside the form declares `validate=`. */
+  readonly validatedField: { value: boolean };
+}
+
+interface ValidatorSpec {
+  /** Argument kinds, in order. An empty list means the validator is a bare name. */
+  readonly arguments: readonly ('number' | 'string')[];
+  /** An argument example for the hint, e.g. `8` for `min`. */
+  readonly example: string;
+  /** The English message the generated validator shows. */
+  readonly message: string;
+}
+
+/**
+ * The built-in validators. Deliberately a closed set with generated messages: a validator that can
+ * be spelled is one that can be lowered per target, and a message is the only part of validation
+ * that belongs to the design rather than to the check.
+ */
+const VALIDATORS: Readonly<Record<string, ValidatorSpec>> = {
+  required: { arguments: [], example: '', message: 'This field is required' },
+  email: { arguments: [], example: '', message: 'Enter a valid email address' },
+  min: { arguments: ['number'], example: '8', message: 'at least' },
+  max: { arguments: ['number'], example: '64', message: 'at most' },
+  pattern: { arguments: ['string'], example: '"^[0-9]+$"', message: 'Enter a value in the expected format' },
+};
+
+const VALIDATOR_NAMES: readonly string[] = Object.keys(VALIDATORS);
+
+/** `submit()` — the call that runs a form's handler behind its validation gate. */
+export function isSubmitCall(expr: Expr): boolean {
+  if (expr.kind !== 'Call') return false;
+  const callee = expr.callee.kind === 'Paren' ? expr.callee.inner : expr.callee;
+  return callee.kind === 'Ident' && callee.name === 'submit';
+}
 
 /** `navigate` and `back` are language constructs, not host functions. */
 export function navigationName(expr: Expr): 'navigate' | 'back' | undefined {
