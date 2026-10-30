@@ -38,6 +38,7 @@ import type {
 } from './ast.ts';
 import { DiagnosticBag } from './diagnostics.ts';
 import { type Token, tokenize } from './lexer.ts';
+import { booleanPropNames } from './widgets/registry.ts';
 import { type SourceFile, type Span, span, textOf } from './source.ts';
 
 export interface ParseResult {
@@ -499,10 +500,21 @@ class Parser {
           args.push({ kind: 'Arg', span: arg.span, ...(arg.name === undefined ? {} : { name: arg.name }), value: arg.value });
         }
       }
+      const flags = booleanPropNames(tagToken.value);
       while (!this.atNodeEnd()) {
         if (this.isPropStart()) {
           const prop = this.parseProp();
           if (prop !== undefined) props.push(prop);
+        } else if (this.at('ident') && flags.has(this.peek().value)) {
+          // Flag syntax: `progress indeterminate`, `button "Save" disabled`.
+          const nameToken = this.advance();
+          props.push({
+            kind: 'Prop',
+            span: nameToken.span,
+            name: nameToken.value,
+            nameSpan: nameToken.span,
+            value: { kind: 'Bool', span: nameToken.span, value: true },
+          });
         } else {
           const before = this.pos;
           const value = this.parseExpression();

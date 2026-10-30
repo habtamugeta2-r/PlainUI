@@ -19,6 +19,7 @@ export type PropKind =
   | 'size' // number | [width, height]
   | 'enum'
   | 'styleName'
+  | 'iconName'
   | 'expr';
 
 export interface PropSpec {
@@ -322,7 +323,7 @@ const SPECS: readonly WidgetSpec[] = [
     summary: 'Displays a Material icon.',
     group: 'content',
     children: 'none',
-    args: [{ name: 'name', kind: 'expr', required: true, summary: 'Icon name without the "Icons." prefix, e.g. search, add, close.' }],
+    args: [{ name: 'name', kind: 'iconName', required: true, summary: 'Material icon name without the "Icons." prefix, e.g. search, add, close.' }],
     props: [
       { name: 'size', kind: 'number', summary: 'Icon size.' },
       { name: 'color', kind: 'color', summary: 'Icon colour.' },
@@ -464,6 +465,13 @@ export function propsFor(spec: WidgetSpec): readonly PropSpec[] {
 
 export function findProp(spec: WidgetSpec, name: string): PropSpec | undefined {
   return propsFor(spec).find((p) => p.name === name);
+}
+
+/** Names of this widget's boolean properties, for the `progress indeterminate` flag syntax. */
+export function booleanPropNames(tag: string): ReadonlySet<string> {
+  const spec = WIDGETS.get(tag);
+  if (spec === undefined) return new Set();
+  return new Set(propsFor(spec).filter((prop) => prop.kind === 'bool').map((prop) => prop.name));
 }
 
 /** Events this element accepts: native plus the generic gesture set. */

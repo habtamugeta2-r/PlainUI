@@ -38,11 +38,13 @@ import {
   walkNodes,
 } from './ast.ts';
 import { DiagnosticBag } from './diagnostics.ts';
+import { VALUE_PARAM_NAME, eventValueType } from './events.ts';
 import { type SourceFile, type Span } from './source.ts';
 import { didYouMean, listOf, suggest } from './suggest.ts';
 import { BUILTIN_STYLES, DART_RESERVED_WORDS, FLUTTER_TYPE_NAMES, STYLE_PROPS } from './targets.ts';
 import {
   GENERIC_EVENTS,
+  UNIVERSAL_PROPS,
   WIDGET_TAGS,
   type ArgSpec,
   type PropSpec,
@@ -361,6 +363,12 @@ class Checker {
 
     this.checkBody(decl.body, scope, ctx);
 
+    // A component that renders `slot` necessarily uses its `children` parameter.
+    if (decl.kind === 'Component' && ctx.hasSlotRef.value) {
+      const childrenParam = scope.vars.get('children');
+      if (childrenParam !== undefined) childrenParam.used = true;
+    }
+
     // Unused declarations.
     for (const varInfo of scope.vars.values()) {
       if (varInfo.used) continue;
@@ -608,7 +616,8 @@ class Checker {
       }
       provided.add(spec_.name);
       this.checkValueShape(spec_, arg.value);
-      this.checkExpr(arg.value, scope, 'value', false);
+      const namesSomething = spec_.kind === 'enum' || spec_.kind === 'iconName' || spec_.kind === 'styleName';
+      if (!namesSomething) this.checkExpr(arg.value, scope, 'value', false);
     }
 
     for (const argSpec of spec.args) {
@@ -715,13 +724,17 @@ class Checker {
         if (namesSomething) return;
       }
     } else if (resolved.kind === 'component') {
-      const hints = ['children'];
-      if (!hints.includes(prop.name)) {
+      // Components accept the universal layout properties (they wrap the call), everything else
+      // must be passed as an argument so it lands in a real parameter.
+      const universal = UNIVERSAL_PROPS.find((p) => p.name === prop.name);
+      if (universal !== undefined) {
+        this.checkValueShape(universal, prop.value, prop.name);
+      } else {
         this.error(
           'PUI2102',
           `"${prop.name}" cannot be passed as a property; pass it as an argument`,
           prop.nameSpan,
-          `${resolved.decl.name}(${resolved.decl.params.map((p) => p.name).join(', ')})`,
+          `${resolved.decl.name}(${resolved.decl.params.map((p) => p.name).join(', ')})  ·  universal layout properties such as padding and expand work everywhere`,
         );
       }
     }
@@ -798,7 +811,7 @@ class Checker {
         break;
       }
       case 'styleName':
-        break;
+      case 'iconName':
       case 'expr':
         break;
     }
@@ -827,7 +840,20 @@ class Checker {
           allowGenericOnly ? `${hint} (host widgets only support the gesture events)` : hint,
         );
       }
-      this.checkActions(event.actions, scope);
+      const valueType = spec === undefined ? undefined : eventValueType(spec.tag, event.name);
+      const actionScope: Scope =
+        valueType === undefined
+          ? scope
+          : {
+              vars: new Map([
+                [
+                  VALUE_PARAM_NAME,
+                  { name: VALUE_PARAM_NAME, type: valueType, kind: 'loop' as const, nameSpan: event.nameSpan, used: false },
+                ],
+              ]),
+              parent: scope,
+            };
+      this.checkActions(event.actions, actionScope);
     }
     void spec;
   }
