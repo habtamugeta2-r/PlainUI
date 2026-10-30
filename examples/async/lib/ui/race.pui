@@ -2,11 +2,13 @@
 // and the older result must not win. `loadSlowThenFast()` is a host function whose first call is
 // slow and whose later calls are fast, so tapping Retry races the first load.
 
-import "../data.dart"
+import "../data.dart" as data:
+
+    loadSlowThenFast() -> Future<List<String>>
 
 screen Race:
 
-    task items: List<String> = loadSlowThenFast()
+    task items: List<String> = data.loadSlowThenFast()
 
     column padding=16 gap=12:
 

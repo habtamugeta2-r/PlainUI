@@ -1,6 +1,10 @@
 // `task`: an async value the compiler drives. Nothing here manages a loading flag by hand.
 
-import "../data.dart"
+// The host surface: what this file may call, and with what. A call that does not match it — a typo,
+// an argument of the wrong type, a future used as a value — is a `.pui` error instead of a Dart one.
+import "../data.dart" as data:
+
+    loadTasks(filter: String) -> Future<List<String>>
 
 theme Async:
 
@@ -11,7 +15,7 @@ theme Async:
 
 screen Async:
 
-    task tasks: List<String> = loadTasks("")
+    task tasks: List<String> = data.loadTasks("")
 
     state filter: String = ""
 

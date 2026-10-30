@@ -1,0 +1,52 @@
+// A host surface: typed declarations for the Dart this file calls.
+
+import "../data.dart" as data:
+
+    loadTasks(filter: String) -> Future<List<String>>
+    count(word: String, pad: int) -> int
+    formatCount(count: int) -> String
+    AppLogo(size: double=24)
+
+screen Host:
+
+    state filter: String = ""
+    state label: String = ""
+
+    task tasks: List<String> = data.loadTasks(filter)
+
+    column padding=20 gap=12:
+
+        AppLogo(size: 32)
+        text "Tasks" style=heading
+        text label style=caption
+
+        input bind=filter placeholder="Filter"
+
+        button "Load":
+            on tap: tasks.retry()
+
+        button "Label":
+            on tap:
+                set label = formatCount(3)
+                log(count("a", 2))
+
+        button "Reload":
+            on tap:
+                await data.loadTasks(filter)
+                log("done")
+
+        if tasks.loading:
+
+            progress
+
+        elif tasks.error != null:
+
+            text tasks.error
+
+        else:
+
+            for index, task in tasks.value key=task:
+
+                row gap=8:
+                    text "${index + 1}." style=caption
+                    text task
