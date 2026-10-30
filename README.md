@@ -1,7 +1,20 @@
 # PlainUI
 
-**A small, indentation-scoped language for describing user interfaces — compiled to ordinary
-Flutter/Dart.**
+**Write UI naturally. Build it with the frameworks you already use.**
+
+PlainUI is an indentation-based declarative language for describing user interfaces. Screens,
+layouts, components, state and interactions are written as a compact tree — no XML tags, no JSX
+markup, no deeply nested widget constructors — and compiled into code for an existing UI framework.
+
+It is a **source-to-source compiler**, not a framework: `.pui` in, `.dart` out. The first target is
+**Flutter**, and it works today. Other targets are considered only after the core language is
+proven; the AST already holds no framework nouns.
+
+> **Status:** 1.0.0 (MVP). The compiler, CLI, formatter, watcher, language server, browser
+> playground and library API are implemented and tested; see [`docs/08-mvp.md`](docs/08-mvp.md) for
+> scope and the verification log.
+
+## A first look
 
 ```plainui
 screen Counter:
@@ -64,22 +77,71 @@ class _CounterState extends State<Counter> {
 Flutter still does all the work — layout, rendering, state propagation, the build. PlainUI only
 decides how you *write the tree down*.
 
----
-
-## Why
+## Why PlainUI?
 
 Declarative UI is the right model; its surface syntax is the part that hurts. Flutter nests
-constructors inside constructors, Compose nests calls inside calls, and both make large trees
-hard to skim. PlainUI keeps the model and replaces the notation:
+constructors inside constructors, Compose nests calls inside calls, and both make large trees hard
+to skim.
 
-* one line per element, nesting by indentation — no closing tags, no `children: [` boilerplate,
-  no parenthesis pyramids;
-* properties on the line they belong to, `padding=24 gap=16`;
-* events as readable blocks, `on tap:`;
-* everything else is Dart, untouched.
+* **Indentation defines hierarchy.** Child elements are nested by indentation, so explicit closing
+  tags and braces are unnecessary.
+* **UI elements read like instructions.** Screens, components, layouts, properties and events have
+  clear keywords, one line per element: `padding=24 gap=16`, `on tap:`.
+* **Application logic stays in the host language.** PlainUI describes the interface and connects
+  events to existing functions; it is not intended to replace Dart, Kotlin or TypeScript.
+* **Existing frameworks do the hard work.** Generated code uses the framework's own widgets,
+  lifecycle, state mechanisms and rendering pipeline.
 
-It is a **source-to-source compiler**, not a framework: `.pui` in, `.dart` out. Existing Flutter
-projects adopt it one screen at a time.
+## Goals
+
+1. Define a small, readable syntax for declarative interfaces.
+2. Parse `.pui` files into a framework-independent representation.
+3. Validate syntax, component references, properties and expressions before code generation.
+4. Generate readable, idiomatic Dart/Flutter code as the first backend.
+5. Allow PlainUI screens to coexist with ordinary Flutter screens in the same application.
+6. Reuse existing Dart functions and custom Flutter widgets.
+7. Provide useful diagnostics that point to the original `.pui` file and line.
+
+## Non-goals
+
+PlainUI is not intended to:
+
+* Create a new rendering engine or replace Flutter.
+* Replace Dart or become a general-purpose programming language.
+* Force developers to migrate an entire existing application.
+* Hide the underlying framework or prevent access to its APIs.
+* Support every framework in the first release.
+
+## How it works
+
+```text
+.pui source
+    |
+    v
+Lexer and parser            src/frontend/     indentation -> tokens -> AST
+    |
+    v
+Framework-independent AST
+    |
+    v
+Semantic validation         src/analysis/     scopes, widgets, diagnostics
+    |
+    v
+Flutter code generator      src/codegen/      AST -> Dart (or static HTML)
+    |
+    v
+Generated Dart
+    |
+    v
+Existing Flutter build process
+    |
+    v
+Running application
+```
+
+The parser and the AST contain no Flutter concepts; a target is one module plus a registry of
+properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipeline and
+[`docs/03-flutter-codegen.md`](docs/03-flutter-codegen.md) maps every construct to Flutter.
 
 ## Status
 
@@ -255,6 +317,24 @@ docs/             research, specification, architecture, codegen, CLI, diagnosti
 4. **Incremental adoption is non-negotiable.** Any existing Dart widget is one capital-letter tag
    away from being used in a PlainUI screen.
 5. **The AST is framework-neutral.** Only generators know about Flutter.
+
+## Roadmap
+
+What comes next, and the risks worth naming, live in [`docs/06-roadmap.md`](docs/06-roadmap.md):
+a `build_runner` integration, completion and go-to-definition in the language server, a disk cache,
+and the Compose / React / SwiftUI targets. The order is deliberate — the AST seam is ready, but a
+half-built target is worse than none.
+
+## Contributing
+
+```bash
+npm ci && npm test        # 220 tests, no network, no Flutter SDK required
+npm run verify            # typecheck + tests
+```
+
+Every behavioural change needs the test that would have caught it being wrong; golden files are
+regenerated with `npm run goldens`, and generated documentation with `npm run docs:ref`
+(`--check` fails when they drift). Issues and pull requests are welcome.
 
 ## License
 
