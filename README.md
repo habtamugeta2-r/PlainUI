@@ -88,7 +88,7 @@ projects adopt it one screen at a time.
 | Lexer, parser, AST, formatter | ✅ implemented, tested |
 | Semantic validation with coded, caret-accurate diagnostics | ✅ |
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
-| CLI: `build`, `check`, `format`, `watch`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
+| CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
 | Examples (`examples/`), golden files, generated docs | ✅ |
 | Compose / React generators | 🧭 roadmap (the AST seam exists; see `docs/06-roadmap.md`) |

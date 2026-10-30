@@ -45,11 +45,15 @@ they become. That separation is what makes a second target a weekend rather than
 | `src/codegen/dart.ts` | 84 | Emission helpers: `dartCall`, `listArgument`, `indentAll`, Dart string escaping. |
 | `src/codegen/flutter.ts` | 1531 | The Flutter generator. |
 | `src/codegen/html.ts` | 1127 | The HTML preview generator. |
-| `src/project.ts` | 202 | Multi-file compilation: import resolution, import re-basing, project diagnostics. |
+| `src/project.ts` | 297 | Multi-file compilation, import resolution/re-basing, the incremental `ProjectCache`. |
 | `src/format.ts` | 245 | Token-driven formatter. |
 | `src/compile.ts` | 73 | Single-file pipeline used by the playground and tests. |
 | `src/paths.ts` | 83 | POSIX path helpers; no `node:path`, so the browser can use them. |
-| `src/cli.ts` | 641 | Commands, configuration, file discovery, watching. |
+| `src/workspace.ts` | 157 | Where the project is: config discovery, source discovery, path re-basing. |
+| `src/watch.ts` | 234 | File watching: recursive → per-directory → polling, debounced. |
+| `src/hash.ts` | 35 | FNV-1a + djb2 cache keys, with no Node builtins so the browser can use it. |
+| `src/lsp.ts` | 399 | Language server: JSON-RPC framing, diagnostics, formatting, hover. |
+| `src/cli.ts` | 567 | Commands and output; no grammar, no Flutter. |
 
 ## The pipeline, step by step
 
@@ -117,7 +121,7 @@ HTML target does exactly that, and it is a good template.
 
 ## Performance
 
-Compilation is linear in source size; the whole test suite (213 tests, including 60+ compiles)
+Compilation is linear in source size; the whole test suite (215 tests, including 60+ compiles)
 runs in about six seconds, and a single screen compiles in well under a millisecond. The
 playground recompiles the whole file on every keystroke, which is why the compiler never keeps
 global mutable state.

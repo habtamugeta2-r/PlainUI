@@ -26,6 +26,7 @@ import { sourceFile } from './source.ts';
 import { WIDGETS, eventsFor, propsFor, widgetsByGroup } from './widgets/registry.ts';
 import { COMPILER_VERSION } from './compile.ts';
 import { watchForChanges } from './watch.ts';
+import { runLanguageServer } from './lsp.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Argument parsing
@@ -332,6 +333,19 @@ async function commandWatch(args: Args): Promise<number> {
   });
 }
 
+/**
+ * The language server speaks JSON-RPC on stdin/stdout, so it must not print anything else there.
+ * `--verbose` logging goes to stderr, which LSP reserves for `window/logMessage`.
+ */
+async function commandLsp(): Promise<number> {
+  return await runLanguageServer({
+    input: process.stdin,
+    output: process.stdout,
+    cwd: process.cwd(),
+    log: (message) => process.stderr.write(`plainui lsp: ${message}\n`),
+  });
+}
+
 async function commandInit(args: Args): Promise<number> {
   const directory = resolve(args.paths[0] ?? '.');
   const configPath = join(directory, 'plainui.config.json');
@@ -462,6 +476,7 @@ Commands:
   build      compile .pui files to Dart            [--out dir] [--check] [--config file]
   check      validate without writing anything     [--json] [--verbose]
   watch      rebuild whenever a .pui file changes
+  lsp        language server on stdin/stdout (editors)
   format     rewrite files in canonical form       [--check] [--stdout]
   init       create plainui.config.json and lib/ui/home.pui
   ast        print the parsed tree of a file
@@ -514,6 +529,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return await commandFormat(args);
       case 'watch':
         return await commandWatch(args);
+      case 'lsp':
+        return await commandLsp();
       case 'init':
         return await commandInit(args);
       case 'ast':

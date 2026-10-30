@@ -61,6 +61,32 @@ what happened:
   wrote lib/generated/counter.pui.dart
 ```
 
+### `plainui lsp`
+
+A language server on stdin/stdout, for any editor that speaks LSP.
+
+```jsonc
+// Neovim: init.lua
+vim.lsp.start({ name = 'plainui', cmd = { 'plainui', 'lsp' }, root_dir = vim.fs.dirname(vim.fs.find({ 'plainui.config.json' }, { upward = true })[1]) })
+```
+
+It provides three things, each small and complete rather than broad and half-working:
+
+| Capability | Behaviour |
+| --- | --- |
+| `publishDiagnostics` | On open, change and save. Same codes, severities, spans and hints as `plainui check`, so the editor and CI agree. |
+| `formatting` | Whole-document edit from the same formatter `plainui format` runs. |
+| `hover` | Element and property documentation from the widget registry. |
+
+Diagnostics are project-aware: the editor buffer replaces the file on disk, but its siblings are
+read from disk, so `TaskRow(task)` imported from another `.pui` file resolves exactly as it does in
+a build. Files outside the configured `srcDir` are compiled on their own.
+
+Full sync only: the editor sends the whole document on each change. That is the honest choice for a
+compiler that re-analyses a file in well under a millisecond — incremental sync would add bugs for
+latency nobody can measure. Completion, go-to-definition and formatting-on-type are not implemented;
+see [`06-roadmap.md`](06-roadmap.md).
+
 ### `plainui format`
 
 Applies the canonical style: four-space indentation, normalised spacing, one blank line between

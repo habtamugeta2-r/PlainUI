@@ -18,6 +18,11 @@ after(() => rmSync(root, { recursive: true, force: true }));
 
 const HOME = ['screen Home:', '', '    text "first"', ''].join('\n');
 
+// Node's test runner marks every child with NODE_TEST_CONTEXT; a Node child that inherits it
+// reports to the runner instead of behaving like a normal process.
+const spawnEnv = { ...process.env };
+delete spawnEnv['NODE_TEST_CONTEXT'];
+
 async function waitFor(predicate: () => boolean, label: string, timeoutMs = 12_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -110,6 +115,7 @@ test('watch sees a file created in a new directory', { timeout: 30_000 }, async 
     const child = spawn(process.execPath, ['--experimental-strip-types', 'src/cli.ts', 'watch', dir], {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: spawnEnv,
     });
 
     let output = '';

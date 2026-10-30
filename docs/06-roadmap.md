@@ -10,9 +10,9 @@ could go wrong — the second half matters more.
 | Language, parser, checker | 60 diagnostic codes, suggestions everywhere, error recovery |
 | Flutter generator | 25 elements, universal properties, gestures, bound inputs, styles |
 | Project compilation | imports, re-basing, duplicate detection, deterministic output |
-| CLI | build, check, watch, format, init, ast, tokens, explain, widgets |
+| CLI | build, check, watch, format, init, ast, tokens, explain, widgets, lsp |
 | Tooling | formatter, playground (browser), golden files, examples, generated docs |
-| Tests | 213, no mocks, no network, no Flutter SDK required |
+| Tests | 215, no mocks, no network, no Flutter SDK required |
 | Real Flutter verification | `flutter-verify.yml` — generate, `dart analyze`, widget test |
 
 ## Next, in order
@@ -38,17 +38,22 @@ compiler, or to port the front end to Dart. Porting is the better long-term answ
 Node from the author's machine entirely and lets the CLI be `dart run plainui`. The AST and the
 registry are the portable parts — that is what they were designed for.
 
-### 2. A language server
+### 2. A language server — started
 
-`plainui check --json` already emits what an editor needs (file, code, severity, span, hint), and
-`plainui explain` covers documentation on hover. What is missing:
+`plainui lsp` (see [`04-cli.md`](04-cli.md)) already publishes diagnostics on open/change/save,
+formats documents and answers hover, all project-aware. `tests/lsp.test.ts` drives it as a
+subprocess over framed JSON-RPC, because a wrong `Content-Length` or a 1-based line number would
+make it useless in every editor while unit tests still passed.
 
-- incremental parsing (the compiler currently re-analyses the whole project);
-- completion candidates — the checker already computes legal names per position, so this is a
-  matter of exposing them;
-- formatting on type, which is `formatText` again.
+What is missing is the part that needs research rather than plumbing:
 
-Until then, the playground demonstrates the loop: type, see diagnostics, see output.
+- **incremental parsing.** Every keystroke re-parses one file and recompiles the project around it.
+  That is fast enough now (~1 ms for the file, ~40 ms for a 300-screen project with the cache), but
+  it will not stay fast, and the cache is invalidated by any edit inside the open file.
+- **completion.** The checker already computes the legal names at each position; exposing them
+  means giving the parser a position → scope function, which does not exist yet.
+- **go-to-definition and references.** These need a name index across the project, which is the
+  same index a build_runner integration would want.
 
 ### 3. More targets
 
