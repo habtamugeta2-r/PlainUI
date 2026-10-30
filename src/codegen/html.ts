@@ -23,6 +23,7 @@ import type {
   ScreenDecl,
   ForNode,
   StateDecl,
+  TokenDecl,
 } from '../frontend/ast.ts';
 import type { Analysis } from '../analysis/check.ts';
 import { describeExpr } from '../tooling/debug.ts';
@@ -272,8 +273,33 @@ class HtmlEmitter {
     this.options = options;
     for (const decl of analysis.program.decls) {
       if (decl.kind === 'Component') this.components.set(decl.name, decl);
-      if (decl.kind === 'Style') this.styles.set(decl.name, propsToTextStyle(decl.props));
+      if (decl.kind === 'Style') this.styles.set(decl.name, propsToTextStyle(decl.props, analysis.tokens));
     }
+    // Design tokens are compile-time values, so the preview resolves them like literals. They are
+    // also emitted as CSS custom properties on `:root`, so hand-written CSS around the preview can
+    // reach the same palette without copying hex codes.
+    for (const token of analysis.tokens.values()) {
+      if (token.category === 'color' && token.value.kind === 'Color') {
+        this.env.values.set(token.name, { kind: 'color', css: cssColor(token.value.raw) });
+      } else if (token.category !== 'color' && token.value.kind === 'Number') {
+        this.env.values.set(token.name, { kind: 'number', value: token.value.value });
+      }
+    }
+  }
+
+  /** The `:root` custom properties for this file's theme, in source order. */
+  private tokenVariables(): string[] {
+    const theme = this.analysis.theme;
+    if (theme === undefined) return [];
+    return theme.tokens.map((token) => {
+      if (token.category === 'color' && token.value.kind === 'Color') {
+        return `  --pui-${token.name}: ${cssColor(token.value.raw)};`;
+      }
+      if (token.category !== 'color' && token.value.kind === 'Number') {
+        return `  --pui-${token.name}: ${token.value.raw}px;`;
+      }
+      return '';
+    }).filter((line) => line.length > 0);
   }
 
   render(): HtmlResult {
@@ -300,7 +326,17 @@ class HtmlEmitter {
       if (value === undefined || value === '') continue;
       parts.push(`${key}="${escapeHtml(value)}"`);
     }
-    const style = styles.filter((entry) => entry.length > 0).join('; ');
+    // One declaration per property: a widget's own style and the universal wrapper can both set
+    // `background`, and CSS would otherwise repeat it verbatim in the output.
+    const seen = new Set<string>();
+    const unique = styles.filter((entry) => {
+      if (entry.length === 0) return false;
+      const property = entry.slice(0, entry.indexOf(':')).trim();
+      if (seen.has(property)) return false;
+      seen.add(property);
+      return true;
+    });
+    const style = unique.join('; ');
     if (style.length > 0) parts.push(`style="${escapeHtml(style)}"`);
     return parts.join(' ');
   }
@@ -344,7 +380,7 @@ class HtmlEmitter {
       '<meta name="viewport" content="width=device-width, initial-scale=1">',
       `<title>${escapeHtml(title)}</title>`,
       '<style>',
-      CSS,
+      this.tokenVariables().length === 0 ? CSS : `${CSS}\n/* design tokens from this file's theme */\n:root {\n${this.tokenVariables().join('\n')}\n}`,
       '</style>',
       '</head>',
       '<body>',
@@ -1049,12 +1085,22 @@ const ICONS: Record<string, string> = {
 };
 
 /** Turn a `style` declaration into CSS. Only the properties `STYLE_PROPS` allows exist. */
-function propsToTextStyle(props: readonly Prop[]): TextStyle {
+function propsToTextStyle(props: readonly Prop[], tokens?: ReadonlyMap<string, TokenDecl>): TextStyle {
   const values = new Map<string, string>();
   for (const prop of props) {
     const value = prop.value;
     if (value.kind === 'String') values.set(prop.name, value.value);
-    else if (value.kind === 'Ident') values.set(prop.name, value.name);
+    else if (value.kind === 'Ident') {
+      // A design token in a `style` declaration is a value, not a name.
+      const token = tokens?.get(value.name);
+      if (token !== undefined && token.category === 'color' && token.value.kind === 'Color') {
+        values.set(prop.name, cssColor(token.value.raw));
+      } else if (token !== undefined && token.value.kind === 'Number') {
+        values.set(prop.name, token.value.raw);
+      } else {
+        values.set(prop.name, value.name);
+      }
+    }
     else if (value.kind === 'Number') values.set(prop.name, `${value.value}`);
     else if (value.kind === 'Color') values.set(prop.name, cssColor(value.raw));
     else if (value.kind === 'Bool') values.set(prop.name, value.value ? 'true' : 'false');

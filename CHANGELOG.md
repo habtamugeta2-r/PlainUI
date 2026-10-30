@@ -6,6 +6,19 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Design tokens.** A file may declare one `theme` with `color`, `space` and `radius` tokens, and
+  refer to them by name wherever a value is expected: `padding=md`, `color=brand`,
+  `radius=card`, `padding=[md, sm]`. Tokens are compile-time values shared by importing the file
+  that declares them, so a design system is one `.pui` file and not a copy in every screen.
+
+  The Flutter target emits the palette as data (`AppTokens.brand`) and as a `ThemeData`
+  (`AppTheme.light`) so Flutter's own widgets match the design; the HTML target publishes the same
+  values as CSS custom properties (`--pui-brand`). A token used as the wrong kind of value is an
+  error (`PUI2304`) rather than a mistyped literal in the output, and a token cannot be assigned
+  (`PUI2114`).
+
 ### Fixed
 
 - **`icon` names are translated to Material's spelling.** `icon heart` used to emit `Icons.heart`,
@@ -17,6 +30,8 @@ All notable changes to PlainUI are recorded here. The format follows
 - **`plainui watch` no longer misses saves made while the first build runs.** Watching starts
   before the first compile, so a save that lands during it queues a rebuild instead of joining
   polling's baseline snapshot and never being reported.
+- **The HTML preview no longer repeats a CSS property** when a widget's own style and the universal
+  wrapper both set it (a `card` with `background=` emitted `background:` twice).
 - **`plainui watch` picks up a file created inside a new directory** (`mkdir parts && … >
   parts/a.pui` gave the file no event of its own), and ignores the generated output directory so a
   build cannot trigger the next one. `PLAINUI_WATCH_MODE=recursive|per-directory|polling` forces a

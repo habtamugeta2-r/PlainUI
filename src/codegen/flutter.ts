@@ -42,6 +42,7 @@ import type { Analysis } from '../analysis/check.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
 import { BUILTIN_STYLES } from '../analysis/targets.ts';
+import type { ThemeDecl, TokenDecl } from '../frontend/ast.ts';
 import type { WidgetSpec } from '../analysis/widgets/registry.ts';
 import {
   arg,
@@ -241,10 +242,12 @@ class FlutterGenerator {
     // emitted (an unused private const would be an `unused_element` warning in Dart).
     const declSections: string[] = [];
     for (const decl of this.analysis.program.decls) {
-      if (decl.kind === 'Style') continue;
+      if (decl.kind === 'Style' || decl.kind === 'Theme') continue;
       declSections.push(this.emitDecl(decl));
     }
 
+    const themeSection = this.emitTheme();
+    if (themeSection.length > 0) sections.push(themeSection);
     const styleSection = this.emitStyles();
     if (styleSection.length > 0) sections.push(styleSection);
     sections.push(...declSections);
@@ -265,6 +268,93 @@ class FlutterGenerator {
     ].join('\n');
 
     return { code: `${banner}\n${sections.join('\n\n')}\n`, imports };
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Design tokens
+  // ------------------------------------------------------------------------------------------
+
+  /**
+   * `theme App:` becomes two classes:
+   *
+   *   - `AppTokens` — every token as a `static const`, so host code can reach the palette without
+   *     copying hex strings around;
+   *   - `AppTheme` — that palette applied to Flutter's own widgets, so `ElevatedButton` and friends
+   *     match the design instead of Material's defaults.
+   *
+   * Use sites are still inlined as literals (`padding=md` → `16`), which keeps generated trees
+   * `const` and makes the same source produce the same values in every target.
+   */
+  private emitTheme(): string {
+    const theme = this.analysis.theme;
+    if (theme === undefined) return '';
+    const base = sanitizeName(theme.name);
+
+    const fields: string[] = [];
+    for (const token of theme.tokens) {
+      const field = sanitizeName(token.name);
+      const comment = `  /// \`${token.categoryText} ${token.name}\``;
+      const declaration =
+        token.category === 'color'
+          ? `  static const Color ${field} = ${this.color(token.value)};`
+          : `  static const double ${field} = ${this.num(token.value)};`;
+      fields.push(`${comment}\n${declaration}`);
+    }
+    if (fields.length === 0) return '';
+
+    const parts = [
+      `/// Design tokens from \`theme ${theme.name}\` — generated, do not edit.\nabstract final class ${base}Tokens {\n${fields.join('\n\n')}\n}`,
+    ];
+
+    const scheme = this.themeColorScheme(theme, base);
+    if (scheme !== undefined) {
+      parts.push(
+        [
+          `/// The palette above, applied to Flutter's own widgets.`,
+          `///`,
+          `///     MaterialApp(theme: ${base}Theme.light, home: ...)`,
+          `abstract final class ${base}Theme {`,
+          `  static ColorScheme get colorScheme => ${scheme};`,
+          ``,
+          `  static ThemeData get light => ThemeData(colorScheme: colorScheme);`,
+          `}`,
+        ].join('\n'),
+      );
+    }
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * Material names its scheme slots after the role, a design system names its tokens after the
+   * brand. The mapping is a small, documented convention rather than a guess about semantics:
+   * `brand`/`primary` fills `primary`, `surface`/`background` fills `surface`, and so on. When no
+   * token matches, the first colour seeds the scheme.
+   */
+  private themeColorScheme(theme: ThemeDecl, base: string): string | undefined {
+    const colors = theme.tokens.filter((token) => token.category === 'color');
+    if (colors.length === 0) return undefined;
+    const pick = (...names: readonly string[]): TokenDecl | undefined =>
+      colors.find((token) => names.includes(token.name));
+    const args: string[] = [];
+    const slot = (slotName: string, ...names: readonly string[]): void => {
+      const token = pick(...names);
+      if (token !== undefined) args.push(`${slotName}: ${base}Tokens.${sanitizeName(token.name)}`);
+    };
+    slot('primary', 'brand', 'primary');
+    slot('surface', 'surface', 'background');
+    slot('onSurface', 'ink', 'text', 'onSurface');
+    slot('error', 'danger', 'error');
+    if (args.length === 0) {
+      args.push(`seedColor: ${base}Tokens.${sanitizeName(colors[0]!.name)}`);
+    }
+    return `ColorScheme.light(${args.join(', ')})`;
+  }
+
+  /** A token used where a value belongs (`padding=md`, `color=brand`), or nothing. */
+  private tokenOf(expr: Expr): TokenDecl | undefined {
+    if (expr.kind !== 'Ident' || this.scope.has(expr.name)) return undefined;
+    return this.analysis.tokens.get(expr.name);
   }
 
   // ------------------------------------------------------------------------------------------
@@ -1356,7 +1446,10 @@ class FlutterGenerator {
         return this.color(expr);
       case 'Ident': {
         const entry = this.scope.get(expr.name);
-        return entry?.emittedName ?? expr.name;
+        if (entry !== undefined) return entry.emittedName;
+        const token = this.analysis.tokens.get(expr.name);
+        if (token !== undefined) return token.category === 'color' ? this.color(token.value) : this.num(token.value);
+        return expr.name;
       }
       case 'Member':
         return `${this.expr(expr.object)}.${expr.name}`;
@@ -1381,6 +1474,8 @@ class FlutterGenerator {
   }
 
   private num(expr: Expr): string {
+    const token = this.tokenOf(expr);
+    if (token !== undefined) return this.num(token.value);
     if (expr.kind === 'Number') return expr.raw;
     if (expr.kind === 'Unary' && expr.op === '-' && expr.operand.kind === 'Number') return `-${expr.operand.raw}`;
     return paren(this.expr(expr));
@@ -1394,6 +1489,8 @@ class FlutterGenerator {
   }
 
   private color(expr: Expr): string {
+    const token = this.tokenOf(expr);
+    if (token !== undefined) return this.color(token.value);
     if (expr.kind === 'Color') {
       const hex = expr.raw.slice(1);
       if (hex.length === 3) {
@@ -1417,6 +1514,8 @@ class FlutterGenerator {
   }
 
   private insets(expr: Expr): string {
+    const token = this.tokenOf(expr);
+    if (token !== undefined) return this.insets(token.value);
     if (expr.kind === 'Number') return `const EdgeInsets.all(${expr.raw})`;
     if (expr.kind === 'List') {
       const nums = expr.items.map((item) => (item.kind === 'Number' ? item.raw : this.expr(item)));

@@ -150,12 +150,14 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | Lexer, parser, AST, formatter | ✅ implemented, tested |
 | Semantic validation with coded, caret-accurate diagnostics | ✅ |
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
+| Design tokens (`theme` blocks, shared by import, lowered per target) | ✅ |
 | CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
 | Examples (`examples/`), golden files, generated docs | ✅ |
 | Language server (`plainui lsp`) | ✅ diagnostics, formatting, hover |
 | Library API (`@plainui/compiler`) | ✅ compile, format, inspect, with type declarations |
-| Compose / React generators | 🧭 roadmap (the AST seam exists; see `docs/06-roadmap.md`) |
+| `task` (async), navigation, forms, typed interop | 🧭 next — see `docs/06-roadmap.md` |
+| Compose / React generators | 🧭 roadmap — [`docs/09-vision.md`](docs/09-vision.md) names Compose as the second target |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`
 over the generated output requires the Flutter SDK; `tests/golden` are also compiled by the CI
@@ -226,6 +228,17 @@ void main() => runApp(const MaterialApp(home: Home()));
 ```plainui
 import "./components/profile_card.pui"
 
+theme Shop:
+
+    color brand = #2563eb
+    color surface = #ffffff
+    color danger = #dc2626
+
+    space sm = 8
+    space md = 16
+
+    radius card = 12
+
 component Header(title: String):
 
     row gap=12 cross=center:
@@ -235,14 +248,14 @@ component Header(title: String):
 style price:
     size=20
     weight=bold
-    color=#0a7d33
+    color=brand
 
 screen Products:
 
     state query: String = ""
     state items: List<Product> = loadProducts()
 
-    column padding=16 gap=12:
+    column padding=md gap=sm:
 
         Header("Products")
 

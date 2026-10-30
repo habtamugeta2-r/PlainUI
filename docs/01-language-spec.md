@@ -92,8 +92,8 @@ import "./components/profile_card.pui"            // another PlainUI file
 * `package:` and `dart:` URIs pass through unchanged.
 * Relative paths are resolved **from the directory of the `.pui` file**, and re-based by the
   generator so they remain correct from the generated file's location.
-* A `.pui` import makes that file's components available; importing a `.pui` that does not exist
-  is an error (`PUI2102`).
+* A `.pui` import makes that file's components **and its design tokens** available; importing a
+  `.pui` that does not exist is an error (`PUI2102`).
 
 ### 2.1 Screens
 
@@ -136,6 +136,46 @@ Styles accept the text properties `size`, `weight`, `color`, `family`, `letterSp
 `lineHeight`, `italic`. Unknown properties are errors (`PUI2301`). Built-in style names —
 `display`, `heading`, `subheading`, `body`, `caption`, `label`, `secondary` — may be used without
 declaring anything and are overridable.
+
+### 2.4 Themes and design tokens
+
+A file may declare one theme. The theme names the values a design system uses, so screens refer to
+`brand` and `md` instead of repeating `#2563eb` and `16`.
+
+```
+theme App:
+
+    color brand = #2563eb
+    color surface = #ffffff
+    color ink = #0f172a
+    color danger = #dc2626
+
+    space sm = 8
+    space md = 16
+    space lg = 24
+
+    radius card = 12
+```
+
+* Three categories: `color`, `space` (`spacing` is accepted as a spelling of the same thing) and
+  `radius`. A colour token takes a colour literal (`PUI2306`); a space or radius token takes a
+  number (`PUI2306`).
+* One theme per file (`PUI2307`); duplicate token names are errors (`PUI2305`), including against a
+  token from an imported theme.
+* Tokens are in scope for the whole file — including `style` declarations written above the theme —
+  and for any file that imports it.
+* A token may be referenced wherever a value is expected: any colour position (`color=brand`) or
+  number position (`padding=md`, `gap=sm`, `radius=card`, `padding=[md, sm]`). A token in the wrong
+  kind of slot is an error (`PUI2304`), not a value of the wrong type in the output.
+* Tokens are **values, not variables**: `set md = 4` is an error (`PUI2114`), and a state variable
+  with a token's name is an error (`PUI2309`).
+
+Tokens are resolved by the compiler, not at run time. `padding=md` becomes `16` in the generated
+code, which keeps generated widget trees `const` and makes every target produce the same values from
+the same source. The Flutter target additionally emits the palette as data — `AppTokens.brand` — and
+a `ThemeData` (`AppTheme.light`) built from it, so Flutter's own widgets use the design; the HTML
+target publishes the same values as CSS custom properties (`--pui-brand`). Runtime theming, such as
+switching to a dark token set, is a separate feature and is not part of this one.
 
 ---
 
