@@ -144,8 +144,8 @@ export const CODES = {
   PUI1021: {
     severity: 'error',
     title: 'Unsupported expression syntax',
-    description: 'PlainUI expressions are a checked subset of Dart. This construct is outside that subset.',
-    fix: 'Move the logic into a Dart function and call it from an event handler.',
+    description: 'PlainUI expressions are a checked subset of what the targets can express. This construct is outside that subset.',
+    fix: 'Move the logic into a host function and call it from an event handler.',
   },
   PUI1022: {
     severity: 'error',
@@ -217,14 +217,14 @@ export const CODES = {
   },
   PUI2011: {
     severity: 'error',
-    title: 'Name collides with a Flutter type',
-    description: 'The generated file imports Flutter, so a screen, component or state variable with this name would shadow a Flutter type that the generated code needs.',
+    title: 'Name collides with a target type',
+    description: 'The generated file imports its target’s library, so a screen, component or state variable with this name would shadow a type the generated code needs.',
     fix: 'Rename it, for example PostsScreen instead of ListView.',
   },
   PUI2012: {
     severity: 'error',
     title: 'Reserved word',
-    description: 'This name is a PlainUI keyword or a Dart reserved word and cannot be used as an identifier.',
+    description: 'This name is a PlainUI keyword, or a word the selected target reserves, and cannot be used as an identifier.',
     fix: 'Choose a different name.',
   },
 
@@ -317,7 +317,7 @@ export const CODES = {
   },
   PUI2206: {
     severity: 'error',
-    title: 'Not a Dart type',
+    title: 'Not a target type',
     description: 'A type annotation looks like a Dart type but Dart spells it differently, so the generated file would not compile.',
     fix: 'Use the lowercase Dart spelling.',
   },
@@ -659,6 +659,15 @@ export const CODES = {
     title: 'Anonymous use of a screen',
     description: 'A screen is an entry point and is normally used as a route, not nested inside another screen.',
     fix: 'Use a component for reusable pieces of UI.',
+  },
+
+  // ---------------------------------------------------------------- targets
+  PUI2501: {
+    severity: 'error',
+    title: 'Construct not supported by this target',
+    description:
+      'This construct is part of PlainUI, but the selected target has no way to express it. Compiling it anyway would produce output that looks finished and silently does nothing.',
+    fix: 'Compile for a target that supports it, or remove the construct.',
   },
 
   // ---------------------------------------------------------------- project / codegen

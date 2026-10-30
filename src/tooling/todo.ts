@@ -184,22 +184,22 @@ export const TODO: readonly TodoItem[] = [
     phase: 'architecture',
     title: 'The `Target` contract',
     size: 'L',
-    status: 'next',
+    status: 'done',
     acceptance:
       'Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind ' +
       'one interface per target; the front end no longer names a framework.',
-    touches: ['src/analysis/targets.ts', 'src/codegen/'],
+    touches: ['src/targets/', 'src/analysis/check.ts'],
   },
   {
     id: 'capability-matrix',
     phase: 'architecture',
     title: 'Capability matrix and its test',
     size: 'M',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'Every example is compiled for every target; the test asserts which files port and which fail with ' +
       'a code that names the alternative.',
-    touches: ['tests/', 'src/analysis/targets.ts'],
+    touches: ['tests/', 'src/targets/', 'src/project/workspace.ts'],
   },
   {
     id: 'plainui-types',

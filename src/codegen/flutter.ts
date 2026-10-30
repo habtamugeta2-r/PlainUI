@@ -44,7 +44,7 @@ import {
 import { isSubmitCall, type Analysis } from '../analysis/check.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
-import { BUILTIN_STYLES } from '../analysis/targets.ts';
+import { BUILTIN_STYLES } from '../analysis/styles.ts';
 import type { TaskDecl, ThemeDecl, TokenDecl } from '../frontend/ast.ts';
 import type { WidgetSpec } from '../analysis/widgets/registry.ts';
 import {

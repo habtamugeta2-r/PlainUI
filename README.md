@@ -127,7 +127,7 @@ Framework-independent AST
 Semantic validation         src/analysis/     scopes, widgets, diagnostics
     |
     v
-Flutter code generator      src/codegen/      AST -> Dart (or static HTML)
+Flutter code generator      src/codegen/      AST -> Dart (or static HTML), chosen by src/targets/
     |
     v
 Generated Dart
@@ -320,8 +320,9 @@ about the stages to its left.
 ```
 src/
   frontend/       source.ts (text, spans) · lexer.ts · ast.ts · parser.ts
-  analysis/       check.ts · diagnostics.ts · suggest.ts · targets.ts · events.ts
+  analysis/       check.ts · diagnostics.ts · suggest.ts · styles.ts · events.ts
   analysis/widgets/registry.ts      the single source of truth for the vocabulary
+  targets/        contract.ts (the `Target` interface + capabilities) · flutter.ts · html.ts
   codegen/        dart.ts (emission helpers) · flutter.ts (Dart target) · html.ts (preview target)
   project/        paths.ts · workspace.ts · project.ts (multi-file + cache) · compile.ts · hash.ts
   tooling/        cli.ts · format.ts · watch.ts · lsp.ts · debug.ts
@@ -340,7 +341,8 @@ docs/             research, specification, architecture, codegen, CLI, diagnosti
 3. **Errors are the product.** Every diagnostic has a code, a caret span, and a suggested fix.
 4. **Incremental adoption is non-negotiable.** Any existing Dart widget is one capital-letter tag
    away from being used in a PlainUI screen.
-5. **The AST is framework-neutral.** Only generators know about Flutter.
+5. **The AST is framework-neutral.** A target declares what it needs — keywords, type names,
+   capabilities — and only generators know about Flutter.
 
 ## Roadmap
 

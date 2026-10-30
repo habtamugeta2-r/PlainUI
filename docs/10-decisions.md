@@ -144,7 +144,7 @@ exist first, or it will be a string with extra steps.
 
 ## C. Architecture
 
-### C1 — Target discipline per feature, extraction at v2.0 — *decided*
+### C1 — Target discipline per feature, extraction at v2.0 — *implemented*
 
 Every feature from here on writes its target-specific work behind one function per target, even
 while the targets share a file. The `Target` interface extraction at v2.0 is then mechanical.
@@ -154,6 +154,11 @@ while the targets share a file. The `Target` interface extraction at v2.0 is the
 
 **Revisit when:** a feature needs a target-specific *checker* rule, not just an emitter. That is the
 signal the interface is overdue.
+
+**Outcome (v2.0):** the signal arrived — the checker held Dart's keywords and Material's type names,
+so a second target would have meant a second checker. The extraction was mechanical as predicted:
+the constants became `Target` fields, each use became `this.target.…`, and no rule changed shape.
+See C5 for the parts that were not mechanical (capabilities, message wording).
 
 ### C2 — Portability is a project setting, checked per file — *provisional*
 
@@ -189,6 +194,31 @@ lowering" quietly becomes "uniform output".
 
 **Revisit when:** three targets need the same conversion *and* disagree about nothing. Then it is a
 shared helper, not a shared model.
+
+### C5 — A target declares what it can do; the front end asks and names none — *decided*
+
+`Target` carries a fixed set of nine capabilities, and every target answers for every one of them
+with a level (`full`, `partial`, `none`) and one sentence saying how it delivers it. `none` is an
+error (`PUI2501`, whose hint is the target's own note); `partial` is legal and documented.
+
+**Why:** a capability model with holes lets a target forget to have an opinion, and a `none` that
+generates anyway produces output that looks finished and silently does nothing — the failure mode
+PlainUI exists to prevent. Making the note *the* hint means the person who wrote the lowering also
+wrote the explanation, and the two cannot drift.
+
+**Why the level split:** a static preview genuinely renders a task's not-yet-loaded state, and
+calling that "supported" would be a lie, while refusing it would make the preview useless. `partial`
+is the honest middle, and because the note is required prose, "partial" can never be a shrug.
+
+**Why the front end owns so much:** name and type rules *are* target rules (`late`, `Card`, `Int`,
+`spaceBetween`), and they must be applied while checking, before any generator runs. What stays in
+the generator is what only matters after acceptance: constructor names, argument maps, icon names,
+style lowering. `style=heading` itself is language vocabulary (`src/analysis/styles.ts`), because a
+shared style name is not one target's idea — how to paint it is.
+
+**Revisit when:** a target needs a capability at a *finer* grain than the construct (for example,
+Flutter supports `task` but not a task that reloads on argument change). Then capabilities become
+per-construct levels, and the current enum is the special case where they agree.
 
 ---
 

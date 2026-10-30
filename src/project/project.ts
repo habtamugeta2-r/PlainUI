@@ -16,6 +16,7 @@ import { parse } from '../frontend/parser.ts';
 import { basename, camelCase, dartImportSpecifier, dirname, extensionOf, joinPath, normalizePath } from './paths.ts';
 import { sourceFile, type SourceFile } from '../frontend/source.ts';
 import { hashText } from './hash.ts';
+import { DEFAULT_TARGET } from '../targets/index.ts';
 import { COMPILER_VERSION } from './compile.ts';
 import { ROUTES_FILE, generateRoutes, projectUsesNavigation, type RouteSource } from '../codegen/routes.ts';
 
@@ -107,6 +108,18 @@ export function outputPathFor(sourcePath: string, outDir = DEFAULT_OUT_DIR): str
 }
 
 export function compileProject(inputs: readonly SourceInput[], options: ProjectOptions = {}): ProjectResult {
+  // A project build is Flutter-shaped all the way down: `.dart` output paths, a route table, cache
+  // keys computed from Dart import specifiers. Refusing here is better than writing Dart into a
+  // `lib/generated` tree that the caller asked to be something else; per-target output paths are
+  // the capability-matrix item.
+  const target = options.target ?? DEFAULT_TARGET;
+  if (target.id !== 'flutter') {
+    throw new Error(
+      `plainui build cannot emit ${target.label} yet: a project build writes Flutter, `.concat(
+        'with .dart output paths and a route table. Use compileSource({ target }) for a single file.',
+      ),
+    );
+  }
   const outDir = options.outDir ?? DEFAULT_OUT_DIR;
   const version = options.compilerVersion ?? COMPILER_VERSION;
 

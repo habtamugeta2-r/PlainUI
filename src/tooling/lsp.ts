@@ -25,7 +25,7 @@ import { CODES } from '../analysis/diagnostics.ts';
 import { formatText } from './format.ts';
 import { compileProject, ProjectCache, type SourceInput } from '../project/project.ts';
 import { positionAt, sourceFile } from '../frontend/source.ts';
-import { BUILTIN_STYLES } from '../analysis/targets.ts';
+import { BUILTIN_STYLES } from '../analysis/styles.ts';
 import { discoverSources, resolveProject, toInputs } from '../project/workspace.ts';
 import { WIDGETS, findProp, propsFor, widgetSpec } from '../analysis/widgets/registry.ts';
 

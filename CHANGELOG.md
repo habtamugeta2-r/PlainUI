@@ -8,6 +8,27 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **The `Target` contract (`src/targets/`).** What the front end needs to know about an output
+  language, in one interface per target: reserved words, types a name must not shadow, wrong type
+  spellings and enum aliases, plus a nine-entry capability record. The checker asks
+  `this.target` for all of it and names no framework, so the same file can be legal for one target
+  and not for another — and a third target needs no third checker.
+
+  ```ts
+  capabilities: {
+    effects: { level: 'none', note: 'An effect runs after a frame; a static page has no frames.' },
+    tasks:   { level: 'partial', note: 'A task renders its not-yet-loaded state: …' },
+  }
+  ```
+
+  The HTML preview's record is the honest answer to "what does a static page actually do?" — state,
+  derived and themes are `full`; tasks, forms, navigation and list identity are `partial`; effects
+  and host surfaces are `none`. A `none` capability is refused with the new `PUI2501`, whose hint is
+  the target's own sentence, because emitting output that silently does nothing is the failure mode
+  the language exists to prevent. `compileSource({ target })` dispatches the last stage;
+  `plainui build` (which owns `.dart` output paths and a route table) refuses a target it cannot
+  write a tree for instead of emitting Dart into it.
+
 - **The phase-gate app (`examples/demo`, "Beacon").** Three screens that together use every construct
   of the Flutter-depth phase, written in `.pui` alone:
 
@@ -143,6 +164,16 @@ All notable changes to PlainUI are recorded here. The format follows
 - **`docs/10-decisions.md`** — the decisions behind the language (type system, nullability, the
   expression language, `derived`/`effect`/`task` semantics, target discipline, release tooling), each
   with the condition that would reopen it.
+
+### Changed
+
+- **Diagnostics describe the target, not Dart.** `PUI2011` is now "Name collides with a target type",
+  `PUI2206` is "Not a target type", and reserved-word messages read "is a reserved word in *Dart*"
+  or "in *HTML*" depending on what is being compiled. The expression-subset and cast hints say
+  "host function" rather than naming a language, because a second target makes "Dart function"
+  wrong for the same reason it makes "a Material widget" wrong.
+- **`src/analysis/targets.ts` became `src/analysis/styles.ts`** (style names and properties, which
+  are language vocabulary) plus `src/targets/` (everything that varies by target).
 
 ### Fixed
 

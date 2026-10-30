@@ -28,6 +28,61 @@ string; the registry decides which tags exist and what they take; the generator 
 they become. That separation is what makes a second target a weekend rather than a rewrite —
 `src/codegen/html.ts` is the proof.
 
+## Targets
+
+A target is more than a generator. Two things upstream of code generation need to know which
+output is being produced:
+
+- **The checker**, because name and type rules are target rules: `late` is a Dart keyword,
+  `Card` would shadow a Material class, `Int` is a misspelling of `int`, `spaceBetween` should be
+  `between` — and none of that is true of a static page that writes no identifiers and has no
+  library.
+- **The pipeline**, because the last stage is the one place the choice becomes visible.
+
+So `src/targets/` holds the contract, and `check.ts` names no framework at all: it asks
+`this.target` for the reserved words, the shadowed types, the type spellings and the enum aliases,
+and it words its own messages with the target's language name ("reserved word in HTML").
+
+```ts
+export interface Target {
+  readonly id: TargetId;                  // 'flutter' | 'html'
+  readonly label: string;                 // for messages: "HTML preview"
+  readonly language: string;              // the output language, spelled in messages
+  readonly outputExtension: string;       // what the project writes
+  readonly hostExtensions: readonly string[];   // what an `import "…" as x:` surface may point at
+  readonly reservedWords: ReadonlySet<string>;
+  readonly shadowedTypes: ReadonlySet<string>;
+  readonly typeSpellings: Readonly<Record<string, string>>;
+  readonly enumAliases: Readonly<Record<string, string>>;
+  readonly capabilities: Readonly<Record<Capability, CapabilityNote>>;
+}
+```
+
+`CapabilityNote` is a level — `full`, `partial` or `none` — and one sentence saying how the target
+delivers it. The nine capabilities are fixed and every target answers for all of them, which the
+tests enforce, so "this target cannot do that" is always a decision someone made:
+
+| Capability | Flutter | HTML preview |
+| --- | --- | --- |
+| `state` | full | full — the initial value is rendered |
+| `derived` | full | full — evaluated once, in declaration order |
+| `effects` | full | **none** — a static page has no frames |
+| `tasks` | full | partial — the not-yet-loaded value is rendered |
+| `forms` | full | partial — rules render, nothing validates |
+| `navigation` | full | partial — screens are anchored sections |
+| `host-surfaces` | full | **none** — no runtime to call into |
+| `themes` | full | full — tokens become CSS custom properties |
+| `list-identity` | full | partial — keys become `data-key` |
+
+`none` is an error, `partial` is not. A missing capability cannot be expressed at all, so it is
+refused with `PUI2501` — whose hint is the target's own note — rather than emitted as output that
+silently does nothing. `partial` is a promise about fidelity, and the note is the promise.
+
+What a target does *not* own: constructor names, argument maps, icon names and style lowering.
+Those live in the generator, because they are only needed once a program has been accepted, and
+`style=heading` is language vocabulary (`src/analysis/styles.ts`) rather than any one target's
+idea — `src/analysis/styles.ts` therefore sits in `analysis/`, not in `src/targets/`.
+
 ## Modules
 
 The tree mirrors the pipeline, so a file's folder says which stage it belongs to — and whether it
@@ -37,6 +92,7 @@ is allowed to know about Flutter.
 | --- | --- | --- |
 | Front end | `src/frontend/` | text → tokens → AST. No Flutter, no file system, no options. |
 | Analysis | `src/analysis/` | Scopes, the widget catalogue, diagnostics, suggestions. Framework-neutral. |
+| Targets | `src/targets/` | The `Target` contract, the capability set, and one file per target: what the front end must know before accepting a program. |
 | Code generation | `src/codegen/` | Dart emission helpers, the Flutter target, the HTML preview. |
 | Project | `src/project/` | Paths, config discovery, multi-file compilation, the incremental cache. |
 | Tooling | `src/tooling/` | CLI, formatter, watcher, language server, AST debug printer. |
@@ -47,16 +103,20 @@ is allowed to know about Flutter.
 | `src/frontend/lexer.ts` | 444 | Indentation stack, strings with interpolation, numbers, colours, operators, comments. |
 | `src/frontend/parser.ts` | 1169 | Recursive descent over the token stream, including recovery and the action grammar. |
 | `src/frontend/source.ts` | 117 | A file's text plus line/column mapping. Every span is an offset pair. |
-| `src/analysis/check.ts` | 1241 | Scopes, property/argument validation, event rules, `Analysis` for generators. |
+| `src/analysis/check.ts` | 2684 | Scopes, property/argument validation, event rules, `Analysis` for generators. |
 | `src/analysis/diagnostics.ts` | 659 | `Diagnostic`, `DiagnosticBag`, the `CODES` catalogue, rendering, JSON form. |
 | `src/analysis/events.ts` | 22 | Event metadata (which events carry a value, and its type). |
 | `src/analysis/suggest.ts` | 70 | Edit-distance suggestions used by every "did you mean". |
-| `src/analysis/targets.ts` | 46 | Target-wide constants: style properties, built-in style names, Flutter type names. |
+| `src/analysis/styles.ts` | 29 | Style names and style properties — language vocabulary, not a target's. |
+| `src/targets/contract.ts` | 90 | `Target`, `CAPABILITIES`, `CapabilityNote`, `supports` / `fullySupports`. |
+| `src/targets/flutter.ts` | 109 | Dart reserved words, shadowed Material types, type spellings, enum aliases, all capabilities at `full`. |
+| `src/targets/html.ts` | 68 | The preview's rules and its honest capability record. |
+| `src/targets/index.ts` | 30 | The registry, `targetById`, and Flutter as the default. |
 | `src/analysis/widgets/registry.ts` | 486 | The element catalogue: arguments, properties, children policy, events, example. |
 | `src/codegen/dart.ts` | 84 | Emission helpers: `dartCall`, `listArgument`, `indentAll`, Dart string escaping. |
 | `src/codegen/flutter.ts` | 1532 | The Flutter generator. |
 | `src/codegen/html.ts` | 1127 | The HTML preview generator. |
-| `src/project/compile.ts` | 73 | Single-file pipeline used by the playground and tests. |
+| `src/project/compile.ts` | 85 | Single-file pipeline used by the playground and tests. |
 | `src/project/hash.ts` | 35 | FNV-1a + djb2 cache keys, with no Node builtins so the browser can use it. |
 | `src/project/paths.ts` | 83 | POSIX path helpers; no `node:path`, so the browser can use them. |
 | `src/project/project.ts` | 297 | Multi-file compilation, import resolution/re-basing, the incremental `ProjectCache`. |
