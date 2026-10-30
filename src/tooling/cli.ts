@@ -21,6 +21,7 @@ import {
   type ResolvedProject,
 } from '../project/workspace.ts';
 import { basename, extensionOf, normalizePath, relativePath } from '../project/paths.ts';
+import { targetById, type Target } from '../targets/index.ts';
 import { parse } from '../frontend/parser.ts';
 import { renderAst } from './debug.ts';
 import { sourceFile } from '../frontend/source.ts';
@@ -159,7 +160,11 @@ async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
 
   const inputs = toInputs(files, root);
   const before = cache === undefined ? undefined : { hits: cache.hits, misses: cache.misses };
-  const result = compileProject(inputs, cache === undefined ? { outDir } : { outDir, cache });
+  const requiredTargets = targetsOf(project.config);
+  const result = compileProject(
+    inputs,
+    cache === undefined ? { outDir, requiredTargets } : { outDir, cache, requiredTargets },
+  );
   if (cache !== undefined && ui.verbose && before !== undefined) {
     const hits = cache.hits - before.hits;
     const misses = cache.misses - before.misses;
@@ -231,7 +236,7 @@ async function commandCheck(args: Args): Promise<number> {
     fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
     return 1;
   }
-  const result = compileProject(toInputs(files, root), { outDir: config.outDir });
+  const result = compileProject(toInputs(files, root), { outDir: config.outDir, requiredTargets: targetsOf(config) });
   printDiagnostics(result.diagnostics);
   if (!ui.json) say(`plainui: ${files.length} file(s) checked — ${summarize(result.diagnostics)}`);
   return result.ok ? 0 : 1;
@@ -690,5 +695,13 @@ function invokedDirectly(): boolean {
 if (invokedDirectly()) {
   main(process.argv.slice(2)).then((code) => {
     process.exitCode = code;
+  });
+}
+
+/** The targets a project promises to port to, as `Target` records the checker can ask. */
+function targetsOf(config: Config): Target[] {
+  return config.targets.flatMap((id) => {
+    const target = targetById(id);
+    return target === undefined ? [] : [target];
   });
 }

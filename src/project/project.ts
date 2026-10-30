@@ -223,8 +223,10 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
         })
         .sort()
         .join('|');
+      // The promise set is part of the key: the same text is portable or not depending on it.
+      const requiredIds = (options.requiredTargets ?? []).map((required) => required.id).join(',');
       const key = hashText(
-        [version, outDir, path, sources.get(path)!.text, namesHash, imports].join('\u0000'),
+        [version, outDir, path, sources.get(path)!.text, namesHash, imports, requiredIds].join('\u0000'),
       );
       cacheKeys.set(path, key);
       cachedResults.set(path, cache.get(path, key));
@@ -243,6 +245,8 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
       externalTokens: resolution.plainuiTokens,
       hostRoots: resolution.hostRoots,
       externalNames: new Map([...declaredNames].filter(([name, file]) => file !== path)),
+      ...(options.target === undefined ? {} : { target: options.target }),
+      ...(options.requiredTargets === undefined ? {} : { requiredTargets: options.requiredTargets }),
     });
     entry.bag.merge(result.bag);
     checked.set(path, result);

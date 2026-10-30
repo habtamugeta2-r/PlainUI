@@ -150,6 +150,15 @@ export interface CheckOptions {
    * second target needs no second checker.
    */
   readonly target?: Target;
+  /**
+   * Targets the project promises every file ports to (`"targets"` in `plainui.config.json`).
+   *
+   * The build target is what the output *is*; this set is what the output must also *become* later.
+   * A construct the build target delivers partially is fine there and a lie here, so the two are
+   * checked separately: `PUI2501` for "this target cannot do it", `PUI2502` for "one of the targets
+   * I promised can only do part of it".
+   */
+  readonly requiredTargets?: readonly Target[];
 }
 
 interface Scope {
@@ -258,14 +267,31 @@ class Checker {
    * worth more than a page that lies.
    */
   private requireCapability(construct: string, capability: Capability, span: Span): boolean {
-    if (supports(this.target, capability)) return true;
-    this.error(
-      'PUI2501',
-      `"${construct}" needs ${capability}, which ${this.target.label} does not have`,
-      span,
-      this.target.capabilities[capability].note,
-    );
-    return false;
+    const build = this.target;
+    if (!supports(build, capability)) {
+      this.error(
+        'PUI2501',
+        `"${construct}" needs ${capability}, which ${build.label} does not have`,
+        span,
+        build.capabilities[capability].note,
+      );
+      return false;
+    }
+
+    // The promised set: every target named in the project's config has to keep up.
+    for (const required of this.options.requiredTargets ?? []) {
+      if (required.id === build.id) continue;
+      const note = required.capabilities[capability];
+      if (note.level === 'full') continue;
+      const verb = note.level === 'none' ? 'does not support' : 'only partly supports';
+      this.error(
+        'PUI2502',
+        `"${construct}" is not portable: ${required.label} ${verb} ${capability}`,
+        span,
+        `${note.note} Drop "${required.id}" from "targets", or keep this in a file the portable build skips`,
+      );
+    }
+    return true;
   }
 
   // ------------------------------------------------------------------------------------------
@@ -318,8 +344,10 @@ class Checker {
   // ------------------------------------------------------------------------------------------
 
   /**
-   * Dart spells its core types in lower case, so `count: Int` would generate `Int count` and fail
-   * to compile. Catching it here keeps the mistake in the .pui file instead of in the output.
+   * A target spells its core types its own way, and the generated annotation is written verbatim:
+   * `count: Int` would become `Int count`, which Dart rejects. The table is the target's
+   * (`typeSpellings`), so a target with no such trap has no table and no error. Catching it here
+   * keeps the mistake in the .pui file instead of in the output.
    */
   private checkTypeSpelling(typeText: string, span: Span): void {
     const base = typeText.replace(/<.*$/s, '').trim();
@@ -347,6 +375,7 @@ class Checker {
         );
         continue;
       }
+      this.requireCapability('theme', 'themes', decl.nameSpan);
       this.theme = decl;
 
       for (const token of decl.tokens) {
@@ -534,6 +563,7 @@ class Checker {
           continue;
         }
         if (task.typeText !== undefined) this.checkTypeSpelling(task.typeText, task.typeSpan ?? task.nameSpan);
+        this.requireCapability('task', 'tasks', task.nameSpan);
         taskMap.set(task.name, task.typeText === undefined ? DYNAMIC : typeFromText(task.typeText));
         if (this.tokens.has(task.name)) {
           this.error('PUI2309', `task "${task.name}" collides with the token of the same name`, task.nameSpan, 'rename one of them');
@@ -823,7 +853,10 @@ class Checker {
           });
           types.set(node.itemName, elementType);
           this.loopTypes.set(node, types);
-          if (node.key !== undefined) this.checkExpr(node.key, loopScope, 'value', false);
+          if (node.key !== undefined) {
+            this.requireCapability('key=', 'list-identity', node.key.span);
+            this.checkExpr(node.key, loopScope, 'value', false);
+          }
           this.checkBody(node.body, loopScope, ctx);
           break;
         }
@@ -857,6 +890,7 @@ class Checker {
     for (const prop of el.props) this.checkPropValue(prop, resolved, scope, false);
 
     if (resolved.kind === 'builtin' && resolved.spec.tag === 'form') {
+      this.requireCapability('form', 'forms', el.span);
       this.checkForm(el, resolved.spec, scope, ctx);
       return;
     }
@@ -1688,6 +1722,7 @@ class Checker {
    * reported here, in `.pui` terms.
    */
   private checkNavigate(call: CallExpr, scope: Scope, allowAwait: boolean): void {
+    this.requireCapability('navigate', 'navigation', call.span);
     if (!allowAwait) {
       this.error(
         'PUI2321',
@@ -1759,6 +1794,7 @@ class Checker {
 
   /** `back()` — one keyword, no arguments, no screen name. */
   private checkBack(call: CallExpr, allowAwait: boolean): void {
+    this.requireCapability('back', 'navigation', call.span);
     if (!allowAwait) {
       this.error('PUI2321', '"back" is only allowed inside an event handler', call.span, 'move it into the handler that triggers it');
     }

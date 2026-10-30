@@ -12,14 +12,26 @@ import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import { extensionOf, normalizePath, relativePath } from './paths.ts';
 import type { SourceInput } from './project.ts';
+import { targetIds, type TargetId } from '../targets/index.ts';
 
 export interface Config {
   readonly srcDir: string;
   readonly outDir: string;
   readonly exclude: readonly string[];
+  /**
+   * Targets every file in this project must port to (decision C2). One entry — the default — means
+   * "this is a Flutter project". Two means the syntax is on a diet: a construct one of them
+   * delivers only partly is `PUI2502`, reported in the file that uses it.
+   */
+  readonly targets: readonly TargetId[];
 }
 
-export const DEFAULT_CONFIG: Config = { srcDir: 'lib/ui', outDir: 'lib/generated', exclude: [] };
+export const DEFAULT_CONFIG: Config = {
+  srcDir: 'lib/ui',
+  outDir: 'lib/generated',
+  exclude: [],
+  targets: ['flutter'],
+};
 
 export interface ResolvedProject {
   readonly config: Config;
@@ -45,20 +57,43 @@ export function findConfigPath(start: string, explicit?: string): string | undef
 
 export function loadConfig(path: string | undefined): Config {
   if (path === undefined || !existsSync(path)) return DEFAULT_CONFIG;
-  let raw: Partial<Config> & { target?: string };
+  let raw: Partial<Config> & { target?: string; targets?: unknown };
   try {
-    raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<Config> & { target?: string };
+    raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<Config> & { target?: string; targets?: unknown };
   } catch (error) {
     throw new Error(`invalid configuration in ${path}: ${(error as Error).message}`);
-  }
-  if (raw.target !== undefined && raw.target !== 'flutter') {
-    throw new Error(`unsupported target "${raw.target}" (only "flutter" is implemented)`);
   }
   return {
     srcDir: typeof raw.srcDir === 'string' ? raw.srcDir : DEFAULT_CONFIG.srcDir,
     outDir: typeof raw.outDir === 'string' ? raw.outDir : DEFAULT_CONFIG.outDir,
     exclude: Array.isArray(raw.exclude) ? raw.exclude.filter((x): x is string => typeof x === 'string') : [],
+    targets: targetsFrom(raw, path),
   };
+}
+
+/**
+ * `"targets": ["flutter", "html"]`, or the older single `"target": "flutter"`.
+ *
+ * A target named here that this compiler cannot emit is a configuration mistake, and the message
+ * lists the ones it knows: finding the typo through a `PUI2502` six screens later is worse.
+ */
+function targetsFrom(raw: { target?: string; targets?: unknown }, path: string): readonly TargetId[] {
+  const declared =
+    raw.targets === undefined ? (raw.target === undefined ? undefined : [raw.target]) : raw.targets;
+  if (declared === undefined) return DEFAULT_CONFIG.targets;
+  if (!Array.isArray(declared) || declared.some((entry) => typeof entry !== 'string')) {
+    throw new Error(`invalid configuration in ${path}: "targets" must be an array of target ids`);
+  }
+  if (declared.length === 0) {
+    throw new Error(`invalid configuration in ${path}: "targets" is empty; name at least one target`);
+  }
+  const known = targetIds();
+  for (const entry of declared as string[]) {
+    if (!known.includes(entry as TargetId)) {
+      throw new Error(`unsupported target "${entry}" in ${path} (known: ${known.join(', ')})`);
+    }
+  }
+  return [...new Set(declared as TargetId[])];
 }
 
 const SKIP_DIRECTORIES = new Set([

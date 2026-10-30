@@ -1,5 +1,8 @@
 {
   "srcDir": "lib/ui",
   "outDir": "lib/generated",
-  "target": "flutter"
+  "targets": [
+    "flutter",
+    "html"
+  ]
 }

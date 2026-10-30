@@ -109,6 +109,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2406`](#pui2406) | info | External host widget |
 | [`PUI2407`](#pui2407) | warning | Anonymous use of a screen |
 | [`PUI2501`](#pui2501) | error | Construct not supported by this target |
+| [`PUI2502`](#pui2502) | error | Not portable to a target the project promises |
 | [`PUI3001`](#pui3001) | error | Import not found |
 | [`PUI3003`](#pui3003) | error | Write failed |
 | [`PUI3101`](#pui3101) | error | Duplicate declaration across the project |
@@ -915,6 +916,14 @@ A screen is an entry point and is normally used as a route, not nested inside an
 This construct is part of PlainUI, but the selected target has no way to express it. Compiling it anyway would produce output that looks finished and silently does nothing.
 
 *Fix:* Compile for a target that supports it, or remove the construct.
+
+### PUI2502
+
+**Not portable to a target the project promises** — error
+
+"targets" in plainui.config.json is a promise that every file ports. This construct is delivered only partly (or not at all) by one of those targets, so the file would compile today and quietly lose behaviour there.
+
+*Fix:* Drop the target from "targets", or move the construct into a file that is not part of the portable set.
 
 ## Project
 
