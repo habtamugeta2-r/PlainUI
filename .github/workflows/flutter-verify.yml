@@ -369,10 +369,12 @@ jobs:
 
               await tester.enterText(find.byType(TextFormField).at(0), 'Ship the demo');
               await tester.tap(find.text('Create'));
-              await tester.pumpAndSettle();
+              // Not `pumpAndSettle` from here on: the screen this navigates to shows a progress
+              // indicator while it loads, and a spinner never settles.
               await tester.pump(const Duration(milliseconds: 200)); // `await createIssue(...)`
-              await tester.pumpAndSettle();
-              await tester.pump(const Duration(milliseconds: 200)); // the new Inbox loads
+              await tester.pump(); // the push
+              await tester.pump(const Duration(milliseconds: 400)); // the route transition
+              await tester.pump(const Duration(milliseconds: 200)); // the new Inbox's load
               await tester.pump();
 
               expect(find.text('Ship the demo'), findsOneWidget);
