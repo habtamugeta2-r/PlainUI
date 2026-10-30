@@ -1,0 +1,19 @@
+// The design system, declared once. Every screen imports this file, so `brand`, `md` and `card`
+// mean the same thing everywhere — and `main.dart` uses the generated `BeaconTheme.light` so
+// Flutter's own widgets agree with it.
+
+theme Beacon:
+
+    color brand = #2563eb
+    color brandDeep = #1d4ed8
+    color surface = #ffffff
+    color ink = #0f172a
+    color muted = #64748b
+    color danger = #dc2626
+    color success = #16a34a
+
+    space sm = 8
+    space md = 16
+    space lg = 24
+
+    radius card = 12

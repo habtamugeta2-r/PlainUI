@@ -1,0 +1,37 @@
+// A screen that exists to fill a form in: two fields, two rules, and a handler that cannot run
+// against invalid input because `submit()` is the only way in.
+
+import "theme.pui"
+import "inbox.pui"
+import "../model/data.dart" as data:
+
+    createIssue(title: String, body: String) -> Future<void>
+
+screen NewIssue:
+
+    state title: String = ""
+    state body: String = ""
+
+    column padding=md gap=sm:
+
+        row main=between gap=sm:
+
+            button "Cancel" variant=text:
+                on tap: back()
+
+            text "New issue" style=heading
+
+        form:
+
+            column gap=sm:
+
+                input bind=title placeholder="What is wrong?" label="Title" validate=[required, min(4)]
+
+                input bind=body placeholder="Anything else?" label="Details" multiline
+
+                button "Create":
+                    on tap: submit()
+
+            on submit:
+                await createIssue(title, body)
+                navigate Inbox()
