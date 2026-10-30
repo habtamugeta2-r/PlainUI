@@ -116,8 +116,16 @@ for (const project of projects) {
     const generatedImport = imports.find((path) => path.includes('generated/'));
     assert.ok(generatedImport !== undefined, 'main.dart must import the generated widget');
 
-    const target = join(project.dir, 'lib', generatedImport!);
-    assert.equal(existsSync(target), true, `${generatedImport} has not been generated yet — run npm run examples`);
+    // Assert the wiring, not the state of the working tree: `npm run examples` may not have run
+    // yet, and a test that depends on build order fails in CI (it did). The compiler is asked
+    // which file it will write, and that path is what `main.dart` must import.
+    const outputs = compileProject(sources(project), { outDir: project.outDir }).files.map((file) => file.outputPath);
+    const imported = `lib/${generatedImport}`;
+    assert.equal(
+      outputs.includes(imported),
+      true,
+      `main.dart imports ${generatedImport}, but the compiler writes ${outputs.join(', ')}`,
+    );
   });
 }
 
