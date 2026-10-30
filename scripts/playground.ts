@@ -121,7 +121,13 @@ const server = createServer((request, response) => {
 
 await ensureBundle(true).catch((error: unknown) => {
   console.error('initial build failed:', (error as Error).message);
+  process.exitCode = 1;
 });
+
+// `--build-only` is what CI and `npm run build` use: build the bundle, serve nothing.
+if (process.argv.includes('--build-only')) {
+  process.exit(process.exitCode ?? 0);
+}
 
 server.listen(PORT, HOST, () => {
   console.log(`PlainUI playground: http://localhost:${PORT}`);

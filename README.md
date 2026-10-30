@@ -18,11 +18,13 @@ screen Counter:
                 set count = count + 1
 ```
 
-becomes ordinary, editable-by-nobody-but-the-compiler Dart:
+becomes ordinary Dart — no PlainUI import, no runtime, nothing to look up:
 
 ```dart
+// screen Counter — lib/ui/counter.pui:1
 class Counter extends StatefulWidget {
   const Counter({super.key});
+
   @override
   State<Counter> createState() => _CounterState();
 }
@@ -37,11 +39,20 @@ class _CounterState extends State<Counter> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          Text('Counter', style: Theme.of(context).textTheme.headlineSmall),
-          Text(count.toString(), style: Theme.of(context).textTheme.displaySmall),
+          Text("Counter", style: Theme.of(context).textTheme.headlineSmall),
+          SizedBox(height: 16),
+          Text(
+            count.toString(),
+            style: Theme.of(context).textTheme.displaySmall,
+          ),
+          SizedBox(height: 16),
           ElevatedButton(
-            onPressed: () => setState(() { count = count + 1; }),
-            child: const Text('Add'),
+            onPressed: () {
+              setState(() {
+                count = count + 1;
+              });
+            },
+            child: Text("Add"),
           ),
         ],
       ),
@@ -77,8 +88,9 @@ projects adopt it one screen at a time.
 | Lexer, parser, AST, formatter | ✅ implemented, tested |
 | Semantic validation with coded, caret-accurate diagnostics | ✅ |
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
-| CLI: `build`, `check`, `format`, `watch`, `init`, `ast`, `explain` | ✅ |
+| CLI: `build`, `check`, `format`, `watch`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
+| Examples (`examples/`), golden files, generated docs | ✅ |
 | Compose / React generators | 🧭 roadmap (the AST seam exists; see `docs/06-roadmap.md`) |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`
@@ -90,13 +102,18 @@ workflow `flutter-verify.yml` on machines that have it.
 ```bash
 npm install            # dev toolchain (TypeScript, esbuild)
 npm run build          # compile the CLI to dist/
-npm test               # unit + golden tests
+npm test               # 190 tests: lexer, parser, checker, codegen, formatter, CLI, docs
 
-node dist/cli.js build examples/counter/lib/ui   # .pui -> .pui.dart
-node dist/cli.js watch examples/counter/lib/ui   # rebuild on save
-node dist/cli.js check .                          # validate only
-node dist/cli.js format --write .                 # canonical formatting
+node dist/cli.js build examples/counter   # .pui -> lib/generated/*.pui.dart
+node dist/cli.js watch examples/counter   # rebuild on save
+node dist/cli.js check .                  # validate only
+node dist/cli.js format .                 # canonical formatting
+node dist/cli.js widgets                  # what the language accepts
 ```
+
+`npm run playground` opens the browser playground, `npm run goldens` refreshes the golden files,
+`npm run examples` rebuilds the example projects, `npm run docs:ref` regenerates the reference
+pages. `npm run verify` runs the type checker and the whole suite.
 
 Or drive it from an existing Flutter app:
 
@@ -174,8 +191,11 @@ screen Products:
 npm run playground     # http://localhost:4173
 ```
 
-Type PlainUI on the left; get generated Dart, diagnostics with carets, and an HTML layout preview
-on the right. The playground runs the compiler in the browser — same code as the CLI.
+Type PlainUI on the left; get a live preview, the generated Dart, the generated HTML and
+clickable diagnostics on the right. The playground imports the compiler directly — the same
+modules the CLI runs — so there is no server-side compilation and nothing is uploaded. Links
+are shareable (`#code=…`), the formatter is one keystroke away (`⌘/Ctrl+S`), and three examples
+are built in.
 
 ## Repository layout
 
@@ -184,15 +204,18 @@ src/
   lexer.ts        indentation-aware tokenizer
   parser.ts       recursive-descent parser -> AST
   ast.ts          framework-neutral AST types
-  checker.ts      semantic validation (scope, widgets, properties, events)
+  check.ts        semantic validation (scope, widgets, properties, events)
   widgets/        widget registry (the single source of truth for the vocabulary)
   codegen/        flutter.ts (Dart), html.ts (playground preview)
   format.ts       canonical formatter
-  compile.ts      pipeline orchestration
+  project.ts      multi-file compilation, import re-basing
+  compile.ts      single-file pipeline
   cli.ts          command line interface
-tests/            unit tests + golden files
-examples/         runnable Flutter projects using .pui screens
-web/              browser playground
+tests/            unit tests, registry/docs checks, golden files (tests/golden)
+examples/         three runnable projects (counter, todo, gallery) with their Dart host
+web/              browser playground (same compiler, bundled for the browser)
+scripts/          CLI bundle, playground server, docs generator
+docs/             research, specification, architecture, codegen, CLI, diagnostics, roadmap
 ```
 
 ## Design principles

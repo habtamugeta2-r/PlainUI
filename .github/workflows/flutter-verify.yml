@@ -1,0 +1,109 @@
+name: Flutter verification
+
+# The unit tests prove the generated Dart is structurally sound (balanced braces, one `child:`
+# per call, no `await` inside setState). Only the Dart analyzer can prove it compiles. This
+# workflow generates each example, drops it into a real Flutter app and runs `dart analyze` plus a
+# widget test, so a codegen change that produces non-compiling Dart fails here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: generate + analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: npm ci
+      - run: npm run build
+      - run: flutter --version
+
+      - name: Generate every example
+        run: npm run examples
+
+      - name: Analyze the generated Dart inside a real Flutter app
+        run: |
+          set -euo pipefail
+          flutter create --project-name verify_app --org dev.plainui verify
+          cd verify
+
+          # Each example keeps its own directory: generated files import their siblings, so
+          # they must stay together.
+          mkdir -p lib/counter lib/todo lib/gallery
+          cp ../examples/counter/lib/generated/*.dart lib/counter/
+          cp ../examples/todo/lib/generated/*.dart lib/todo/
+          cp ../examples/gallery/lib/generated/*.dart lib/gallery/
+
+          cat > lib/verify.dart <<'DART'
+          import 'package:flutter/material.dart';
+
+          import 'counter/counter.pui.dart';
+          import 'todo/todo.pui.dart';
+          import 'gallery/gallery.pui.dart';
+
+          /// Instantiates every generated screen. If the generated constructors or widget trees
+          /// are wrong, this file does not compile.
+          List<Widget> screens() => const <Widget>[Counter(), Todo(), Gallery()];
+
+          void main() => runApp(MaterialApp(home: Builder(builder: (context) => Column(children: screens()))));
+          DART
+
+          # Generated code is machine written, so lint opinions about it are not interesting;
+          # errors and warnings are.
+          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/verify.dart
+
+      - name: Widget test
+        run: |
+          set -euo pipefail
+          cd verify
+          mkdir -p test
+          cat > test/generated_test.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:verify_app/counter/counter.pui.dart' as counter;
+          import 'package:verify_app/todo/todo.pui.dart' as todo;
+
+          void main() {
+            testWidgets('the counter renders and reacts to a tap', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: counter.Counter()));
+              expect(find.text('PlainUI'), findsWidgets);
+
+              final before = tester.widget<Text>(find.text('0')).data;
+              expect(before, isNotNull);
+
+              await tester.tap(find.text('One more'));
+              await tester.pumpAndSettle();
+              expect(find.text('1'), findsWidgets);
+            });
+
+            testWidgets('the todo screen renders its list', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: todo.Todo()));
+              expect(find.text('Today'), findsOneWidget);
+              expect(find.text('Write the spec'), findsOneWidget);
+            });
+          }
+          DART
+          flutter test test/generated_test.dart
+
+      - name: Upload the generated sources as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-dart
+          path: |
+            examples/*/lib/generated/*.dart
+          if-no-files-found: warn

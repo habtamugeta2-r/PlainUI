@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Tests (unit, golden, registry, CLI, docs)
+        run: npm test
+
+      - name: Build the CLI
+        run: npm run build
+
+      - name: The documented examples still compile
+        run: npm run examples
+
+      - name: Generated documentation is up to date
+        run: node --experimental-strip-types scripts/gen-reference.ts --check
+
+      - name: Generated code is in sync with its sources
+        run: |
+          node dist/cli.js build examples/counter --check
+          node dist/cli.js build examples/todo --check
+          node dist/cli.js build examples/gallery --check
+
+      - name: The playground bundle builds
+        run: node --experimental-strip-types scripts/playground.ts --build-only
+
+  smoke:
+    name: CLI smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Init, build, check, format and explain a fresh project
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          node "$GITHUB_WORKSPACE/dist/cli.js" init
+          node "$GITHUB_WORKSPACE/dist/cli.js" build
+          test -f lib/generated/home.pui.dart
+          node "$GITHUB_WORKSPACE/dist/cli.js" check
+          node "$GITHUB_WORKSPACE/dist/cli.js" format --check
+          node "$GITHUB_WORKSPACE/dist/cli.js" build --check
+          node "$GITHUB_WORKSPACE/dist/cli.js" explain PUI2001
+          node "$GITHUB_WORKSPACE/dist/cli.js" widgets | head -3
+
+      - name: Diagnostics are machine readable
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/broken && cd /tmp/broken
+          printf 'screen Home:\n    colum:\n        text "x"\n' > home.pui
+          node "$GITHUB_WORKSPACE/dist/cli.js" check home.pui --json > out.json || true
+          node -e "const l=require('fs').readFileSync('out.json','utf8').trim().split('\n').map(JSON.parse); if(!l.some(d=>d.code==='PUI2001'&&d.severity==='error')) process.exit(1)"
