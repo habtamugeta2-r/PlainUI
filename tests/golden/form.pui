@@ -1,0 +1,45 @@
+// Host widgets, async actions, focus events and bind=.
+
+import "../widgets/app_logo.dart"
+import "package:flutter/services.dart"
+
+component Field(label: String, hint: String):
+
+    column gap=4:
+        text label style=label
+        input placeholder=hint padding=10
+
+screen SignUp:
+
+    state email: String = ""
+    state password: String = ""
+    state busy: bool = false
+    state error: String = ""
+
+    column padding=24 gap=16:
+
+        text "Create an account" style=heading
+
+        Field("Email", "you@example.com")
+        input bind=email placeholder="you@example.com" keyboard=email autofocus
+
+        Field("Password", "at least 8 characters")
+        input bind=password placeholder="Password" secret
+
+        if error != "":
+            text error color=#dc2626 style=caption
+
+        AppLogo()
+
+        button busy ? "Working…" : "Sign up":
+            on tap:
+                set busy = true
+                set error = ""
+                await save(email, password)
+                set busy = false
+
+        button "Clear":
+            on tap:
+                set email = ""
+                set password = ""
+                log("cleared")

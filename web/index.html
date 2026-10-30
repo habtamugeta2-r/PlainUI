@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PlainUI playground</title>
+    <link rel="stylesheet" href="./style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232563eb'/><path d='M9 12h14M9 20h9' stroke='white' stroke-width='3' stroke-linecap='round'/></svg>"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div>
+          <strong>PlainUI</strong>
+          <span class="tagline">write the layout, get the Flutter code</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <label class="select">
+          <span>Example</span>
+          <select id="examples"></select>
+        </label>
+        <button id="format" type="button" title="Format (⌘/Ctrl+S)">Format</button>
+        <button id="share" type="button" title="Copy a link that contains this source">Share</button>
+        <button id="download" type="button">Download Dart</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="pane editor-pane">
+        <div class="pane-header">
+          <span>main.pui</span>
+          <span id="status" class="status" role="status" aria-live="polite"></span>
+        </div>
+        <div class="editor">
+          <div class="gutter" id="gutter" aria-hidden="true"></div>
+          <div class="code">
+            <pre class="highlight" id="highlight" aria-hidden="true"></pre>
+            <textarea
+              id="source"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              autocorrect="off"
+              aria-label="PlainUI source"
+            ></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane output-pane">
+        <div class="pane-header tabs" role="tablist">
+          <button class="tab" data-tab="preview" type="button" role="tab" aria-selected="true">Preview</button>
+          <button class="tab" data-tab="dart" type="button" role="tab" aria-selected="false">Dart</button>
+          <button class="tab" data-tab="html" type="button" role="tab" aria-selected="false">HTML</button>
+          <span class="spacer"></span>
+          <button id="copy" type="button" class="ghost">Copy</button>
+        </div>
+
+        <div class="tab-panel" id="panel-preview" role="tabpanel">
+          <iframe id="preview" title="Rendered preview" sandbox="" referrerpolicy="no-referrer"></iframe>
+        </div>
+        <div class="tab-panel" id="panel-dart" role="tabpanel" hidden>
+          <pre class="code-block" id="dart"></pre>
+        </div>
+        <div class="tab-panel" id="panel-html" role="tabpanel" hidden>
+          <pre class="code-block" id="html"></pre>
+        </div>
+      </section>
+    </main>
+
+    <section class="diagnostics" id="diagnostics" aria-live="polite"></section>
+
+    <footer class="footer">
+      <span>Everything runs in this tab: no compiler server, no upload.</span>
+      <a href="https://github.com/habtamugeta2-r/PlainUI" target="_blank" rel="noreferrer">Source</a>
+    </footer>
+
+    <script src="./dist/app.js"></script>
+  </body>
+</html>

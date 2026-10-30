@@ -1,0 +1,45 @@
+// A component with a slot, a loop, a conditional and the layout widgets around them.
+
+component ProductCard(title: String, price: int, children: List<Widget>):
+
+    card padding=16 radius=16:
+
+        column gap=8:
+
+            row gap=8 main=between:
+                text title style=subheading
+                text "${price} ETB" style=body
+
+            divider
+
+            slot
+
+screen Shop:
+
+    state query: String = ""
+    state products: List<String> = ["Coffee", "Tea", "Juice"]
+    state cart: int = 0
+
+    column padding=20 gap=16:
+
+        text "Market" style=heading
+
+        input bind=query placeholder="Search"
+
+        if cart > 0:
+            text "In cart: ${cart}" style=label
+        else:
+            text "Nothing in the cart yet" style=caption
+
+        for index, product in products:
+            ProductCard(product, index * 5 + 10):
+
+                row gap=8:
+                    button "Add":
+                        on tap:
+                            set cart = cart + 1
+
+        grid columns=2 gap=12:
+            for product in products:
+                card padding=12:
+                    text product style=label

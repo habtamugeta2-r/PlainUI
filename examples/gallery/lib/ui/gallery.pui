@@ -1,0 +1,104 @@
+// Every built-in element in one screen: a reference you can render.
+
+style mono:
+    fontFamily=monospace
+    size=13
+
+screen Gallery:
+
+    state name: String = "Ada"
+    state volume: double = 0.4
+    state dark: bool = false
+    state notes: String = ""
+
+    scaffold title="PlainUI gallery":
+
+        scroll:
+
+            column padding=20 gap=16:
+
+                text "Typography" style=heading
+                text "display" style=display
+                text "heading" style=heading
+                text "subheading" style=subheading
+                text "body — the quick brown fox jumps over the lazy dog"
+                text "caption" style=caption
+                text "label" style=label
+                text "secondary" style=secondary
+                text "monospace" style=mono
+
+                divider
+
+                text "Layout" style=heading
+
+                row gap=8 main=between:
+                    text "spaceBetween"
+                    text "row"
+
+                wrap gap=6:
+                    text "wrap"
+                    text "wraps"
+                    text "children"
+
+                grid columns=3 gap=8:
+                    card padding=8:
+                        center:
+                            text "1"
+                    card padding=8:
+                        center:
+                            text "2"
+                    card padding=8:
+                        center:
+                            text "3"
+
+                stack:
+                    card padding=24:
+                        text "stack"
+                    text "over" style=caption
+
+                spacer
+
+                divider
+
+                text "Inputs" style=heading
+
+                input bind=name label="Name" placeholder="Your name"
+                input placeholder="Search" keyboard=email
+                input bind=notes label="Notes" multiline maxLines=4
+                input placeholder="Password" secret
+
+                checkbox bind=dark label="Dark mode"
+                toggle bind=dark label="Same state, different control"
+                slider bind=volume min=0 max=1 divisions=10
+
+                divider
+
+                text "Actions" style=heading
+
+                row gap=8:
+                    button "Filled"
+                    button "Outlined" variant=outlined
+                    button "Text" variant=text
+
+                row gap=8:
+                    button "Full width" fullWidth
+                    button "Disabled" disabled
+
+                row gap=8:
+                    icon star
+                    icon heart color=#dc2626
+                    icon settings size=32
+
+                divider
+
+                text "State" style=heading
+                text "name = ${name}"
+                text "volume = ${volume}"
+                text "dark = ${dark}"
+
+                progress value=0.6
+                progress color=#16a34a
+
+                row gap=12 cross=center:
+                    progress
+                    text "loading…" style=caption

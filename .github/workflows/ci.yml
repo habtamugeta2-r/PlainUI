@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # `npm test` runs TypeScript directly via --experimental-strip-types, which needs Node
+        # 22.6+. The declared `engines` floor matches this.
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Tests (unit, golden, registry, CLI, docs)
+        run: |
+          set +e
+          npm test > /tmp/test.log 2>&1
+          status=$?
+          cat /tmp/test.log
+          if [ "$status" -ne 0 ]; then
+            # Failures arrive as annotations, which stay readable when job logs do not.
+            grep -E '^not ok|^# fail|AssertionError|Error:' /tmp/test.log | head -25 | \
+              while IFS= read -r line; do echo "::error ::${line}"; done
+          fi
+          exit "$status"
+
+      - name: Build the CLI
+        run: npm run build
+
+      - name: The documented examples still compile
+        run: npm run examples
+
+      - name: Generated documentation is up to date
+        run: node --experimental-strip-types scripts/gen-reference.ts --check
+
+      - name: Generated code is in sync with its sources
+        run: |
+          node dist/cli.js build examples/counter --check
+          node dist/cli.js build examples/todo --check
+          node dist/cli.js build examples/gallery --check
+
+      - name: The playground bundle builds
+        run: node --experimental-strip-types scripts/playground.ts --build-only
+
+  package:
+    name: The published package works
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Pack, install and use it as a consumer would
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg
+          npm pack --pack-destination /tmp/pkg > /dev/null
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y > /dev/null
+          npm install --silent /tmp/pkg/plainui-compiler-1.0.0.tgz
+
+          # The bin is executable and runs. A regex here needs one level of escaping for
+          # bash and another for the YAML block scalar; the first version of this line
+          # double-escaped the dots and never matched — which is how this job failed its
+          # first real run.
+          test "$(./node_modules/.bin/plainui --version)" = "1.0.0"
+
+          # A project made by the installed CLI builds, checks and formats.
+          mkdir -p app && cd app
+          ../node_modules/.bin/plainui init > /dev/null
+          ../node_modules/.bin/plainui build
+          test -f lib/generated/home.pui.dart
+          ../node_modules/.bin/plainui check
+
+          # The library entry point is importable and the shipped types exist.
+          cd ..
+          node --input-type=module -e "
+          import { compileOne, formatText, WIDGET_TAGS } from '@plainui/compiler';
+          const result = compileOne('lib/ui/home.pui', 'screen Home:\n    text \"hi\"\n');
+          if (!result.code.includes('class Home extends StatelessWidget')) process.exit(1);
+          if (formatText('a.pui', 'screen  Home:\n  text   \"x\"\n').text !== 'screen Home:\n    text \"x\"\n') process.exit(1);
+          if (WIDGET_TAGS.length < 20) process.exit(1);
+          console.log('api ok:', WIDGET_TAGS.length, 'widgets');
+          "
+          test -f node_modules/@plainui/compiler/dist/types/index.d.ts
+
+      - name: Keep the tarball for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball
+          path: /tmp/pkg/*.tgz
+
+  smoke:
+    name: CLI smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Init, build, check, format and explain a fresh project
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          node "$GITHUB_WORKSPACE/dist/cli.js" init
+          node "$GITHUB_WORKSPACE/dist/cli.js" build
+          test -f lib/generated/home.pui.dart
+          node "$GITHUB_WORKSPACE/dist/cli.js" check
+          node "$GITHUB_WORKSPACE/dist/cli.js" format --check
+          node "$GITHUB_WORKSPACE/dist/cli.js" build --check
+          node "$GITHUB_WORKSPACE/dist/cli.js" explain PUI2001
+          node "$GITHUB_WORKSPACE/dist/cli.js" widgets | head -3
+
+      - name: Diagnostics are machine readable
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/broken && cd /tmp/broken
+          printf 'screen Home:\n    colum:\n        text "x"\n' > home.pui
+          node "$GITHUB_WORKSPACE/dist/cli.js" check home.pui --json > out.json || true
+          node -e "const l=require('fs').readFileSync('out.json','utf8').trim().split('\n').map(JSON.parse); if(!l.some(d=>d.code==='PUI2001'&&d.severity==='error')) process.exit(1)"

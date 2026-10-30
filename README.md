@@ -2,59 +2,101 @@
 
 **Write UI naturally. Build it with the frameworks you already use.**
 
-PlainUI is a proposed indentation-based declarative UI language designed to make user interfaces easier to read and write. The goal is to let developers describe screens, layouts, components, state, and interactions with a compact syntax—without XML tags, JSX markup, or deeply nested widget constructors.
+PlainUI is an indentation-based declarative language for describing user interfaces. Screens,
+layouts, components, state and interactions are written as a compact tree — no XML tags, no JSX
+markup, no deeply nested widget constructors — and compiled into code for an existing UI framework.
 
-PlainUI is intended to compile into code for existing UI frameworks rather than replace their rendering engines. The first target is **Flutter**, with other targets considered only after the core language is proven.
+It is a **source-to-source compiler**, not a framework: `.pui` in, `.dart` out. The first target is
+**Flutter**, and it works today. Other targets are considered only after the core language is
+proven; the AST already holds no framework nouns.
 
-> **Project status:** Early design / pre-alpha. The syntax and architecture are proposals. A working compiler and framework integration are not available yet.
-
-## Why PlainUI?
-
-Declarative UI is a useful model: developers describe what an interface should look like, and the framework manages rendering and updates. But the syntax of existing approaches can become noisy as interfaces grow.
-
-PlainUI explores a different way to express the same ideas:
-
-- **Indentation defines hierarchy.** Child elements are nested by indentation, so explicit closing tags and braces are unnecessary.
-- **UI elements read like instructions.** Screens, components, layouts, properties, and events have clear keywords.
-- **Application logic stays in the host language.** PlainUI describes the interface and connects events to existing functions; it is not intended to replace Dart, Kotlin, or TypeScript.
-- **Existing frameworks do the hard work.** Generated code uses the framework's own widgets, lifecycle, state mechanisms, and rendering pipeline.
+> **Status:** 1.0.0 (MVP). The compiler, CLI, formatter, watcher, language server, browser
+> playground and library API are implemented and tested; see [`docs/08-mvp.md`](docs/08-mvp.md) for
+> scope and the verification log.
 
 ## A first look
 
-A conceptual PlainUI counter screen:
-
 ```plainui
 screen Counter:
+
     state count: int = 0
 
-    column gap=12:
-        text "Count: {count}"
+    column padding=24 gap=16 main=center:
+
+        text "Counter" style=heading
+        text count style=display
 
         button "Add":
             on tap:
                 set count = count + 1
 ```
 
-The syntax above is illustrative and may change as the language is designed and tested.
+becomes ordinary Dart — no PlainUI import, no runtime, nothing to look up:
 
-A reusable component could look like this:
+```dart
+// screen Counter — lib/ui/counter.pui:1
+class Counter extends StatefulWidget {
+  const Counter({super.key});
 
-```plainui
-component ProfileCard(user: User):
-    card padding=16 radius=12:
-        row gap=12:
-            image user.photo size=48
+  @override
+  State<Counter> createState() => _CounterState();
+}
 
-            column gap=4:
-                text user.name style=heading
-                text user.role style=secondary
+class _CounterState extends State<Counter> {
+  int count = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          Text("Counter", style: Theme.of(context).textTheme.headlineSmall),
+          SizedBox(height: 16),
+          Text(
+            count.toString(),
+            style: Theme.of(context).textTheme.displaySmall,
+          ),
+          SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                count = count + 1;
+              });
+            },
+            child: Text("Add"),
+          ),
+        ],
+      ),
+    );
+  }
+}
 ```
+
+Flutter still does all the work — layout, rendering, state propagation, the build. PlainUI only
+decides how you *write the tree down*.
+
+## Why PlainUI?
+
+Declarative UI is the right model; its surface syntax is the part that hurts. Flutter nests
+constructors inside constructors, Compose nests calls inside calls, and both make large trees hard
+to skim.
+
+* **Indentation defines hierarchy.** Child elements are nested by indentation, so explicit closing
+  tags and braces are unnecessary.
+* **UI elements read like instructions.** Screens, components, layouts, properties and events have
+  clear keywords, one line per element: `padding=24 gap=16`, `on tap:`.
+* **Application logic stays in the host language.** PlainUI describes the interface and connects
+  events to existing functions; it is not intended to replace Dart, Kotlin or TypeScript.
+* **Existing frameworks do the hard work.** Generated code uses the framework's own widgets,
+  lifecycle, state mechanisms and rendering pipeline.
 
 ## Goals
 
 1. Define a small, readable syntax for declarative interfaces.
 2. Parse `.pui` files into a framework-independent representation.
-3. Validate syntax, component references, properties, and expressions before code generation.
+3. Validate syntax, component references, properties and expressions before code generation.
 4. Generate readable, idiomatic Dart/Flutter code as the first backend.
 5. Allow PlainUI screens to coexist with ordinary Flutter screens in the same application.
 6. Reuse existing Dart functions and custom Flutter widgets.
@@ -64,33 +106,31 @@ component ProfileCard(user: User):
 
 PlainUI is not intended to:
 
-- Create a new rendering engine or replace Flutter.
-- Replace Dart or become a general-purpose programming language.
-- Force developers to migrate an entire existing application.
-- Hide the underlying framework or prevent access to its APIs.
-- Support every framework in the first release.
+* Create a new rendering engine or replace Flutter.
+* Replace Dart or become a general-purpose programming language.
+* Force developers to migrate an entire existing application.
+* Hide the underlying framework or prevent access to its APIs.
+* Support every framework in the first release.
 
-## How it is intended to work
-
-PlainUI is designed as a **source-to-source compiler**. It translates `.pui` source files into regular source code for a target framework.
+## How it works
 
 ```text
 .pui source
     |
     v
-Lexer and parser
+Lexer and parser            src/frontend/     indentation -> tokens -> AST
     |
     v
 Framework-independent AST
     |
     v
-Semantic validation
+Semantic validation         src/analysis/     scopes, widgets, diagnostics
     |
     v
-Flutter code generator
+Flutter code generator      src/codegen/      AST -> Dart (or static HTML)
     |
     v
-Generated Dart source
+Generated Dart
     |
     v
 Existing Flutter build process
@@ -99,136 +139,203 @@ Existing Flutter build process
 Running application
 ```
 
-### Main stages
+The parser and the AST contain no Flutter concepts; a target is one module plus a registry of
+properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipeline and
+[`docs/03-flutter-codegen.md`](docs/03-flutter-codegen.md) maps every construct to Flutter.
 
-1. **Lexing and parsing** — recognize keywords, identifiers, values, expressions, indentation, and blocks.
-2. **AST construction** — represent screens, components, layouts, state declarations, and events in a framework-independent syntax tree.
-3. **Semantic validation** — check names, component arguments, property values, event handlers, and supported language features.
-4. **Code generation** — convert the validated AST into idiomatic code for the selected framework.
-5. **Build and run** — let the existing framework toolchain compile and execute the generated application.
+## Status
 
-The parser and AST should not contain Flutter-specific concepts. A target-specific generator should map general concepts such as `column`, `text`, and `button` to the appropriate framework APIs.
+| Area | State |
+|---|---|
+| Lexer, parser, AST, formatter | ✅ implemented, tested |
+| Semantic validation with coded, caret-accurate diagnostics | ✅ |
+| Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
+| CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
+| Browser playground + HTML preview generator | ✅ |
+| Examples (`examples/`), golden files, generated docs | ✅ |
+| Language server (`plainui lsp`) | ✅ diagnostics, formatting, hover |
+| Library API (`@plainui/compiler`) | ✅ compile, format, inspect, with type declarations |
+| Compose / React generators | 🧭 roadmap (the AST seam exists; see `docs/06-roadmap.md`) |
 
-## Flutter-first adoption
+Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`
+over the generated output requires the Flutter SDK; `tests/golden` are also compiled by the CI
+workflow `flutter-verify.yml` on machines that have it.
 
-The first implementation will target Flutter to keep the initial scope realistic.
+## Install
 
-The intended development workflow is:
-
-1. Add PlainUI tooling to an existing Flutter project.
-2. Create a `.pui` file for a new screen or component.
-3. Run the PlainUI compiler to validate the file and generate Dart code.
-4. Import the generated Dart widget into the application as an ordinary widget.
-5. Continue using existing Dart screens, packages, and custom widgets alongside generated screens.
-
-Conceptual project layout:
-
-```text
-my_app/
-├── lib/
-│   ├── main.dart
-│   ├── ui/
-│   │   └── home.pui
-│   └── generated/
-│       └── home.pui.dart
-├── tool/
-│   └── plainui.dart
-└── pubspec.yaml
-```
-
-Generated files should be reproducible and should not be edited manually. The `.pui` file remains the source of truth. The first prototype can use a standalone Dart command; integration with tools such as `build_runner` can be evaluated later.
-
-## Planned language features
-
-| Feature | Purpose | Initial priority |
-|---|---|---:|
-| Screens | Declare UI entry points | MVP |
-| Text, images, buttons | Basic visual elements | MVP |
-| Rows and columns | Compose layouts | MVP |
-| Properties | Configure UI elements | MVP |
-| State | Represent reactive values | Next |
-| Events | Connect user actions to functions | Next |
-| Conditions and loops | Render dynamic content | Next |
-| Components and parameters | Reuse UI structures | Next |
-| Imports and custom widgets | Interoperate with existing Dart code | Later MVP stage |
-| Themes and styles | Reuse visual rules | Later |
-| Additional targets | Generate Kotlin or TypeScript | Future |
-
-The exact syntax and feature order will be revised based on prototype results.
-
-## Roadmap
-
-### Phase 0 — Language design
-
-- [ ] Agree on core syntax and indentation rules.
-- [ ] Define the first set of tokens and grammar.
-- [ ] Define the framework-independent AST.
-- [ ] Specify how host-language expressions and function calls work.
-- [ ] Document compiler errors and source locations.
-
-### Phase 1 — Small Flutter prototype
-
-- [ ] Implement a lexer and indentation-aware parser.
-- [ ] Parse a screen containing text, a button, a row, and a column.
-- [ ] Generate valid Dart code for those elements.
-- [ ] Compile and run a generated screen in a Flutter example app.
-- [ ] Verify generated output with `dart format` and `flutter analyze`.
-
-### Phase 2 — Interaction and reuse
-
-- [ ] Add state and event handling.
-- [ ] Add conditions and repeated elements.
-- [ ] Add components and parameters.
-- [ ] Support imports and reuse of existing Flutter widgets.
-- [ ] Add source-mapped diagnostics and useful validation messages.
-
-### Phase 3 — Developer tooling
-
-- [ ] Add `build`, `check`, `watch`, and `format` commands.
-- [ ] Add examples and language documentation.
-- [ ] Evaluate integration with the Dart build ecosystem.
-- [ ] Improve editor support and diagnostics.
-
-### Phase 4 — Stabilization and future targets
-
-- [ ] Test real-world screens and larger component trees.
-- [ ] Document supported Flutter behavior and limitations.
-- [ ] Stabilize the language specification.
-- [ ] Evaluate additional framework code generators.
-
-## Proposed command-line interface
-
-The eventual CLI may expose commands like these:
+PlainUI is not published to npm yet; the MVP ships from this repository. Node 22.6+ is the only
+requirement — a Flutter SDK is needed only to compile what it generates.
 
 ```bash
-plainui check
-plainui build
-plainui watch
-plainui format
+git clone https://github.com/habtamugeta2-r/PlainUI && cd PlainUI
+npm ci && npm run build
+npm pack                               # -> plainui-compiler-1.0.0.tgz
+npm install -g ./plainui-compiler-1.0.0.tgz
+
+plainui --version
+plainui init                           # in a Flutter app: config + lib/ui/home.pui
 ```
 
-These commands are design proposals, not implemented commands yet.
+Use it as a library instead:
+
+```ts
+import { compileOne } from '@plainui/compiler';
+
+const result = compileOne('lib/ui/home.pui', source);
+console.log(result.code, result.diagnostics);
+```
+
+Scope, acceptance criteria and the verification log are in [`docs/08-mvp.md`](docs/08-mvp.md).
+
+## Quick start (working on the compiler)
+
+```bash
+npm ci                 # dev toolchain (TypeScript, esbuild, jsdom)
+npm run build          # dist/cli.js + dist/index.js + dist/types
+npm test               # lexer, parser, checker, codegen, formatter, CLI, LSP, docs
+
+node dist/cli.js build examples/counter   # .pui -> lib/generated/*.pui.dart
+node dist/cli.js watch examples/counter   # rebuild on save, incrementally
+node dist/cli.js check .                  # validate only
+node dist/cli.js format .                 # canonical formatting
+node dist/cli.js widgets                  # what the language accepts
+node dist/cli.js lsp                      # language server (stdio)
+```
+
+`npm run playground` opens the browser playground, `npm run goldens` refreshes the golden files,
+`npm run examples` rebuilds the example projects, `npm run docs:ref` regenerates the reference
+pages. `npm run verify` runs the type checker and the whole suite.
+
+Or drive it from an existing Flutter app:
+
+```bash
+cd my_app
+plainui init                # writes plainui.config.json + lib/ui/home.pui
+plainui build               # -> lib/generated/home.pui.dart
+plainui watch               # rebuild on save
+```
+
+```dart
+import 'generated/home.pui.dart';
+
+void main() => runApp(const MaterialApp(home: Home()));
+```
+
+## Language in one screen
+
+```plainui
+import "./components/profile_card.pui"
+
+component Header(title: String):
+
+    row gap=12 cross=center:
+        image "logo.png" size=32
+        text title style=heading
+
+style price:
+    size=20
+    weight=bold
+    color=#0a7d33
+
+screen Products:
+
+    state query: String = ""
+    state items: List<Product> = loadProducts()
+
+    column padding=16 gap=12:
+
+        Header("Products")
+
+        input bind=query label="Search" placeholder="Search products"
+
+        if items.isEmpty:
+
+            text "Nothing here yet" style=secondary
+
+        else:
+
+            for index, product in items:
+
+                ProfileCard(product)
+                text "${index + 1}. ${product.name}" style=price
+
+    button "Reload" fullWidth=true:
+        on tap:
+            set items = loadProducts()
+```
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/00-research.md`](docs/00-research.md) | Prior art (KV, Slint, SwiftUI, Haml, Elm), lessons, decision log |
+| [`docs/01-language-spec.md`](docs/01-language-spec.md) | Normative language specification |
+| [`docs/02-architecture.md`](docs/02-architecture.md) | Compiler pipeline, modules, AST, extension points |
+| [`docs/03-flutter-codegen.md`](docs/03-flutter-codegen.md) | Widget/property → Flutter mapping, generated code shape |
+| [`docs/04-cli.md`](docs/04-cli.md) | Command reference and project configuration |
+| [`docs/05-diagnostics.md`](docs/05-diagnostics.md) | Error code catalogue |
+| [`docs/06-roadmap.md`](docs/06-roadmap.md) | What is next, and the honest risks |
+| [`docs/07-reference.md`](docs/07-reference.md) | Widget + property reference (generated from the registry) |
+
+## Playground
+
+```bash
+npm run playground     # http://localhost:4173
+```
+
+Type PlainUI on the left; get a live preview, the generated Dart, the generated HTML and
+clickable diagnostics on the right. The playground imports the compiler directly — the same
+modules the CLI runs — so there is no server-side compilation and nothing is uploaded. Links
+are shareable (`#code=…`), the formatter is one keystroke away (`⌘/Ctrl+S`), and three examples
+are built in.
+
+## Repository layout
+
+The source tree follows the pipeline: each directory is one stage, and the code in it knows only
+about the stages to its left.
+
+```
+src/
+  frontend/       source.ts (text, spans) · lexer.ts · ast.ts · parser.ts
+  analysis/       check.ts · diagnostics.ts · suggest.ts · targets.ts · events.ts
+  analysis/widgets/registry.ts      the single source of truth for the vocabulary
+  codegen/        dart.ts (emission helpers) · flutter.ts (Dart target) · html.ts (preview target)
+  project/        paths.ts · workspace.ts · project.ts (multi-file + cache) · compile.ts · hash.ts
+  tooling/        cli.ts · format.ts · watch.ts · lsp.ts · debug.ts
+tests/            unit, registry, docs, golden (tests/golden) and end-to-end tests
+examples/         three runnable projects (counter, todo, gallery) with their Dart host
+web/              browser playground (the same compiler, bundled for the browser)
+scripts/          CLI bundle, playground server, docs generator
+docs/             research, specification, architecture, codegen, CLI, diagnostics, roadmap, MVP
+```
 
 ## Design principles
 
-- **Readable before clever:** prefer obvious syntax over compact but cryptic notation.
-- **Explicit over magical:** make state, events, and data flow understandable.
-- **Framework-friendly:** preserve access to native framework capabilities.
-- **Incremental adoption:** support gradual use in existing projects.
-- **Predictable generation:** the same source and compiler version should produce consistent output.
-- **Good diagnostics:** report errors at the source, not only in generated code.
-- **Small core:** keep business logic and complex application behavior in the host language.
+1. **The generated code is ordinary Flutter.** No runtime package, no reflection.
+2. **The language stays small.** If it needs logic, it needs Dart.
+3. **Errors are the product.** Every diagnostic has a code, a caret span, and a suggested fix.
+4. **Incremental adoption is non-negotiable.** Any existing Dart widget is one capital-letter tag
+   away from being used in a PlainUI screen.
+5. **The AST is framework-neutral.** Only generators know about Flutter.
+
+## Roadmap
+
+What comes next, and the risks worth naming, live in [`docs/06-roadmap.md`](docs/06-roadmap.md):
+a `build_runner` integration, completion and go-to-definition in the language server, a disk cache,
+and the Compose / React / SwiftUI targets. The order is deliberate — the AST seam is ready, but a
+half-built target is worse than none.
 
 ## Contributing
 
-PlainUI is at the design stage. Early contributions are most useful in language design, grammar discussions, AST design, compiler architecture, and small proof-of-concept implementations.
+```bash
+npm ci && npm test        # 225 tests, no network, no Flutter SDK required
+npm run verify            # typecheck + tests
+```
 
-Before proposing a feature, consider whether it makes common UI code easier to read without introducing hidden behavior or unnecessary language complexity.
+Every behavioural change needs the test that would have caught it being wrong; golden files are
+regenerated with `npm run goldens`, and generated documentation with `npm run docs:ref`
+(`--check` fails when they drift). Issues and pull requests are welcome.
 
 ## License
 
-No license has been selected yet. Until a license is added, normal copyright restrictions apply; please do not assume the project is open for unrestricted reuse or redistribution.
-
----
-
-**PlainUI:** a simpler way to describe interfaces, powered by the frameworks developers already trust.
+MIT

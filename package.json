@@ -1,0 +1,54 @@
+{
+  "name": "@plainui/compiler",
+  "version": "1.0.0",
+  "description": "PlainUI: a small indentation-scoped language for describing user interfaces, compiled to ordinary Flutter/Dart.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "plainui": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "docs:ref": "node --experimental-strip-types scripts/gen-reference.ts",
+    "playground": "node --experimental-strip-types scripts/playground.ts",
+    "docs:check": "node --experimental-strip-types scripts/gen-reference.ts --check",
+    "goldens": "UPDATE_GOLDENS=1 node --experimental-strip-types --test tests/golden.test.ts",
+    "examples": "node --experimental-strip-types src/tooling/cli.ts build examples/counter && node --experimental-strip-types src/tooling/cli.ts build examples/todo && node --experimental-strip-types src/tooling/cli.ts build examples/gallery",
+    "verify": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.25.0",
+    "jsdom": "^30.1.3",
+    "typescript": "^5.9.2"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "keywords": [
+    "dart",
+    "flutter",
+    "dsl",
+    "codegen",
+    "ui",
+    "compiler"
+  ]
+}

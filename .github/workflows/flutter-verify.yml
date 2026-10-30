@@ -1,0 +1,161 @@
+name: Flutter verification
+
+# The unit tests prove the generated Dart is structurally sound (balanced braces, one `child:`
+# per call, no `await` inside setState). Only the Dart analyzer can prove it compiles. This
+# workflow generates each example, drops it into a real Flutter app and runs `dart analyze` plus a
+# widget test, so a codegen change that produces non-compiling Dart fails here.
+#
+# Both steps surface their findings as `::error::` annotations. That is not decoration: annotations
+# are readable through the API even when job logs are not, and without them a red check that says
+# "exit code 3" is not actionable.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: generate + analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: npm ci
+      - run: npm run build
+      - run: flutter --version
+
+      - name: Generate every example
+        run: npm run examples
+
+      - name: Analyze the generated Dart inside a real Flutter app
+        run: |
+          set -uo pipefail
+          if ! flutter create --project-name verify_app --org dev.plainui verify > /tmp/create.log 2>&1; then
+            tail -40 /tmp/create.log
+            echo "::error title=flutter create::flutter create failed, see the log above"
+            exit 1
+          fi
+          cd verify
+
+          # Each example keeps its own directory: generated files import their siblings, so
+          # they must stay together.
+          mkdir -p lib/counter lib/todo lib/gallery
+          cp ../examples/counter/lib/generated/*.dart lib/counter/
+          cp ../examples/todo/lib/generated/*.dart lib/todo/
+          cp ../examples/gallery/lib/generated/*.dart lib/gallery/
+
+          cat > lib/verify.dart <<'DART'
+          import 'package:flutter/material.dart';
+
+          import 'counter/counter.pui.dart';
+          import 'todo/todo.pui.dart';
+          import 'gallery/gallery.pui.dart';
+
+          /// Instantiates every generated screen. If the generated constructors or widget trees
+          /// are wrong, this file does not compile.
+          List<Widget> screens() => const <Widget>[Counter(), Todo(), Gallery()];
+
+          void main() => runApp(const MaterialApp(home: _Screens()));
+
+          class _Screens extends StatelessWidget {
+            const _Screens();
+
+            @override
+            Widget build(BuildContext context) => Column(children: screens());
+          }
+          DART
+
+          # Generated code is machine written, so lint opinions about it are not interesting;
+          # errors and warnings are.
+          # `run:` steps execute with `bash -e`, so a non-zero exit would end the step before the
+          # findings could be captured. `|| status=$?` keeps the status and the output.
+          status=0
+          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/verify.dart \
+            > /tmp/analyze.log 2>&1 || status=$?
+          cat /tmp/analyze.log
+          if [ "$status" -ne 0 ]; then
+            # Annotations are reachable through the API when job logs are not. Emit the findings
+            # themselves when the output has the usual shape, and the first lines of the log
+            # otherwise, so a failure is never just "exit code 3".
+            findings=$(grep -cE '^[[:space:]]+(error|warning)[[:space:]]+•' /tmp/analyze.log || true)
+            if [ "$findings" -gt 0 ]; then
+              grep -E '^[[:space:]]+(error|warning)[[:space:]]+•' /tmp/analyze.log | head -30 \
+                | while IFS= read -r line; do
+                    echo "::error title=dart analyze::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
+                  done
+            else
+              head -30 /tmp/analyze.log | while IFS= read -r line; do
+                echo "::error title=dart analyze log::${line}"
+              done
+            fi
+            exit "$status"
+          fi
+
+      - name: Widget test
+        run: |
+          set -uo pipefail
+          cd verify
+          mkdir -p test
+          cat > test/generated_test.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:verify_app/counter/counter.pui.dart' as counter;
+          import 'package:verify_app/todo/todo.pui.dart' as todo;
+
+          void main() {
+            testWidgets('the counter renders and reacts to a tap', (tester) async {
+              // `MaterialApp` alone is not a Material ancestor; TextField says so loudly.
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: counter.Counter())));
+              // The screen renders `text "Hello, ${name}"` with name starting as "PlainUI".
+              expect(find.text('Hello, PlainUI'), findsOneWidget);
+              expect(find.text('Taps so far'), findsOneWidget);
+
+              await tester.tap(find.text('One more'));
+              await tester.pumpAndSettle();
+              expect(find.text('1'), findsWidgets);
+            });
+
+            testWidgets('the todo screen renders its list', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: todo.Todo())));
+              expect(find.text('Today'), findsOneWidget);
+              expect(find.text('Write the spec'), findsOneWidget);
+            });
+          }
+          DART
+          status=0
+          flutter test test/generated_test.dart > /tmp/test.log 2>&1 || status=$?
+          cat /tmp/test.log
+          if [ "$status" -ne 0 ]; then
+            # Same reasoning as the analyzer step: a failing widget test has to say why. The
+            # exception block is the part worth reading, and the head of the log when there is no
+            # exception block at all (a compile error in the test file, for instance).
+            sed -n '/EXCEPTION CAUGHT BY/,/^$/p' /tmp/test.log | head -30 \
+              | while IFS= read -r line; do
+                  echo "::error title=flutter test::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
+                done
+            head -40 /tmp/test.log | while IFS= read -r line; do
+              echo "::error title=flutter test log::${line}"
+            done
+            exit "$status"
+          fi
+
+      - name: Upload the generated sources as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-dart
+          path: |
+            examples/*/lib/generated/*.dart
+          if-no-files-found: warn

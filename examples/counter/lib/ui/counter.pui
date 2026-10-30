@@ -1,0 +1,30 @@
+// The smallest complete app: state, an event, and a text field bound to state.
+
+style figure:
+    size=56
+    weight=bold
+    color=#1d4ed8
+
+screen Counter:
+
+    state count: int = 0
+    state name: String = "PlainUI"
+
+    column padding=24 gap=16 main=center:
+
+        text "Hello, ${name}" style=heading
+        text count style=figure
+        text "Taps so far" style=caption
+
+        row gap=12 main=center:
+            button "One less" variant=outlined:
+                on tap:
+                    set count = count - 1
+            button "Reset" variant=text:
+                on tap:
+                    set count = 0
+            button "One more":
+                on tap:
+                    set count = count + 1
+
+        input bind=name placeholder="Your name" padding=8 label="Name"
