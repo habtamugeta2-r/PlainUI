@@ -999,12 +999,11 @@ const ALIGNMENT_AXIS: Record<string, { readonly x: string; readonly y: string }>
   bottomRight: { x: 'flex-end', y: 'flex-end' },
 };
 
+/** Mirrors the `variant` values the registry allows. */
 const BUTTON_VARIANTS: Record<string, string[]> = {
   filled: ['border: 0', 'background: #2563eb', 'color: #ffffff'],
-  tonal: ['border: 0', 'background: rgba(37, 99, 235, 0.12)', 'color: #1d4ed8'],
   outlined: ['border: 1px solid rgba(37, 99, 235, 0.5)', 'background: transparent', 'color: #1d4ed8'],
   text: ['border: 0', 'background: transparent', 'color: #1d4ed8'],
-  danger: ['border: 0', 'background: #dc2626', 'color: #ffffff'],
 };
 
 const IMAGE_FIT: Record<string, string> = {

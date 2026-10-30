@@ -25,7 +25,7 @@ class Field extends StatelessWidget {
         SizedBox(height: 4),
         Padding(
           padding: const EdgeInsets.all(10),
-          child: TextField(decoration: InputDecoration(hintText: hint), maxLines: 1),
+          child: TextField(decoration: InputDecoration(hintText: "hint"), maxLines: 1),
         ),
       ],
     );

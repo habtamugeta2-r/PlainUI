@@ -1051,39 +1051,63 @@ class FlutterGenerator {
     let index = 0;
     while (index < actions.length) {
       const action = actions[index]!;
-      if (action.kind === 'Set') {
-        // `await` cannot appear inside setState's synchronous callback, so any awaited value is
-        // evaluated first and handed to setState through a temporary.
-        if (actionsContainAwait([action])) {
-          const set = action as SetAction;
-          const temp = `puiValue${this.uid++}`;
-          lines.push(`final ${temp} = ${this.expr(set.value)};`);
-          lines.push(`setState(() {\n  ${this.expr(set.target)} = ${temp};\n});`);
+
+      // `await` cannot appear inside setState's synchronous callback, so any awaited value is
+      // evaluated first and handed to setState through a temporary.
+      if (action.kind === 'Set' && actionsContainAwait([action])) {
+        const set = action;
+        const temp = `puiValue${this.uid++}`;
+        lines.push(`final ${temp} = ${this.expr(set.value)};`);
+        lines.push(`setState(() {\n${indentAll(`${this.expr(set.target)} = ${temp};`, 2)}\n});`);
+        index += 1;
+        continue;
+      }
+
+      // Consecutive state changes share one setState, so `set a = 1` followed by `set b = 2`
+      // rebuilds once. Method calls on state (`tasks.add(x)`) count as state changes too.
+      const group: string[] = [];
+      while (index < actions.length) {
+        const next = actions[index]!;
+        if (next.kind === 'Set' && !actionsContainAwait([next])) {
+          group.push(`${this.expr(next.target)} ${next.op} ${this.expr(next.value)};`);
           index += 1;
           continue;
         }
-        const sets: SetAction[] = [];
-        while (
-          index < actions.length &&
-          actions[index]!.kind === 'Set' &&
-          !actionsContainAwait([actions[index]!])
-        ) {
-          sets.push(actions[index] as SetAction);
+        if (next.kind === 'Call' && this.mutatesState(next.expr) && !actionsContainAwait([next])) {
+          group.push(`${this.expr(next.expr)};`);
           index += 1;
+          continue;
         }
-        const body = sets.map((set) => `${this.expr(set.target)} ${set.op} ${this.expr(set.value)};`);
-        lines.push(`setState(() {\n${body.map((line) => indentAll(line, 2)).join('\n')}\n});`);
+        break;
+      }
+      if (group.length > 0) {
+        lines.push(`setState(() {\n${group.map((line) => indentAll(line, 2)).join('\n')}\n});`);
         continue;
       }
+
       if (action.kind === 'Call') {
+        // Calls on anything but state (host services, parameters) are plain statements: wrapping
+        // them in setState would be wrong and would hide their side effects.
         lines.push(`${this.expr(action.expr)};`);
         index += 1;
         continue;
       }
-      lines.push(this.emitActionIf(action));
+      if (action.kind === 'ActionIf') lines.push(this.emitActionIf(action));
       index += 1;
     }
     return lines;
+  }
+
+  /** Whether a call statement mutates a state variable of the current screen or component. */
+  private mutatesState(expr: Expr): boolean {
+    if (expr.kind !== 'Call') return false;
+    let callee: Expr = expr.callee;
+    if (callee.kind !== 'Member') return false;
+    let receiver: Expr = callee.object;
+    while (receiver.kind === 'Member') receiver = receiver.object;
+    if (receiver.kind !== 'Ident') return false;
+    const states = this.analysis.stateTypes.get(this.currentDeclName());
+    return states !== undefined && states.has(receiver.name);
   }
 
   private emitActionIf(action: Extract<Action, { kind: 'ActionIf' }>): string {
@@ -1327,6 +1351,9 @@ class FlutterGenerator {
   }
 
   private str(expr: Expr): string {
+    // String-valued properties may be written as bare words (`fontFamily=monospace`), which are
+    // identifiers in the AST but must become Dart strings.
+    if (expr.kind === 'Ident') return `"${expr.name}"`;
     return this.expr(expr);
   }
 

@@ -256,6 +256,36 @@ test('a missing directory is reported instead of crashing', async () => {
   assert.match(result.err, /no such file or directory/);
 });
 
+test('a path that holds its own configuration is treated as its own project', async () => {
+  const outer = project({ 'plainui.config.json': '{ "srcDir": "lib/ui" }\n' });
+  const inner = join(outer, 'packages/app');
+  const config = join(inner, 'plainui.config.json');
+  mkdirSync(join(inner, 'lib/ui'), { recursive: true });
+  writeFileSync(config, '{ "srcDir": "lib/ui", "outDir": "lib/generated" }\n', 'utf8');
+  writeFileSync(join(inner, 'lib/ui/home.pui'), HOME, 'utf8');
+
+  // Run from the outer project, build the inner one by path.
+  const result = await run(['build', 'packages/app'], outer);
+  assert.equal(result.code, 0, result.err);
+  assert.equal(existsSync(join(inner, 'lib/generated/home.pui.dart')), true);
+  assert.equal(existsSync(join(outer, 'lib/generated/home.pui.dart')), false);
+});
+
+test('running from a subdirectory uses the configuration above it', async () => {
+  const directory = project({ 'plainui.config.json': '{ "srcDir": "lib/ui" }\n', 'lib/ui/home.pui': HOME });
+  const result = await run(['build'], join(directory, 'lib/ui'));
+  assert.equal(result.code, 0, result.err);
+  assert.equal(existsSync(join(directory, 'lib/generated/home.pui.dart')), true);
+});
+
+test('an absolute --out is used as given', async () => {
+  const directory = project({ 'lib/ui/home.pui': HOME });
+  const out = join(scratch, 'absolute-out');
+  const result = await run(['build', 'lib/ui', '--out', out], directory);
+  assert.equal(result.code, 0, result.err);
+  assert.equal(existsSync(join(out, 'home.pui.dart')), true);
+});
+
 test('an invalid configuration is reported', async () => {
   const directory = project({ 'plainui.config.json': '{ "target": "android" }\n', 'lib/ui/home.pui': HOME });
   const result = await run(['build', 'lib/ui'], directory);

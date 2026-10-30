@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from './diagnostics.ts';
 import { formatText } from './format.ts';
 import { describeTokens, tokenize } from './lexer.ts';
@@ -186,23 +186,55 @@ function toInputs(files: readonly string[], root: string): SourceInput[] {
 // Commands
 // ---------------------------------------------------------------------------------------------
 
-function resolveRoot(args: Args, config: Config): { roots: string[]; root: string } {
-  const explicit = args.paths.length > 0 ? args.paths.map((path) => resolve(path)) : [resolve(config.srcDir)];
-  let common = resolve('.');
-  for (const path of explicit) {
-    if (!existsSync(path)) continue;
-    const base = statSync(path).isDirectory() ? path : dirname(path);
-    if (base.length < common.length) common = base;
+interface ResolvedProject {
+  readonly config: Config;
+  /** Directories or files to read sources from. */
+  readonly roots: string[];
+  /** Directory that project-relative paths are resolved against. */
+  readonly root: string;
+}
+
+/**
+ * Work out which project a command is operating on.
+ *
+ * The rules, in order:
+ *   1. `--config` names the configuration file;
+ *   2. otherwise the nearest `plainui.config.json` at or above the working directory wins, and
+ *      its directory becomes the project root (so `plainui build` works from a subdirectory);
+ *   3. with no configuration at all, the working directory is the root;
+ *   4. a single explicit path that contains its own configuration is a project of its own, which
+ *      is what makes `plainui build examples/counter` behave the way a reader expects.
+ */
+function resolveProject(args: Args): ResolvedProject {
+  const explicit = args.flags.get('--config');
+  const configPath = findConfigPath('.', typeof explicit === 'string' ? explicit : undefined);
+
+  let config = loadConfig(configPath);
+  let root = configPath === undefined ? resolve('.') : dirname(configPath);
+  const roots = args.paths.length > 0 ? args.paths.map((path) => resolve(path)) : [resolve(root, config.srcDir)];
+
+  if (args.paths.length === 1 && typeof explicit !== 'string') {
+    const target = roots[0]!;
+    const base = existsSync(target) && statSync(target).isDirectory() ? target : dirname(target);
+    const ownConfig = join(base, 'plainui.config.json');
+    if (ownConfig !== configPath && existsSync(ownConfig)) {
+      config = loadConfig(ownConfig);
+      root = base;
+    } else if (base !== root && !base.startsWith(root + sep)) {
+      // A path outside the project: treat it as its own root.
+      root = base;
+    }
   }
-  return { roots: explicit, root: common };
+
+  const resolvedRoots = args.paths.length > 0 ? roots : [resolve(root, config.srcDir)];
+  return { config, roots: resolvedRoots, root };
 }
 
 async function commandBuild(args: Args): Promise<number> {
-  const configPath = findConfigPath('.', typeof args.flags.get('--config') === 'string' ? (args.flags.get('--config') as string) : undefined);
-  const config = loadConfig(configPath);
-  const outDir = typeof args.flags.get('--out') === 'string' ? (args.flags.get('--out') as string) : config.outDir;
-  const { roots, root } = resolveRoot(args, config);
-  const files = discoverSources(roots, config);
+  const project = resolveProject(args);
+  const outDir = typeof args.flags.get('--out') === 'string' ? (args.flags.get('--out') as string) : project.config.outDir;
+  const { roots, root } = project;
+  const files = discoverSources(roots, project.config);
 
   if (files.length === 0) {
     warn(`plainui: no .pui files found (looked in ${roots.join(', ')})`);
@@ -227,7 +259,8 @@ async function commandBuild(args: Args): Promise<number> {
 
   for (const file of result.files) {
     if (file.outputPath === undefined || file.code === undefined) continue;
-    const absolute = join(root, file.outputPath);
+    // `resolve` keeps an absolute --out absolute and treats the default as project-relative.
+    const absolute = resolve(root, file.outputPath);
     if (args.flags.has('--check')) {
       const existing = existsSync(absolute) ? readFileSync(absolute, 'utf8') : undefined;
       if (existing !== file.code) stale.push(file.outputPath);
@@ -262,9 +295,7 @@ async function commandBuild(args: Args): Promise<number> {
 }
 
 async function commandCheck(args: Args): Promise<number> {
-  const configPath = findConfigPath('.', typeof args.flags.get('--config') === 'string' ? (args.flags.get('--config') as string) : undefined);
-  const config = loadConfig(configPath);
-  const { roots, root } = resolveRoot(args, config);
+  const { config, roots, root } = resolveProject(args);
   const files = discoverSources(roots, config);
   if (files.length === 0) {
     warn(`plainui: no .pui files found (looked in ${roots.join(', ')})`);
@@ -277,9 +308,7 @@ async function commandCheck(args: Args): Promise<number> {
 }
 
 async function commandFormat(args: Args): Promise<number> {
-  const configPath = findConfigPath('.', typeof args.flags.get('--config') === 'string' ? (args.flags.get('--config') as string) : undefined);
-  const config = loadConfig(configPath);
-  const roots = args.paths.length > 0 ? args.paths.map((path) => resolve(path)) : [resolve(config.srcDir)];
+  const { config, roots } = resolveProject(args);
   const files = discoverSources(roots, config);
   if (files.length === 0) {
     warn(`plainui: no .pui files found (looked in ${roots.join(', ')})`);
@@ -331,9 +360,7 @@ async function commandFormat(args: Args): Promise<number> {
 const WATCH_INTERVAL_MS = 250;
 
 async function commandWatch(args: Args): Promise<number> {
-  const configPath = findConfigPath('.', typeof args.flags.get('--config') === 'string' ? (args.flags.get('--config') as string) : undefined);
-  const config = loadConfig(configPath);
-  const { roots, root } = resolveRoot(args, config);
+  const { config, roots } = resolveProject(args);
 
   const snapshot = (): Map<string, string> => {
     const map = new Map<string, string>();

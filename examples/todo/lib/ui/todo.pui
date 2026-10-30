@@ -1,0 +1,36 @@
+import "task_row.pui"
+
+// Lists, method calls on state and a counter all in one screen.
+
+screen Todo:
+
+    state draft: String = ""
+    state tasks: List<String> = ["Write the spec", "Build the compiler"]
+    state done: int = 0
+
+    column padding=20 gap=12:
+
+        text "Today" style=heading
+        text "$done done" style=caption
+
+        row gap=8:
+            expanded:
+                input bind=draft placeholder="What needs doing?"
+            button "Add":
+                on tap:
+                    tasks.add(draft)
+                    set draft = ""
+
+        column gap=8:
+            for index, task in tasks:
+                TaskRow(task):
+                    button "Finish" variant=text size=12:
+                        on tap:
+                            tasks.remove(task)
+                            set done = done + 1
+
+        if tasks.length == 0:
+            center:
+                column gap=4:
+                    icon check size=32
+                    text "Nothing left for today" style=secondary

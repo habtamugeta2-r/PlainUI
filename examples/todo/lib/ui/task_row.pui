@@ -1,0 +1,12 @@
+// A reusable row. Components take parameters; `slot` marks where nested children go.
+
+component TaskRow(title: String, children: List<Widget>):
+
+    card padding=12 radius=10:
+
+        row main=between cross=center:
+
+            text title
+
+            row gap=8:
+                slot
