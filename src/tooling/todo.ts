@@ -147,7 +147,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: '`derived` values',
     size: 'M',
-    status: 'next',
+    status: 'done',
     acceptance:
       '`derived total = count * 2` recomputes when its inputs change and never stores state; a widget ' +
       'test shows the derived value updating while an unrelated state change leaves it alone.',
@@ -158,7 +158,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: '`effect on <state>`',
     size: 'M',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'An effect runs after a change to the states it names and not otherwise; the lowering is ' +
       '`didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use.',

@@ -8,6 +8,32 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **Computed values (`derived`).** A screen can now name a value instead of maintaining it:
+
+  ```
+  state count: int = 0
+  derived doubled = count * 2
+  derived greeting = name == "" ? "Hello, stranger" : "Hello, ${name}"
+  ```
+
+  The value is computed on every read and never stored — the Dart target emits a getter
+  (`int get doubled => count * 2;`) rather than a field, so there is no state that can fall behind
+  the state it was derived from. That is a deliberate trade against caching: a cached field is only
+  correct while its dependency list is complete, and PlainUI has no dependency syntax yet, so a
+  missed dependency would be a silent stale value (the reason `10-decisions.md` B1 defers
+  memoisation). The cost is one evaluation per read, which suits the expressions the language
+  encourages and is documented for the ones it does not.
+
+  Types are inferred from the expression — `Int`, `Float` (`/` is float division), `Bool`, `Text`,
+  `List<T>`, or `Dynamic` for anything the compiler cannot know — and a declared type that disagrees
+  is `PUI2353`. Declaration order does not matter, because a getter is not evaluated where it is
+  written; a dependency on itself is `PUI2351` (directly or through other derived values, including
+  through `${…}` interpolation), assigning one is `PUI2350`, declaring one anywhere but the top level
+  is `PUI2352`, and never reading one is the warning `PUI2411`. The HTML preview evaluates derived
+  values once so a literal-state screen previews correctly, and the counter example and
+  `tests/golden/derived.pui` cover every inferred type — `flutter-verify.yml` taps a button and types
+  in a field to assert the computed value follows the state it reads and nothing else.
+
 - **Typed host interop.** A file can name a host import and declare what it may call from it:
 
   ```

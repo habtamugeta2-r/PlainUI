@@ -42,18 +42,21 @@ Feature work on the one target we can verify end to end, in this order:
   (`docs/01-language-spec.md` §3.5, `examples/async`, verified by `flutter-verify.yml`),
 - ~~**list identity** — `for … key=item.id`~~ — done,
 - ~~**navigation** — `navigate` / `back` with screen parameters checked at compile time~~ — done
-  (`docs/01-language-spec.md` §3.6 and §7, `examples/navigation`, tapped through in
+  (`docs/01-language-spec.md` §3.7 and §7, `examples/navigation`, tapped through in
   `flutter-verify.yml`),
 - ~~**latest-wins task cancellation** — a retry during an in-flight load cannot lose to the older
   result~~ — done (`docs/01-language-spec.md` §3.5, races in `examples/async`),
 - ~~**forms** — typed validation on `input`, gated by a `form` scope; `submit()` cannot reach the
-  handler without validating~~ — done (`docs/01-language-spec.md` §3.7,
+  handler without validating~~ — done (`docs/01-language-spec.md` §3.8,
   `docs/03-flutter-codegen.md` §Forms, `examples/forms`, tapped through in `flutter-verify.yml`),
 - ~~**typed interop** — a host surface on the import, so the calls a file makes are checked against
   declared signatures~~ — done (`docs/01-language-spec.md` §2.5, `docs/03-flutter-codegen.md`
   §Host interop, `examples/async`, verified by `dart analyze` in `flutter-verify.yml`),
-- **`derived`** and **`effect on <state>`** — the rest of the state model, per
-  [`10-decisions.md`](10-decisions.md) B1 and B2.
+- ~~**`derived`** — a computed value that is never stored, so it cannot go stale~~ — done
+  (`docs/01-language-spec.md` §3.6, `docs/03-flutter-codegen.md` §Derived values,
+  `tests/golden/derived.pui`, tapped through in `flutter-verify.yml`),
+- **`effect on <state>`** — the rest of the state model, per
+  [`10-decisions.md`](10-decisions.md) B2.
 
 
 The gate for leaving this phase is named in the vision document: a non-trivial app (navigation +

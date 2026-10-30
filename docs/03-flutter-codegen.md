@@ -324,6 +324,60 @@ Three details are deliberate rather than incidental:
 * the flag and the error are reset *before* the await, so a retry shows a spinner rather than the
   previous failure.
 
+## Derived values
+
+A `derived` declaration becomes a getter on the state class — no field, no `setState`, no
+maintenance:
+
+```dart
+class _CounterState extends State<Counter> {
+  int count = 0;
+  String name = "";
+
+  /// `derived doubled` — computed on every read, never stored.
+  int get doubled => count * 2;
+
+  /// `derived greeting` — computed on every read, never stored.
+  String get greeting => name == "" ? "Hello, stranger" : "Hello, ${name}";
+```
+
+The lowering is the whole point. There are four ways to express a computed value, and only one of
+them cannot be wrong:
+
+| Lowering | What goes wrong |
+| --- | --- |
+| a field updated in every handler | one forgotten handler and the screen shows the previous answer — the classic stale-state bug |
+| a field updated in `build` | Dart forbids it outside `setState`, and it double-computes during layout |
+| a cached field with a dependency list | correct only while the list is complete; a missing entry is silent, and PlainUI has no dependency syntax yet |
+| a getter | recomputed whenever it is read, which is whenever `build` reads it; there is nothing to keep in sync |
+
+The cost is one evaluation per read. That is the right trade for the expressions this language
+encourages (arithmetic, comparison, string building, `.length`), and it is not the right trade for
+an expensive computation in a hot path; memoisation is deliberately left open in
+[`10-decisions.md`](10-decisions.md) B1 and would have to declare its dependencies explicitly, so it
+can never be silently stale.
+
+Two details of the emission:
+
+* A getter's body is the expression, so a derived value reads other state, other derived values and
+  task internals directly — `derived loaded = items.value.length` becomes
+  `int get loaded => (_items ?? const <String>[]).length;`, reusing the null-safe accessor the
+  element lowering already relies on.
+* Order does not matter, because a getter is not evaluated where it is declared. A derived value
+  declared before the state it reads still compiles, and the checker has already rejected the one
+  ordering that does matter: a cycle (`PUI2351`).
+
+In a `component` the getters sit on the class that holds the fields, for the same reason: the
+receiver is the object that owns the state being read.
+
+### The preview
+
+The HTML preview has no Flutter runtime, so it evaluates `derived` expressions once, in declaration
+order, with the rest of the initial state, and substitutes the result wherever the value is read. A
+screen whose state is literal therefore previews correctly — `derived doubled = count * 2` with
+`count = 2` renders `4`. Values the preview cannot know (a task's rows before a load, a host call)
+degrade to the expression text rather than to a wrong number.
+
 ## Forms
 
 `form` compiles to `Form` with one generated key per form, and every `input` inside it becomes a
