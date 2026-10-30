@@ -7,7 +7,7 @@
  * contents, so the CLI can read from disk and the playground can read from `localStorage`.
  */
 
-import type { ComponentDecl, Program, TokenDecl } from '../frontend/ast.ts';
+import type { ComponentDecl, Program, ScreenDecl, TokenDecl } from '../frontend/ast.ts';
 import { check, type CheckOptions } from '../analysis/check.ts';
 import { generateFlutter } from '../codegen/flutter.ts';
 import type { Diagnostic } from '../analysis/diagnostics.ts';
@@ -17,6 +17,7 @@ import { basename, camelCase, dartImportSpecifier, dirname, extensionOf, joinPat
 import { sourceFile, type SourceFile } from '../frontend/source.ts';
 import { hashText } from './hash.ts';
 import { COMPILER_VERSION } from './compile.ts';
+import { ROUTES_FILE, generateRoutes, projectUsesNavigation, type RouteSource } from '../codegen/routes.ts';
 
 export interface SourceInput {
   readonly path: string;
@@ -82,10 +83,21 @@ export interface FileResult {
   readonly diagnostics: readonly Diagnostic[];
 }
 
+/** A generated file that belongs to the project rather than to one source file. */
+export interface ProjectFile {
+  readonly outputPath: string;
+  readonly code: string;
+}
+
 export interface ProjectResult {
   readonly ok: boolean;
   readonly files: readonly FileResult[];
   readonly diagnostics: readonly Diagnostic[];
+  /**
+   * The route table, present when the project navigates. `plainui build` writes it beside the
+   * per-file output, and `--check` compares it like any other generated file.
+   */
+  readonly routes?: ProjectFile;
 }
 
 const DEFAULT_OUT_DIR = 'lib/generated';
@@ -120,6 +132,8 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
 
   interface ImportResolution {
     readonly plainuiComponents: Map<string, ComponentDecl>;
+    /** Screens declared by imported files: navigation follows imports, like components do. */
+    readonly plainuiScreens: Map<string, ScreenDecl>;
     readonly plainuiEdges: Map<string, string>; // import path as written -> target source path
     readonly hostRoots: Set<string>;
     /** Design tokens declared by imported files: a theme is shared by importing it. */
@@ -130,6 +144,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
 
   for (const [path, entry] of parsed) {
     const components = new Map<string, ComponentDecl>();
+    const screens = new Map<string, ScreenDecl>();
     const edges = new Map<string, string>();
     const hostRoots = new Set<string>();
     const tokens = new Map<string, TokenDecl>();
@@ -150,6 +165,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
         }
         for (const decl of targetEntry.program.decls) {
           if (decl.kind === 'Component') components.set(decl.name, decl);
+          if (decl.kind === 'Screen') screens.set(decl.name, decl);
           if (decl.kind === 'Theme') {
             for (const token of decl.tokens) if (!tokens.has(token.name)) tokens.set(token.name, token);
           }
@@ -161,7 +177,13 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
       }
     }
 
-    resolutions.set(path, { plainuiComponents: components, plainuiEdges: edges, hostRoots, plainuiTokens: tokens });
+    resolutions.set(path, {
+      plainuiComponents: components,
+      plainuiScreens: screens,
+      plainuiEdges: edges,
+      hostRoots,
+      plainuiTokens: tokens,
+    });
   }
 
   // ---- cache ------------------------------------------------------------------------------
@@ -204,6 +226,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     const resolution = resolutions.get(path)!;
     const result = check(source, entry.program, {
       externalComponents: resolution.plainuiComponents,
+      externalScreens: resolution.plainuiScreens,
       externalTokens: resolution.plainuiTokens,
       hostRoots: resolution.hostRoots,
       externalNames: new Map([...declaredNames].filter(([name, file]) => file !== path)),
@@ -292,7 +315,32 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     }
   }
 
-  return { ok, files: generated, diagnostics: allDiagnostics };
+  // ---- routes ------------------------------------------------------------------------------
+  // One file for the whole project, because a route table is a project-level fact. It is written
+  // only when something navigates, so projects that do not navigate keep exactly the files they
+  // had before.
+  const routesPath = joinPath(outDir, ROUTES_FILE);
+  let routes: ProjectFile | undefined;
+  if (projectUsesNavigation([...parsed.values()].map((entry) => entry.program))) {
+    const routeSources: RouteSource[] = [];
+    for (const file of generated) {
+      if (file.outputPath === undefined) continue;
+      for (const decl of file.program.decls) {
+        if (decl.kind !== 'Screen') continue;
+        routeSources.push({
+          path: file.source.path,
+          screen: decl,
+          importSpecifier: dartImportSpecifier(routesPath, file.outputPath),
+        });
+      }
+    }
+    routes = {
+      outputPath: routesPath,
+      code: generateRoutes(routeSources, { compilerVersion: version, outputPath: routesPath, routesPath }),
+    };
+  }
+
+  return { ok, files: generated, diagnostics: allDiagnostics, ...(routes === undefined ? {} : { routes }) };
 }
 
 /** Convenience for single-file use in tests and the playground. */

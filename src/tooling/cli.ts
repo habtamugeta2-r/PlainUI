@@ -179,7 +179,9 @@ async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
   let unchanged = 0;
   const stale: string[] = [];
 
-  for (const file of result.files) {
+  // The route table is a project file, written beside the per-file output and checked the same way.
+  const projectFiles = result.routes === undefined ? [] : [result.routes];
+  for (const file of [...result.files, ...projectFiles]) {
     if (file.outputPath === undefined || file.code === undefined) continue;
     // `resolve` keeps an absolute --out absolute and treats the default as project-relative.
     const absolute = resolve(root, file.outputPath);
@@ -209,12 +211,13 @@ async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
       fail('PUI4003', `${stale.length} generated file(s) are out of date: ${stale.join(', ')}`);
       return 3;
     }
-    say(`plainui: ${result.files.length} file(s) up to date${warnings > 0 ? `, ${warnings} warning(s)` : ''}`);
+    const checkedCount = result.files.length + projectFiles.length;
+    say(`plainui: ${checkedCount} file(s) up to date${warnings > 0 ? `, ${warnings} warning(s)` : ''}`);
     return 0;
   }
 
   say(
-    `plainui: ${result.files.length} compiled, ${written} written, ${unchanged} unchanged` +
+    `plainui: ${result.files.length + projectFiles.length} compiled, ${written} written, ${unchanged} unchanged` +
       (errors > 0 ? `, ${errors} error(s)` : '') +
       (warnings > 0 ? `, ${warnings} warning(s)` : ''),
   );
