@@ -66,13 +66,17 @@ jobs:
       - name: Pack, install and use it as a consumer would
         run: |
           set -euo pipefail
+          mkdir -p /tmp/pkg
           npm pack --pack-destination /tmp/pkg > /dev/null
           mkdir -p /tmp/consumer && cd /tmp/consumer
           npm init -y > /dev/null
           npm install --silent /tmp/pkg/plainui-compiler-1.0.0.tgz
 
-          # The bin is executable and runs.
-          ./node_modules/.bin/plainui --version | grep -q '^1\.0\.0$'
+          # The bin is executable and runs. A regex here needs one level of escaping for
+          # bash and another for the YAML block scalar; the first version of this line
+          # double-escaped the dots and never matched — which is how this job failed its
+          # first real run.
+          test "$(./node_modules/.bin/plainui --version)" = "1.0.0"
 
           # A project made by the installed CLI builds, checks and formats.
           mkdir -p app && cd app
