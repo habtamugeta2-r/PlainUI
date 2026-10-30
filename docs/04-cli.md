@@ -130,6 +130,22 @@ lists every code and title.
 Lists every built-in element with its arguments, properties and events, straight from the
 registry — the same data `docs/07-reference.md` is generated from.
 
+### `plainui next`
+
+Prints the roadmap from inside the tool: the item being worked on, what "done" means for it, where
+it lands, and how much of each phase is finished.
+
+```bash
+plainui next                     # the current item, plus unfinished work in every phase
+plainui next --all               # include finished items
+plainui next --phase adoption    # one phase (flutter-depth | architecture | adoption)
+plainui next --json              # machine-readable, for a dashboard or a CI job
+```
+
+The table behind it lives in `src/tooling/todo.ts`, not in prose: `docs/11-todo.md` is rendered from
+the same data by `npm run docs:ref`, and the test suite fails on an item with no acceptance
+criterion or with two items marked `next`. An unknown `--phase` exits `2`.
+
 ## Configuration
 
 `plainui.config.json`, found in the working directory or the nearest parent:

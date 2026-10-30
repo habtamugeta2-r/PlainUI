@@ -133,4 +133,6 @@ What would make this fail, and the rules that keep it from failing:
 - **Unverified targets.** A target with no CI-verified output is documentation, not support.
 
 Every claim on this page is either backed by a test or listed as work in
-[`06-roadmap.md`](06-roadmap.md). When the two disagree, the roadmap is right.
+[`11-todo.md`](11-todo.md) — the roadmap as data, printed by `plainui next` and rendered by
+`npm run docs:ref`. When the two disagree, the todo table is right. The decisions behind the plan,
+each with the condition that would reopen it, are in [`10-decisions.md`](10-decisions.md).

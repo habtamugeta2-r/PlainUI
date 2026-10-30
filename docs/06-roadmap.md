@@ -19,9 +19,18 @@ could go wrong — the second half matters more.
 
 Flutter depth first, then a target abstraction proven by Jetpack Compose, then breadth. The reasoning
 and the rules — capability tiers, the type system, the state model, the four-point definition of
-"supported" — are in [`09-vision.md`](09-vision.md); this page is the order of work and the risks.
+"supported" — are in [`09-vision.md`](09-vision.md).
+
+The order itself is now data: [`11-todo.md`](11-todo.md) is generated from `src/tooling/todo.ts`,
+`plainui next` prints the current item, and the test suite refuses an item without an acceptance
+criterion. This page keeps the *narrative* — why this order, and what could go wrong; when the two
+disagree about order, the table wins. The decisions behind both are in
+[`10-decisions.md`](10-decisions.md).
 
 ## Next, in order
+
+*(The machine-checked order is [`11-todo.md`](11-todo.md); the sections below are the reasoning
+behind it. Ticked items are the ones already on `main`.)*
 
 ### 0. Flutter depth — in progress
 

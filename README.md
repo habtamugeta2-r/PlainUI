@@ -291,6 +291,8 @@ screen Products:
 | [`docs/06-roadmap.md`](docs/06-roadmap.md) | What is next, and the honest risks |
 | [`docs/07-reference.md`](docs/07-reference.md) | Widget + property reference (generated from the registry) |
 | [`docs/09-vision.md`](docs/09-vision.md) | One language, many targets: tiers, type system, state model, sequencing |
+| [`docs/10-decisions.md`](docs/10-decisions.md) | Decision record: what was decided, why, and what would reopen it |
+| [`docs/11-todo.md`](docs/11-todo.md) | The roadmap as data (generated; also printed by `plainui next`) |
 
 ## Playground
 
