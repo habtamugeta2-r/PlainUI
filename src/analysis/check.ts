@@ -24,6 +24,9 @@ import {
   type EventHandler,
   type Expr,
   type ForNode,
+  type HostDecl,
+  type HostFn,
+  type ImportDecl,
   type Node,
   type Param,
   type Program,
@@ -38,6 +41,7 @@ import {
   isBoolType,
   isNumericType,
   isStringType,
+  returnTypeFromText,
   typeFromText,
   walkExpr,
   walkNodes,
@@ -99,6 +103,25 @@ export type ResolvedTag =
   | { readonly kind: 'builtin'; readonly spec: WidgetSpec }
   | { readonly kind: 'component'; readonly decl: ComponentDecl; readonly external: boolean }
   | { readonly kind: 'host' };
+
+/**
+ * One module a file may call, as declared by `import "../data.dart" as data:` and its block.
+ *
+ * The surface is what turns an interop boundary from a guess into a contract: a qualified call is
+ * checked against the module that was named, and a call to a declared name is checked wherever it is
+ * written. Calls to names that are *not* declared stay pass-through — the language does not require
+ * declaring the host, only declaring what you want checked.
+ */
+interface HostModule {
+  readonly prefix: string;
+  readonly path: string;
+  readonly decls: Map<string, HostDecl>;
+}
+
+interface HostTarget {
+  readonly decl: HostDecl;
+  readonly module: HostModule;
+}
 
 export interface VarInfo {
   readonly name: string;
@@ -226,6 +249,14 @@ class Checker {
   private readonly formStack: FormContext[] = [];
   /** True while checking a form's own `on submit:` body, where `submit()` would recurse. */
   private inOwnSubmitHandler = false;
+  /** Host surfaces by the name they were imported under: `import "../data.dart" as data:`. */
+  private readonly hostModules = new Map<string, HostModule>();
+  /** Every declared host name, across modules — for "did you mean" and bare-call resolution. */
+  private readonly hostNames = new Map<string, HostTarget[]>();
+  /** Every alias in the file, whether or not it declares anything. */
+  private readonly hostAliases = new Set<string>();
+  /** The names a host import can be referred to by: `../data.dart` → `data`. */
+  private readonly importStems = new Set<string>();
 
   constructor(file: SourceFile, program: Program, options: CheckOptions, bag: DiagnosticBag) {
     this.file = file;
@@ -240,6 +271,7 @@ class Checker {
 
   run(): Analysis {
     this.indexThemes();
+    this.indexHostSurfaces();
     this.indexDeclarations();
     this.validateStyles();
 
@@ -607,6 +639,23 @@ class Checker {
       hasSlotRef: { value: false },
     };
 
+    // Initialisers are expressions too: a `task items: List<Todo> = loadTodos()` names a function,
+    // its arguments name values, and a state initialiser can call the host. They were unchecked
+    // while the only interesting thing about them was their type; a declared host surface makes
+    // them the place where a typo is most likely to hide.
+    for (const state of decl.state) {
+      this.checkExpr(state.init, scope, 'value', true);
+      const type = this.hostValueType(state.init, scope);
+      if (type !== undefined) this.checkHostAssign(type, this.stateTypes.get(decl.name)?.get(state.name), state.init.span, `state "${state.name}"`);
+    }
+    for (const task of decl.tasks) {
+      // A task awaits its call: that is what the generated loader does, so an asynchronous host
+      // function is legal here without an explicit `await`.
+      this.checkExpr(task.init, scope, 'value', true, true);
+      const type = this.hostValueType(task.init, scope);
+      if (type !== undefined) this.checkHostAssign(type, this.taskTypes.get(decl.name)?.get(task.name), task.init.span, `task "${task.name}"`);
+    }
+
     this.checkBody(decl.body, scope, ctx);
 
     // A component that renders `slot` necessarily uses its `children` parameter.
@@ -748,6 +797,15 @@ class Checker {
         this.checkEvents(el, GENERIC_EVENTS, scope, undefined, true);
         break;
       case 'host': {
+        // A declared host widget is checked like a component: its arguments are a constructor's
+        // arguments, and the surface exists so that a wrong one is a .pui error rather than a Dart
+        // one. Everything else stays the escape hatch it has always been.
+        const declared = this.hostNames.get(el.tag)?.find((candidate) => candidate.decl.kind === 'HostWidget')?.decl;
+        if (declared !== undefined) {
+          this.checkHostWidgetCall(el, declared, scope);
+          this.checkEvents(el, GENERIC_EVENTS, scope, undefined, true);
+          break;
+        }
         // A capitalised tag is a host widget by design, which makes a typo in a component name
         // indistinguishable from a deliberate escape hatch — except that one of them is a letter
         // away from a component that *is* in scope. Say so in the hint instead of only noting that
@@ -1013,6 +1071,62 @@ class Checker {
     this.checkExpr(prop.value, scope, 'value', false);
   }
 
+  /** Arguments of a declared host widget, checked against the surface. */
+  private checkHostWidgetCall(el: ElementNode, decl: HostDecl, scope: Scope): void {
+    const supplied = new Set<string>();
+    let positionalIndex = 0;
+    for (const arg of el.args) {
+      const param =
+        arg.name === undefined ? decl.params[positionalIndex] : decl.params.find((candidate) => candidate.name === arg.name);
+      if (arg.name === undefined) positionalIndex += 1;
+      if (param === undefined) {
+        if (arg.name !== undefined) {
+          this.error(
+            'PUI2342',
+            `${decl.name} has no parameter \"${arg.name}\"`,
+            arg.span,
+            didYouMean(arg.name, decl.params.map((candidate) => candidate.name)) ?? acceptedHostParams(decl),
+          );
+        } else {
+          this.error('PUI2341', `${decl.name} takes ${decl.params.length} argument${decl.params.length === 1 ? '' : 's'}`, arg.span, acceptedHostParams(decl));
+        }
+        continue;
+      }
+      supplied.add(param.name);
+      this.checkHostArg(param, arg.value, scope);
+    }
+    // A property whose name is a declared parameter is a constructor argument too, because that is
+    // how a host widget's arguments are emitted. Other properties are layout and wrap the call.
+    for (const prop of el.props) {
+      const param = decl.params.find((candidate) => candidate.name === prop.name);
+      if (param === undefined || supplied.has(param.name)) continue;
+      supplied.add(param.name);
+      this.checkHostArg(param, prop.value, scope);
+    }
+    for (const param of decl.params) {
+      if (param.defaultValue !== undefined || supplied.has(param.name)) continue;
+      this.error(
+        'PUI2341',
+        `${decl.name} needs \"${param.name}\"`,
+        el.tagSpan,
+        `${decl.name}(${decl.params.map((candidate) => candidate.name).join(', ')})`,
+      );
+    }
+  }
+
+  private checkHostArg(param: Param, value: Expr, scope: Scope): void {
+    if (param.typeText === undefined) return;
+    const expected = typeFromText(param.typeText);
+    const actual = this.typeOfExpression(value, scope);
+    if (assignable(expected, actual)) return;
+    this.error(
+      'PUI2343',
+      `argument \"${param.name}\" expects ${typeName(expected)}`,
+      value.span,
+      `got ${typeName(actual)}`,
+    );
+  }
+
   /** Structural checks on a property/argument value, driven by the registry's kind. */
   private checkValueShape(spec: PropSpec | ArgSpec, value: Expr, label?: string): void {
     const name = label ?? spec.name;
@@ -1241,6 +1355,10 @@ class Checker {
               action.value.span,
               'write it as its own statement inside the handler: navigate Detail(id: x)',
             );
+          }
+          const hostType = this.hostValueType(action.value, scope);
+          if (hostType !== undefined) {
+            this.checkHostAssign(hostType, varInfo?.type, action.value.span, `state \"${action.target.name}\"`);
           }
           let assignsSubmit = false;
           walkExpr(action.value, (inner) => {
@@ -1576,7 +1694,7 @@ class Checker {
    * (`signIn(...)`), which is the seam where application logic stays in Dart. A *value* must
    * resolve to something the compiler knows about.
    */
-  private checkExpr(expr: Expr, scope: Scope, position: 'value' | 'callee', allowAwait: boolean): void {
+  private checkExpr(expr: Expr, scope: Scope, position: 'value' | 'callee', allowAwait: boolean, awaiting = false): void {
     switch (expr.kind) {
       case 'Ident': {
         const varInfo = this.resolve(expr.name, scope);
@@ -1628,6 +1746,12 @@ class Checker {
         }
         this.checkExpr(expr.callee, scope, 'callee', allowAwait);
         for (const arg of expr.args) this.checkExpr(arg.value, scope, 'value', allowAwait);
+        const target = this.hostTarget(expr, scope, true);
+        if (target !== undefined) {
+          this.checkHostCall(expr, target, scope, awaiting);
+        } else {
+          this.nearMissHostCall(expr);
+        }
         return;
       }
       case 'Index':
@@ -1643,7 +1767,7 @@ class Checker {
             'a widget tree is built synchronously; move the async work into an event handler',
           );
         }
-        this.checkExpr(expr.operand, scope, 'value', allowAwait);
+        this.checkExpr(expr.operand, scope, 'value', allowAwait, expr.op === 'await' ? true : awaiting);
         return;
       case 'Binary':
         this.checkExpr(expr.left, scope, 'value', allowAwait);
@@ -1684,10 +1808,282 @@ class Checker {
     this.error('PUI2005', `unknown identifier "${root}" in string interpolation`, span, 'declare it with "state", or pass it as a parameter');
   }
 
+  // ------------------------------------------------------------------------------------------
+  // Host surfaces
+  // ------------------------------------------------------------------------------------------
+
+  /**
+   * Read every `import "…" as name:` block into the tables the call checker uses.
+   *
+   * The block is a promise about Dart, and it is checked twice: here, at the call sites in this
+   * file, and later by the Dart compiler, which sees the generated call with its real arguments. A
+   * declaration that lies about the host fails the build one step later than the .pui error — which
+   * is exactly the right order, because the .pui file is where a person can still read it.
+   */
+  private indexHostSurfaces(): void {
+    // Which names belong to an import, so `data.loadTasks(…)` can be told apart from a method call
+    // on a value named `data`. Derived from this file's own imports, not from project options, so a
+    // single-file compile says the same thing as a project build.
+    for (const imp of this.program.imports) {
+      if (imp.path.endsWith('.pui')) continue;
+      const stem = (imp.path.split('/').pop() ?? imp.path).replace(/\.[^.]+$/, '');
+      this.importStems.add(stem);
+      this.importStems.add(camelCaseOf(imp.path));
+    }
+
+    for (const imp of this.program.imports) {
+      if (imp.surface === undefined && imp.alias === undefined) continue;
+      if (imp.path.endsWith('.pui')) {
+        this.error(
+          'PUI2346',
+          'a host surface belongs to a host file',
+          imp.aliasSpan ?? imp.pathSpan,
+          `\"${imp.path}\" is a PlainUI file; its components and screens are already checked — drop the block`,
+        );
+        continue;
+      }
+      if (imp.alias === undefined) {
+        this.error(
+          'PUI2346',
+          'a host surface needs a name',
+          imp.surfaceSpan ?? imp.pathSpan,
+          `write import \"${imp.path}\" as ${camelCaseOf(imp.path)}: so a call can say which module it means`,
+        );
+        continue;
+      }
+      if (this.hostModules.has(imp.alias)) {
+        this.error('PUI2346', `\"${imp.alias}\" is already the name of another import`, imp.aliasSpan ?? imp.pathSpan, 'rename one of them');
+        continue;
+      }
+      this.hostAliases.add(imp.alias);
+      if (this.components.has(imp.alias) || this.screens.has(imp.alias)) {
+        this.error(
+          'PUI2346',
+          `\"${imp.alias}\" is already a ${this.components.has(imp.alias) ? 'component' : 'screen'} in this file`,
+          imp.aliasSpan ?? imp.pathSpan,
+          'import the host file under a different name',
+        );
+      }
+      const module: HostModule = { prefix: imp.alias, path: imp.path, decls: new Map() };
+      this.hostModules.set(imp.alias, module);
+
+      for (const decl of imp.surface ?? []) {
+        this.checkHostDeclShape(decl, module);
+      }
+    }
+  }
+
+  private checkHostDeclShape(decl: HostDecl, module: HostModule): void {
+    const capitalised = /^[A-Z]/.test(decl.name);
+    if (decl.kind === 'HostWidget' && !capitalised) {
+      this.error(
+        'PUI2346',
+        `host widget \"${decl.name}\" must be capitalised`,
+        decl.nameSpan,
+        'a host widget is a constructor, and constructors are capitalised in the generated Dart',
+      );
+    }
+    if (decl.kind === 'HostFn' && capitalised) {
+      this.error(
+        'PUI2346',
+        `\"${decl.name}\" is capitalised, so it is a widget constructor`,
+        decl.typeSpan ?? decl.nameSpan,
+        'a constructor has no return type: remove the "->", or rename the function',
+      );
+    }
+    if (module.decls.has(decl.name)) {
+      this.error('PUI2346', `\"${decl.name}\" is declared twice in this surface`, decl.nameSpan, 'a name is declared once per module');
+      return;
+    }
+    module.decls.set(decl.name, decl);
+    const existing = this.hostNames.get(decl.name);
+    if (existing === undefined) this.hostNames.set(decl.name, [{ decl, module }]);
+    else existing.push({ decl, module });
+
+    for (const param of decl.params) {
+      if (param.typeText === undefined) {
+        this.error(
+          'PUI2346',
+          `host parameter \"${param.name}\" needs a type`,
+          param.nameSpan,
+          `a surface exists to check types: write ${param.name}: String (or the type the host declares)`,
+        );
+        continue;
+      }
+      this.checkTypeSpelling(param.typeText, param.typeSpan ?? param.nameSpan);
+    }
+    if (decl.kind === 'HostFn' && decl.typeText !== undefined) this.checkTypeSpelling(decl.typeText, decl.typeSpan ?? decl.nameSpan);
+  }
+
+  /**
+   * Resolve the module a call names, if it names one.
+   *
+   * `report` is false when the answer is only needed for typing (a nested call inside an argument):
+   * the same call is visited by `checkExpr` and reported once there.
+   */
+  private hostTarget(call: CallExpr, scope: Scope, report: boolean): HostTarget | undefined {
+    const callee = call.callee;
+
+    if (callee.kind === 'Ident') {
+      // A variable of the same name wins, and saying so is better than a wrong type later.
+      if (this.resolve(callee.name, scope) !== undefined) return undefined;
+      const candidates = this.hostNames.get(callee.name);
+      if (candidates === undefined) return undefined;
+      if (candidates.length === 1) return candidates[0];
+      if (report) {
+        this.error(
+          'PUI2345',
+          `\"${callee.name}\" is declared by ${candidates.length} host modules`,
+          callee.span,
+          `qualify the call: ${candidates.map((candidate) => `${candidate.module.prefix}.${callee.name}`).join(' or ')}`,
+        );
+      }
+      return candidates[0];
+    }
+
+    if (callee.kind !== 'Member' || callee.object.kind !== 'Ident') return undefined;
+    const prefix = callee.object.name;
+    const module = this.hostModules.get(prefix);
+    if (module === undefined) {
+      // A value named `data` is a value, not a module; only an import name gets this diagnostic.
+      if (report && this.resolve(prefix, scope) === undefined && this.importStems.has(prefix) && !/^[A-Z]/.test(prefix)) {
+        this.error(
+          'PUI2347',
+          `\"${prefix}\" is an import without a surface`,
+          callee.object.span,
+          `write import \"…\" as ${prefix}: and declare ${callee.name} under it, or call it without the prefix`,
+        );
+      }
+      return undefined;
+    }
+    const decl = module.decls.get(callee.name);
+    if (decl === undefined) {
+      if (report) {
+        this.error(
+          'PUI2340',
+          `\"${prefix}\" declares no \"${callee.name}\"`,
+          callee.nameSpan,
+          didYouMean(callee.name, [...module.decls.keys()]) ??
+            (module.decls.size === 0
+              ? `nothing is declared under this import; add ${callee.name}(…) to the block`
+              : `declared here: ${listOf([...module.decls.keys()], 8)}`),
+        );
+      }
+      return undefined;
+    }
+    return { decl, module };
+  }
+
+  /** Type-check a call to a declared host function, and return the value it yields. */
+  private checkHostCall(call: CallExpr, target: HostTarget, scope: Scope, awaiting: boolean): void {
+    const { decl } = target;
+    if (decl.kind === 'HostWidget') {
+      this.error(
+        'PUI2340',
+        `\"${decl.name}\" is a host widget, not a function`,
+        call.span,
+        `write it as an element: ${decl.name}(${decl.params.map((param) => `${param.name}: ${param.name === 'value' ? '…' : '…'}`).join(', ')}) — or drop it from the surface`,
+      );
+      return;
+    }
+
+    const supplied = new Map<string, Expr>();
+    let positionalIndex = 0;
+    for (const arg of call.args) {
+      let param = arg.name === undefined ? decl.params[positionalIndex] : decl.params.find((candidate) => candidate.name === arg.name);
+      if (arg.name === undefined) positionalIndex += 1;
+      if (param === undefined) {
+        if (arg.name !== undefined) {
+          this.error(
+            'PUI2342',
+            `${decl.name} has no parameter \"${arg.name}\"`,
+            arg.span,
+            didYouMean(arg.name, decl.params.map((candidate) => candidate.name)) ?? acceptedHostParams(decl),
+          );
+        } else {
+          this.error('PUI2341', `${decl.name} takes ${decl.params.length} argument${decl.params.length === 1 ? '' : 's'}`, arg.span, acceptedHostParams(decl));
+        }
+        continue;
+      }
+      if (supplied.has(param.name)) {
+        this.error('PUI2341', `argument \"${param.name}\" was supplied twice`, arg.span, 'supply it once');
+        continue;
+      }
+      supplied.set(param.name, arg.value);
+      if (param.typeText === undefined) continue;
+      const expected = typeFromText(param.typeText);
+      const actual = this.typeOfExpression(arg.value, scope);
+      if (!assignable(expected, actual)) {
+        this.error(
+          'PUI2343',
+          `argument \"${param.name}\" of ${decl.name} expects ${typeName(expected)}`,
+          arg.value.span,
+          `got ${typeName(actual)}`,
+        );
+      }
+    }
+
+    for (const param of decl.params) {
+      if (param.defaultValue !== undefined || supplied.has(param.name)) continue;
+      this.error(
+        'PUI2341',
+        `${decl.name} needs \"${param.name}\"`,
+        call.span,
+        `${decl.name}(${decl.params.map((candidate) => candidate.name).join(', ')})`,
+      );
+    }
+
+    if (decl.typeText === undefined) return;
+    const { async } = returnTypeFromText(decl.typeText);
+    if (async && !awaiting) {
+      this.error(
+        'PUI2344',
+        `${decl.name} is asynchronous`,
+        call.span,
+        `call it with await, or give it a "task": task value: ${typeName(returnTypeFromText(decl.typeText).type)} = ${decl.name}(…)`,
+      );
+    }
+  }
+
+  /** The value a host call yields, when the expression is one — used for state, tasks and `set`. */
+  private hostValueType(expr: Expr, scope: Scope): UiType | undefined {
+    if (expr.kind === 'Paren') return this.hostValueType(expr.inner, scope);
+    if (expr.kind === 'Unary' && expr.op === 'await') return this.hostValueType(expr.operand, scope);
+    if (expr.kind !== 'Call') return undefined;
+    const target = this.hostTarget(expr, scope, false);
+    if (target === undefined || target.decl.kind !== 'HostFn' || target.decl.typeText === undefined) return undefined;
+    return returnTypeFromText(target.decl.typeText).type;
+  }
+
+  private checkHostAssign(value: UiType, target: UiType | undefined, span: Span, where: string): void {
+    if (target === undefined) return;
+    if (assignable(target, value)) return;
+    this.error('PUI2343', `${where} expects ${typeName(target)}`, span, `the host call produces ${typeName(value)}`);
+  }
+
+  /** A call to a name that no component, state or surface provides, but that a surface nearly does. */
+  private nearMissHostCall(call: CallExpr): void {
+    if (call.callee.kind !== 'Ident') return;
+    const suggestion = didYouMean(call.callee.name, [...this.hostNames.keys()]);
+    if (suggestion === undefined) return;
+    this.warning(
+      'PUI2410',
+      `\"${call.callee.name}\" is not declared in any host surface`,
+      call.callee.span,
+      `${suggestion} — or declare it, so the call is checked instead of passed through`,
+    );
+  }
+
   private typeOfExpression(expr: Expr, scope: Scope): UiType {
     if (expr.kind === 'Ident') {
       const varInfo = this.resolve(expr.name, scope);
       if (varInfo !== undefined) return varInfo.type;
+    }
+    if (expr.kind === 'Call') {
+      const target = this.hostTarget(expr, scope, false);
+      if (target !== undefined && target.decl.kind === 'HostFn' && target.decl.typeText !== undefined) {
+        return returnTypeFromText(target.decl.typeText).type;
+      }
     }
     if (expr.kind === 'Member' && expr.object.kind === 'Ident') {
       const varInfo = this.resolve(expr.object.name, scope);
@@ -1801,6 +2197,57 @@ function isNumericLiteral(expr: Expr): boolean {
  * Uppercase-initial names, imported roots and `context` are references to the host program;
  * lowercase unknown names are almost certainly typos and are reported.
  */
+/**
+ * Can a value of type `actual` be passed where `expected` is demanded?
+ *
+ * Deliberately conservative in one direction only: `dynamic` is compatible with everything, because
+ * a type the compiler could not infer (`someHostValue`) must not turn into a false error, while a
+ * type it *did* infer has to match. `named` types compare by name and never to a primitive: the
+ * compiler does not know what `Todo` contains, but it does know `Todo` is not a `String`.
+ */
+function assignable(expected: UiType, actual: UiType): boolean {
+  if (expected.kind === 'nullable') {
+    return actual.kind === 'nullable' ? assignable(expected.inner, actual.inner) : assignable(expected.inner, actual);
+  }
+  if (actual.kind === 'nullable') return false;
+  if (expected.kind === 'dynamic' || actual.kind === 'dynamic') return true;
+  switch (expected.kind) {
+    case 'string':
+      return actual.kind === 'string';
+    case 'bool':
+      return actual.kind === 'bool';
+    case 'int':
+      return actual.kind === 'int';
+    case 'double':
+      return actual.kind === 'double' || actual.kind === 'int';
+    case 'num':
+      return actual.kind === 'num' || actual.kind === 'int' || actual.kind === 'double';
+    case 'list':
+      return actual.kind === 'list' ? assignable(expected.element, actual.element) : false;
+    case 'map':
+      return actual.kind === 'map';
+    case 'task':
+      return actual.kind === 'task' ? assignable(expected.value, actual.value) : false;
+    case 'named':
+      return actual.kind === 'named' && actual.name === expected.name;
+    default:
+      return true;
+  }
+}
+
+/** `../data.dart` → `data`; `../app_state.dart` → `appState`. */
+function camelCaseOf(path: string): string {
+  const stem = (path.split('/').pop() ?? path).replace(/\.[^.]+$/, '');
+  return stem.replace(/[_-]+([a-zA-Z0-9])/g, (_, next: string) => next.toUpperCase());
+}
+
+function acceptedHostParams(decl: HostFn | { readonly params: readonly Param[] }): string {
+  if (decl.params.length === 0) return 'it takes no arguments';
+  return `accepted parameters: ${decl.params
+    .map((param) => `${param.name}: ${param.typeText ?? 'dynamic'}${param.defaultValue === undefined ? '' : ' = …'}`)
+    .join(', ')}`;
+}
+
 function isHostReference(name: string, hostRoots: ReadonlySet<string> | undefined): boolean {
   if (name === 'context' || name === 'this') return true;
   if (/^[A-Z]/.test(name)) return true;

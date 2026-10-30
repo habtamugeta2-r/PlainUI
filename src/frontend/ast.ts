@@ -135,12 +135,49 @@ export type Expr =
 // Declarations
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * One entry in a host surface: `loadTasks(filter: String) -> Future<List<String>>`.
+ *
+ * A lowercase name declares a function the file may call; a capitalised one declares a host widget
+ * constructor it may use. The block exists because PlainUI will not guess: an unqualified call can
+ * be passed through to the host forever, but a call to a declared name is checked against the
+ * declaration, and a *qualified* call is checked against the module it names.
+ */
+export interface HostFn {
+  readonly kind: 'HostFn';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly params: readonly Param[];
+  /** Type text after `->`, if written. `Future<T>` also says the call is asynchronous. */
+  readonly typeText?: string;
+  readonly typeSpan?: Span;
+}
+
+/** `AppLogo(size: double = 24)` inside a host surface — a constructor the file may call. */
+export interface HostWidget {
+  readonly kind: 'HostWidget';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly params: readonly Param[];
+}
+
+export type HostDecl = HostFn | HostWidget;
+
 export interface ImportDecl {
   readonly kind: 'Import';
   readonly span: Span;
   /** Path exactly as written, without quotes. */
   readonly path: string;
   readonly pathSpan: Span;
+  /** `import "../data.dart" as data:` — the name a qualified call uses. */
+  readonly alias?: string;
+  readonly aliasSpan?: Span;
+  /** The declarations written under the import, when the block was used. */
+  readonly surface?: readonly HostDecl[];
+  /** Span of the whole block, for diagnostics that talk about the surface. */
+  readonly surfaceSpan?: Span;
 }
 
 export interface Param {
@@ -422,6 +459,20 @@ export function typeFromText(text: string): UiType {
   if (plainList !== null) return { kind: 'list', element: DYNAMIC };
   if (/^Map\s*</.test(trimmed)) return { kind: 'map' };
   return { kind: 'named', name: trimmed };
+}
+
+/**
+ * A host return type, split into what the call yields and whether it yields it asynchronously.
+ *
+ * `-> Future<List<String>>` is a `List<String>` that arrives later; the difference matters at call
+ * sites (an asynchronous call needs `await` or a `task`) and nowhere else, so the model keeps one
+ * flag rather than a `Future` type that every generator would have to unwrap.
+ */
+export function returnTypeFromText(text: string): { readonly async: boolean; readonly type: UiType } {
+  const trimmed = text.trim();
+  const match = /^Future\s*<\s*(.+)\s*>$/.exec(trimmed);
+  if (match !== null) return { async: true, type: typeFromText(match[1]!) };
+  return { async: false, type: typeFromText(trimmed) };
 }
 
 export function typeToText(type: UiType): string {

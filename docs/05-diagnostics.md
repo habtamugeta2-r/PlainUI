@@ -76,6 +76,14 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2334`](#pui2334) | error | submit() inside its own handler |
 | [`PUI2335`](#pui2335) | error | Form inside a form |
 | [`PUI2336`](#pui2336) | error | submit() takes no arguments |
+| [`PUI2340`](#pui2340) | error | Host surface has no such name |
+| [`PUI2341`](#pui2341) | error | Wrong arguments for a host declaration |
+| [`PUI2342`](#pui2342) | error | Unknown argument name |
+| [`PUI2343`](#pui2343) | error | Type mismatch at the host boundary |
+| [`PUI2344`](#pui2344) | error | Asynchronous host call used directly |
+| [`PUI2345`](#pui2345) | error | Host name declared by two modules |
+| [`PUI2346`](#pui2346) | error | Malformed host surface |
+| [`PUI2347`](#pui2347) | error | Qualified call on an import without a surface |
 | [`PUI2320`](#pui2320) | error | Unknown screen in navigate |
 | [`PUI2321`](#pui2321) | error | Navigation outside an event handler |
 | [`PUI2322`](#pui2322) | error | Wrong arguments for the target screen |
@@ -84,6 +92,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2402`](#pui2402) | error | Loop over a non-iterable |
 | [`PUI2403`](#pui2403) | warning | Multiple children in a single-child element |
 | [`PUI2404`](#pui2404) | warning | Unused state |
+| [`PUI2410`](#pui2410) | warning | Call to an undeclared host function |
 | [`PUI2408`](#pui2408) | warning | Submit handler never triggered |
 | [`PUI2409`](#pui2409) | warning | Form validates nothing |
 | [`PUI2405`](#pui2405) | warning | Unused component parameter |
@@ -627,6 +636,70 @@ submit() runs the form it is written in; there is nothing to pass it.
 
 *Fix:* Write submit() on its own.
 
+### PUI2340
+
+**Host surface has no such name** — error
+
+An import with a surface declares exactly the names the file may call through it, so a name that is not in the block is not in the module.
+
+*Fix:* Declare it under the import, or call one of the names that is declared there.
+
+### PUI2341
+
+**Wrong arguments for a host declaration** — error
+
+A declared host function or widget takes the parameters it declares: no more, no fewer, and each one once.
+
+*Fix:* Match the declaration, or change the declaration to match the host.
+
+### PUI2342
+
+**Unknown argument name** — error
+
+The argument name is not one of the declared parameters, so the generated call would be a Dart error.
+
+*Fix:* Rename the argument to a declared parameter.
+
+### PUI2343
+
+**Type mismatch at the host boundary** — error
+
+The value passed to a declared host call — or the value a host call produces — does not have the declared type.
+
+*Fix:* Pass the declared type, or correct the declaration.
+
+### PUI2344
+
+**Asynchronous host call used directly** — error
+
+A host function declared as returning Future<T> produces its value later. Using it as a value without await would pass a future where a value is expected.
+
+*Fix:* Call it with await inside a handler, or give it a task.
+
+### PUI2345
+
+**Host name declared by two modules** — error
+
+Two imports declare the same host name, so an unqualified call does not say which one it means.
+
+*Fix:* Qualify the call with the module name.
+
+### PUI2346
+
+**Malformed host surface** — error
+
+A surface needs an import to belong to, a name to be called by, unique declaration names, and a type on every parameter.
+
+*Fix:* Fix the import line or the declaration the diagnostic points at.
+
+### PUI2347
+
+**Qualified call on an import without a surface** — error
+
+`data.loadTasks(…)` names a module, but the import has no name and no block, so the generated Dart would reference an undefined prefix.
+
+*Fix:* Write import "…" as data: with a block, or call the function without the prefix.
+
 ### PUI2320
 
 **Unknown screen in navigate** — error
@@ -692,6 +765,14 @@ This element renders one child; extra children are wrapped in a column by the ge
 This state variable is declared but never read or written.
 
 *Fix:* Remove it, or use it.
+
+### PUI2410
+
+**Call to an undeclared host function** — warning
+
+The name is not declared in any host surface, but a declared one is spelled almost the same. Undeclared calls are passed through to the host, so the mistake only surfaces when Dart compiles the output.
+
+*Fix:* Fix the spelling, or declare the function under its import.
 
 ### PUI2408
 
