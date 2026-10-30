@@ -9,9 +9,9 @@ This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same
 `plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no
 acceptance criterion, an unknown size, or a phase that does not exist.
 
-**Now:** Latest-wins task cancellation (`task-cancellation`, S) — A retry during an in-flight load cannot be overwritten by the older result; a test with two differing delays proves the second result wins.
+**Now:** Forms and validation (`forms`, L) — Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; an invalid submission is impossible to express, not merely discouraged.
 
-## Flutter depth — 4/10
+## Flutter depth — 5/10
 
 *Gate to leave this phase:* A demo app — navigation, tokens, async, forms and keyed lists — written without dropping into Dart for anything routine.
 
@@ -21,8 +21,8 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 | ✔ | ~~`task` — async values~~ | `L` | `task items: List<Todo> = load()` exposes loading/error/value/retry; the generated loader resets before the await and checks `mounted` after it; `examples/async` is widget-tested in CI. |
 | ✔ | ~~List identity~~ | `S` | `for item in items key=item.id:` wraps the row in `KeyedSubtree(key: ValueKey(...))`; the key is checked in the loop scope; the todo example uses it. |
 | ✔ | ~~Navigation~~ | `L` | `screen Detail(id: String)` takes parameters; `navigate Detail(id=x)` and `back()` are checked against the target screen; a project-level route table is generated; an example taps through and back in a widget test. |
-| ▸ | **Latest-wins task cancellation** | `S` | A retry during an in-flight load cannot be overwritten by the older result; a test with two differing delays proves the second result wins. |
-| · | Forms and validation | `L` | Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; an invalid submission is impossible to express, not merely discouraged. |
+| ✔ | ~~Latest-wins task cancellation~~ | `S` | A retry during an in-flight load cannot be overwritten by the older result; a test with two differing delays proves the second result wins. |
+| ▸ | **Forms and validation** | `L` | Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; an invalid submission is impossible to express, not merely discouraged. |
 | · | Typed interop | `M` | Host components and imports are declared with signatures, and calls to them are type-checked rather than passed through. |
 | · | `derived` values | `M` | `derived total = count * 2` recomputes when its inputs change and never stores state; a widget test shows the derived value updating while an unrelated state change leaves it alone. |
 | · | `effect on <state>` | `M` | An effect runs after a change to the states it names and not otherwise; the lowering is `didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use. |

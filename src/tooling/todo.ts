@@ -114,7 +114,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Latest-wins task cancellation',
     size: 'S',
-    status: 'next',
+    status: 'done',
     acceptance:
       'A retry during an in-flight load cannot be overwritten by the older result; a test with two ' +
       'differing delays proves the second result wins.',
@@ -125,7 +125,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Forms and validation',
     size: 'L',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; ' +
       'an invalid submission is impossible to express, not merely discouraged.',
