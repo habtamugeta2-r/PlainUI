@@ -1248,7 +1248,7 @@ class Parser {
     }
     if (this.at('ident') && (this.peek().value === 'as' || this.peek().value === 'is')) {
       const token = this.advance();
-      this.error('PUI1021', `"${token.value}" casts are not supported`, token.span, 'move the cast into a Dart function');
+      this.error('PUI1021', `"${token.value}" casts are not supported`, token.span, 'move the cast into a host function');
     }
     return expr;
   }
@@ -1260,7 +1260,7 @@ class Parser {
       const token = this.peek();
       if (token.kind !== 'op') break;
       if (UNSUPPORTED_EXPR_OPS.has(token.value)) {
-        this.error('PUI1021', `"${token.value}" is not supported in PlainUI expressions`, token.span, 'move this logic into a Dart function');
+        this.error('PUI1021', `"${token.value}" is not supported in PlainUI expressions`, token.span, 'move this logic into a host function');
         this.advance();
         break;
       }
@@ -1398,7 +1398,7 @@ class Parser {
       return { kind: 'Null', span: token.span };
     }
     if (token.kind === 'op' && token.value === '{') {
-      this.error('PUI1021', 'map literals are not supported', token.span, 'move the map into a Dart function or a state initialiser in Dart');
+      this.error('PUI1021', 'map literals are not supported', token.span, 'move the map into a host function or a host constant');
       this.skipBalanced('{', '}');
       return { kind: 'Null', span: token.span };
     }

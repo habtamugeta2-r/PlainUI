@@ -39,7 +39,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2005`](#pui2005) | error | Unknown identifier |
 | [`PUI2006`](#pui2006) | error | Duplicate declaration |
 | [`PUI2010`](#pui2010) | error | Empty screen or component |
-| [`PUI2011`](#pui2011) | error | Name collides with a Flutter type |
+| [`PUI2011`](#pui2011) | error | Name collides with a target type |
 | [`PUI2012`](#pui2012) | error | Reserved word |
 | [`PUI2101`](#pui2101) | error | Unsupported event |
 | [`PUI2102`](#pui2102) | error | Unknown property |
@@ -55,7 +55,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2112`](#pui2112) | error | await outside an event handler |
 | [`PUI2113`](#pui2113) | error | Statement does nothing |
 | [`PUI2114`](#pui2114) | error | Assignment to a design token |
-| [`PUI2206`](#pui2206) | error | Not a Dart type |
+| [`PUI2206`](#pui2206) | error | Not a target type |
 | [`PUI2205`](#pui2205) | error | slot outside a component |
 | [`PUI2201`](#pui2201) | error | Missing required parameter |
 | [`PUI2203`](#pui2203) | error | Children supplied to a component without a slot |
@@ -251,9 +251,9 @@ Built-in elements take space-separated arguments and properties, not a parenthes
 
 **Unsupported expression syntax** — error
 
-PlainUI expressions are a checked subset of Dart. This construct is outside that subset.
+PlainUI expressions are a checked subset of what the targets can express. This construct is outside that subset.
 
-*Fix:* Move the logic into a Dart function and call it from an event handler.
+*Fix:* Move the logic into a host function and call it from an event handler.
 
 ### PUI1022
 
@@ -347,9 +347,9 @@ A screen or component must render at least one element.
 
 ### PUI2011
 
-**Name collides with a Flutter type** — error
+**Name collides with a target type** — error
 
-The generated file imports Flutter, so a screen, component or state variable with this name would shadow a Flutter type that the generated code needs.
+The generated file imports its target’s library, so a screen, component or state variable with this name would shadow a type the generated code needs.
 
 *Fix:* Rename it, for example PostsScreen instead of ListView.
 
@@ -357,7 +357,7 @@ The generated file imports Flutter, so a screen, component or state variable wit
 
 **Reserved word** — error
 
-This name is a PlainUI keyword or a Dart reserved word and cannot be used as an identifier.
+This name is a PlainUI keyword, or a word the selected target reserves, and cannot be used as an identifier.
 
 *Fix:* Choose a different name.
 
@@ -479,7 +479,7 @@ Design tokens are compile-time values, not variables, so they cannot be assigned
 
 ### PUI2206
 
-**Not a Dart type** — error
+**Not a target type** — error
 
 A type annotation looks like a Dart type but Dart spells it differently, so the generated file would not compile.
 

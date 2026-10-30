@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { CODES } from '../src/analysis/diagnostics.ts';
 import { PHASES, TODO, progressOf, type TodoItem, type TodoStatus } from '../src/tooling/todo.ts';
-import { BUILTIN_STYLES, STYLE_PROPS } from '../src/analysis/targets.ts';
+import { BUILTIN_STYLES, STYLE_PROPS } from '../src/analysis/styles.ts';
 import {
   GENERIC_EVENTS,
   UNIVERSAL_PROPS,

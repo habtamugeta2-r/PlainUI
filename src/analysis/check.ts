@@ -53,7 +53,8 @@ import { DiagnosticBag } from './diagnostics.ts';
 import { VALUE_PARAM_NAME, eventValueType } from './events.ts';
 import { type SourceFile, type Span } from '../frontend/source.ts';
 import { didYouMean, listOf, suggest } from './suggest.ts';
-import { BUILTIN_STYLES, DART_RESERVED_WORDS, FLUTTER_TYPE_NAMES, STYLE_PROPS } from './targets.ts';
+import { BUILTIN_STYLES, STYLE_PROPS } from './styles.ts';
+import { DEFAULT_TARGET, type Target } from '../targets/index.ts';
 import {
   GENERIC_EVENTS,
   UNIVERSAL_PROPS,
@@ -66,41 +67,6 @@ import {
   propsFor,
   widgetSpec,
 } from './widgets/registry.ts';
-
-/** Dart core types that people write in another language's capitalisation by mistake. */
-const CASE_MISTAKES: Record<string, string> = {
-  Int: 'int',
-  Integer: 'int',
-  Double: 'double',
-  Float: 'double',
-  Bool: 'bool',
-  Boolean: 'bool',
-  Num: 'num',
-  Number: 'num',
-  Dynamic: 'dynamic',
-  Object: 'Object',
-};
-
-/**
- * Flutter's own enum names, mapped to the PlainUI spelling. Someone who knows
- * `MainAxisAlignment.spaceBetween` will type `main=spaceBetween`; the error is right, but the hint
- * should teach the shorter name instead of just listing six words.
- */
-const FLUTTER_ENUM_ALIASES: Record<string, string> = {
-  spaceBetween: 'between',
-  spaceAround: 'around',
-  spaceEvenly: 'evenly',
-  flexStart: 'start',
-  flexEnd: 'end',
-  mainAxisAlignment: 'start',
-  crossAxisAlignment: 'start',
-  centerLeft: 'center',
-  centerRight: 'center',
-  topStart: 'topLeft',
-  topEnd: 'topRight',
-  bottomStart: 'bottomLeft',
-  bottomEnd: 'bottomRight',
-};
 
 export type ResolvedTag =
   | { readonly kind: 'builtin'; readonly spec: WidgetSpec }
@@ -178,6 +144,12 @@ export interface CheckOptions {
   readonly externalNames?: ReadonlyMap<string, string>;
   /** Design tokens from the `.pui` files this one imports. */
   readonly externalTokens?: ReadonlyMap<string, TokenDecl>;
+  /**
+   * What the output is. The checker asks it which names are reserved, which type names would
+   * shadow its library, and which spellings are wrong — so this file names no framework, and a
+   * second target needs no second checker.
+   */
+  readonly target?: Target;
 }
 
 interface Scope {
@@ -272,6 +244,11 @@ class Checker {
     this.bag = bag;
   }
 
+  /** The output being compiled for. Everything framework-shaped in this file asks it. */
+  private get target(): Target {
+    return this.options.target ?? DEFAULT_TARGET;
+  }
+
   // ------------------------------------------------------------------------------------------
   // Entry point
   // ------------------------------------------------------------------------------------------
@@ -327,9 +304,9 @@ class Checker {
    */
   private checkTypeSpelling(typeText: string, span: Span): void {
     const base = typeText.replace(/<.*$/s, '').trim();
-    const suggestion = CASE_MISTAKES[base];
+    const suggestion = this.target.typeSpellings[base];
     if (suggestion !== undefined && suggestion !== base) {
-      this.error('PUI2206', `"${base}" is not a Dart type`, span, `write "${suggestion}" instead`);
+      this.error('PUI2206', `"${base}" is not a ${this.target.language} type`, span, `write "${suggestion}" instead`);
     }
   }
 
@@ -391,8 +368,8 @@ class Checker {
         token.category === 'space' ? 'for example: space md = 16' : 'for example: radius card = 12',
       );
     }
-    if (DART_RESERVED_WORDS.has(token.name)) {
-      this.error('PUI2012', `"${token.name}" is a reserved word in Dart`, token.nameSpan, 'choose a different name');
+    if (this.target.reservedWords.has(token.name)) {
+      this.error('PUI2012', `"${token.name}" is a reserved word in ${this.target.language}`, token.nameSpan, 'choose a different name');
     }
   }
 
@@ -487,12 +464,12 @@ class Checker {
           `rename it to ${decl.name.charAt(0).toUpperCase()}${decl.name.slice(1)}`,
         );
       }
-      if (DART_RESERVED_WORDS.has(decl.name)) {
-        this.error('PUI2012', `"${decl.name}" is a reserved word in Dart`, decl.nameSpan, 'choose a different name');
-      } else if (FLUTTER_TYPE_NAMES.has(decl.name)) {
+      if (this.target.reservedWords.has(decl.name)) {
+        this.error('PUI2012', `"${decl.name}" is a reserved word in ${this.target.language}`, decl.nameSpan, 'choose a different name');
+      } else if (this.target.shadowedTypes.has(decl.name)) {
         this.error(
           'PUI2011',
-          `"${decl.name}" would shadow the Flutter type of the same name`,
+          `"${decl.name}" would shadow a ${this.target.language} type of the same name`,
           decl.nameSpan,
           `rename it, for example ${decl.name}Screen`,
         );
@@ -522,11 +499,11 @@ class Checker {
         if (this.tokens.has(state.name)) {
           this.error('PUI2309', `state "${state.name}" collides with the token of the same name`, state.nameSpan, 'rename one of them');
         }
-        if (DART_RESERVED_WORDS.has(state.name)) {
-          this.error('PUI2012', `"${state.name}" is a reserved word in Dart`, state.nameSpan, 'choose a different name');
+        if (this.target.reservedWords.has(state.name)) {
+          this.error('PUI2012', `"${state.name}" is a reserved word in ${this.target.language}`, state.nameSpan, 'choose a different name');
         }
-        if (FLUTTER_TYPE_NAMES.has(state.name)) {
-          this.error('PUI2011', `state "${state.name}" would shadow the Flutter type of the same name`, state.nameSpan, 'rename it');
+        if (this.target.shadowedTypes.has(state.name)) {
+          this.error('PUI2011', `state "${state.name}" would shadow a ${this.target.language} type of the same name`, state.nameSpan, 'rename it');
         }
       }
       this.stateTypes.set(decl.name, stateMap);
@@ -542,11 +519,11 @@ class Checker {
         if (this.tokens.has(task.name)) {
           this.error('PUI2309', `task "${task.name}" collides with the token of the same name`, task.nameSpan, 'rename one of them');
         }
-        if (DART_RESERVED_WORDS.has(task.name)) {
-          this.error('PUI2012', `"${task.name}" is a reserved word in Dart`, task.nameSpan, 'choose a different name');
+        if (this.target.reservedWords.has(task.name)) {
+          this.error('PUI2012', `"${task.name}" is a reserved word in ${this.target.language}`, task.nameSpan, 'choose a different name');
         }
-        if (FLUTTER_TYPE_NAMES.has(task.name)) {
-          this.error('PUI2011', `task "${task.name}" would shadow the Flutter type of the same name`, task.nameSpan, 'rename it');
+        if (this.target.shadowedTypes.has(task.name)) {
+          this.error('PUI2011', `task "${task.name}" would shadow a ${this.target.language} type of the same name`, task.nameSpan, 'rename it');
         }
         if (!isCallExpression(task.init)) {
           this.error(
@@ -575,11 +552,11 @@ class Checker {
         if (this.tokens.has(item.name)) {
           this.error('PUI2309', `derived "${item.name}" collides with the token of the same name`, item.nameSpan, 'rename one of them');
         }
-        if (DART_RESERVED_WORDS.has(item.name)) {
-          this.error('PUI2012', `"${item.name}" is a reserved word in Dart`, item.nameSpan, 'choose a different name');
+        if (this.target.reservedWords.has(item.name)) {
+          this.error('PUI2012', `"${item.name}" is a reserved word in ${this.target.language}`, item.nameSpan, 'choose a different name');
         }
-        if (FLUTTER_TYPE_NAMES.has(item.name)) {
-          this.error('PUI2011', `derived "${item.name}" would shadow the Flutter type of the same name`, item.nameSpan, 'rename it');
+        if (this.target.shadowedTypes.has(item.name)) {
+          this.error('PUI2011', `derived "${item.name}" would shadow a ${this.target.language} type of the same name`, item.nameSpan, 'rename it');
         }
         derivedMap.set(item.name, item.typeText === undefined ? DYNAMIC : typeFromText(item.typeText));
       }
@@ -897,11 +874,11 @@ class Checker {
         ]);
         this.info(
           'PUI2406',
-          `"${el.tag}" is not a component in this file, so it is emitted as a Dart constructor call`,
+          `"${el.tag}" is not a component in this file, so it is emitted as a ${this.target.language} constructor call`,
           el.tagSpan,
           near !== undefined
-            ? `${near} Otherwise make sure the constructor is imported and its arguments exist in Dart`
-            : 'make sure the constructor is imported and its arguments exist in Dart',
+            ? `${near} Otherwise make sure the constructor is imported and its arguments exist in ${this.target.language}`
+            : `make sure the constructor is imported and its arguments exist in ${this.target.language}`,
         );
         for (const arg of el.args) this.checkExpr(arg.value, scope, 'value', false);
         this.checkEvents(el, GENERIC_EVENTS, scope, undefined, true);
@@ -1289,7 +1266,7 @@ class Checker {
         }
         if (!values.includes(literal)) {
           const match = suggest(literal, values, { caseSensitive: false });
-          const alias = FLUTTER_ENUM_ALIASES[literal];
+          const alias = this.target.enumAliases[literal];
           const hint =
             match !== undefined
               ? `did you mean \`${match}\`?`
@@ -2141,7 +2118,7 @@ class Checker {
         'PUI2346',
         `host widget \"${decl.name}\" must be capitalised`,
         decl.nameSpan,
-        'a host widget is a constructor, and constructors are capitalised in the generated Dart',
+        'a host widget is a constructor, and constructors are capitalised in the generated code',
       );
     }
     if (decl.kind === 'HostFn' && capitalised) {
