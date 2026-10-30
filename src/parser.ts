@@ -1062,9 +1062,10 @@ class Parser {
       const token = this.peek();
       if (token.kind === 'newline' || token.kind === 'dedent') break;
       if (token.kind === 'op') {
+        // Stops are only meaningful at the top level; inside brackets they are part of the type.
+        if (depth === 0 && stops.has(token.value)) break;
         if (token.value === '<' || token.value === '[' || token.value === '(') depth += 1;
-        else if (token.value === '>' || token.value === ']' || token.value === ')') depth -= 1;
-        else if (depth === 0 && stops.has(token.value)) break;
+        else if ((token.value === '>' || token.value === ']' || token.value === ')') && depth > 0) depth -= 1;
       }
       this.advance();
     }

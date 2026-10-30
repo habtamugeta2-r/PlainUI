@@ -259,6 +259,21 @@ export const CODES = {
   },
 
   // ---------------------------------------------------------------- components and styles
+  PUI2112: {
+    title: 'await outside an event handler',
+    description: 'Only event handlers can be asynchronous; a widget tree is built synchronously.',
+    fix: 'Move the await into an event handler, or start the work in state initialisation.',
+  },
+  PUI2113: {
+    title: 'Statement does nothing',
+    description: 'A statement in an event handler that is not a call has no effect.',
+    fix: 'Call a host function, for example save().',
+  },
+  PUI2205: {
+    title: 'slot outside a component',
+    description: '"slot" marks where a component renders the children its caller passes; a screen has no caller.',
+    fix: 'Move the slot into a component, or remove it.',
+  },
   PUI2201: {
     title: 'Missing required parameter',
     description: 'This component parameter has no default and was not supplied at the call site.',
