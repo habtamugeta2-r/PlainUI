@@ -20,16 +20,15 @@ workspace (team `HAB`): **"PlainUI Implementation Plan"**, with one issue per it
 `phase-0-foundations` / `phase-1-flutter-depth` / `phase-2-architecture` / `phase-3-adoption` /
 `phase-4-multi-target` / `phase-5-breadth` / `cross-cutting` labels stand in for milestones, and
 the granular sub-tasks (2.1–2.18, 3.1–3.8, etc.) are sub-issues under their parent item
-(`HAB-19`…`HAB-68`). `HAB-34` ("2.1 — Type vocabulary in the AST/parser") is done; `HAB-35`
-("2.2 — Checker support, dual-accepting old spellings") is the current single next unit of work.
-Use that project for status/assignment going forward; update both it and this file (and
-`src/tooling/todo.ts`, which remains the real source of truth) as work lands.
+(`HAB-19`…`HAB-68`). `HAB-34` ("2.1 — Type vocabulary in the AST/parser") and `HAB-35` ("2.2 — Checker support")
+are done; 2.5 (`plainui migrate`) has also landed. Optional semantics (2.3), target-owned Flutter and
+HTML type maps (2.4), and the v2.0 alias-removal timeline (2.6) are implemented. Typed task errors
+(2.8) remain. The repository roadmap in `src/tooling/todo.ts` remains the status source of truth;
+synchronize the Linear mirror when the integration is available.
 
-**Repository snapshot at time of writing:** branch `arena/0d109071-plainui`, based on `main` @
-`65f91c8` (PR #12, "Capability matrix: targets is a portability promise", merged). 410 tests
-passing (`npm test`), typecheck clean (`npm run typecheck`), 25 built-in elements, 107 diagnostic
-codes, 8 runnable examples, 2 shipped targets (Flutter, HTML-preview), CI workflows `ci.yml` and
-`flutter-verify.yml`.
+**Repository snapshot (2026-10-31):** 439 tests passing (`npm test`), typecheck clean
+(`npm run typecheck`), 25 built-in elements, 108 diagnostic codes, 7 example projects, 2 shipped
+targets (Flutter and HTML preview), CI workflows `ci.yml` and `flutter-verify.yml`.
 
 ---
 
@@ -151,44 +150,41 @@ in CI, with a test asserting which files port and which fail with a named code.*
         `src/frontend/parser.ts`). Done: `typeFromText` (`src/frontend/ast.ts`) recognizes
         `Text`/`Int`/`Float`/`Bool`/`Optional<T>`/bare `Optional` alongside the existing Dart
         spellings, resolving to the same `UiType`, so every checker rule accepts them for free;
-        `Color`/`Duration` already passed through unchanged via the `named` fallback. A new
-        `toDartTypeText` helper rewrites a raw annotation into legal Dart text (unwrapping nested
-        `Optional<...>` to a trailing `?`, word-boundary-safe primitive renaming, everything else
-        passed through) and every codegen site that used to splice a raw annotation into generated
-        Dart (`src/codegen/flutter.ts` field/derived/task/state declarations,
-        `src/codegen/routes.ts` route-argument casts) now goes through it — without this fix the
-        new spellings would emit invalid Dart. The pre-existing `PUI2206` "wrong type spelling"
-        table in `src/targets/flutter.ts` no longer flags `Int`/`Float`/`Bool` (they're not
-        mistakes anymore); `Integer`/`Double`/`Boolean`/`Num`/`Number`/`Dynamic` are still flagged.
-        Covered by `tests/types.test.ts` (unit tests for `typeFromText`/`toDartTypeText`,
-        including nested `Optional` and word-boundary edge cases), new assertions in
-        `tests/check.test.ts`/`tests/targets.test.ts`, and the new `tests/golden/types.pui`
-        fixture exercising all four primitives plus `Optional<T>` in state/task/derived/component-
-        param position, whose generated `.pui.dart` uses correct Dart spellings throughout. Out of
-        scope here (see below): deprecation diagnostics for the old spellings (2.2), per-target
-        type ownership (2.4), non-null-by-default `Optional<T>` semantics (2.3), `plainui migrate`
-        (2.5), and updating existing docs/examples to the new spellings (2.7).
-  - [ ] **2.2 — Checker support, dual-accepting old spellings.** `check.ts` accepts both the new
+        `Color`/`Duration` already pass through unchanged via the `named` fallback. The reusable
+        `typeTextForTarget` and `typeToTargetText` formatters consume a required `Target.types` map:
+        raw host annotations retain their generic shape while lowering known names, and inferred
+        semantic types use the same target-owned constructors. Flutter's map emits Dart types;
+        HTML's map emits TypeScript-like semantic names for its static preview. The pre-existing
+        `PUI2206` wrong-spelling table remains target-owned and does not confuse PlainUI's `Int`,
+        `Float`, or `Bool` with mistakes. Covered by `tests/types.test.ts`, the two target-map cases
+        in `tests/targets.test.ts` (including nested Optional/list/map/future types), checker tests,
+        and `tests/golden/types.pui` exercising the vocabulary in state/task/derived/component-param
+        positions.
+  - [x] **2.2 — Checker support, dual-accepting old spellings.** `check.ts` accepts both the new
         PlainUI types and the current Dart spellings (`String`, `int`, `double`, `bool`) as
-        deprecated aliases, per A1; a new diagnostic (e.g. `PUI2xxx`, warning severity) flags the
-        Dart spelling with a fix-it pointing at the PlainUI name.
-  - [ ] **2.3 — `Optional<T>` semantics.** No implicit null (decision A2): absence is
-        `Optional<T>`; `.orElse(...)` and `if x.exists:` are the only ways through; host interop
-        converts nullable Dart values at the boundary. Needs checker rules + at least one codegen
-        path (Flutter: `T?` + the helper pattern) and tests.
-  - [ ] **2.4 — Per-target type maps.** Each target (`Target.types` or equivalent) owns its own
-        mapping table per decision C4 — no shared "lowest common denominator" table. Flutter maps
-        shown in `09-vision.md`'s table become the first target's table; HTML target needs its own
-        (likely string-based, since it is a preview).
-  - [ ] **2.5 — `plainui migrate` CLI command.** A codemod that rewrites `.pui` files in place:
-        Dart spellings → PlainUI spellings, idempotent, dry-run (`--check`) mode for CI.
-  - [ ] **2.6 — Deprecation and removal timeline.** Decide and document how long the Dart-spelling
-        aliases are accepted (A1 says "during 1.x"); add the removal to a future major-version
-        entry in `CHANGELOG.md`.
-  - [ ] **2.7 — Docs and golden updates.** Update `01-language-spec.md`, `07-reference.md`
-        (generated — update the registry/source it's generated from instead), golden files in
-        `tests/golden`, and all `examples/*.pui` sources to the new spellings (keeping an alias
-        test to prove the old spellings still work until removal).
+        deprecated aliases, per A1. `PUI2207` warns on each exact legacy type token, including
+        nested generic arguments, with a replacement hint while keeping the source valid.
+  - [x] **2.3 — `Optional<T>` semantics.** No implicit null (decision A2): `null` is accepted only
+        where Optional is expected; `.orElse(...)` and `if x.exists:` are the explicit handling
+        forms. The checker rejects unhandled Optional values and invalid fallbacks; Flutter lowers
+        to native nullable types and HTML preview evaluates both accessors. Typed host surfaces map
+        nullable values through `Optional<T>`. Covered by focused checker, codegen, host, and preview
+        tests.
+  - [x] **2.4 — Per-target type maps.** Each `Target` owns `types.names`, its Optional syntax, and
+        mappings for generic constructors; semantic `UiType` remains target-neutral. Flutter maps
+        PlainUI primitives and Optional/List/Map/Future to Dart; HTML has an independent
+        string/number/boolean/`T | null` map for its static preview. `typeTextForTarget` and
+        `typeToTargetText` use the selected map instead of a shared Dart formatter, including route
+        argument casts. Target contract tests require complete maps and cover nested generic output.
+  - [x] **2.5 — `plainui migrate` CLI command.** The AST-span codemod rewrites only parsed type
+        annotations in `.pui` files, is idempotent, preserves comments/expressions/strings, and
+        supports a dry-run (`--check`) mode for CI; invalid files are left untouched.
+  - [x] **2.6 — Deprecation and removal timeline.** Decision A1 now commits to accepting Dart
+        primitive aliases with `PUI2207` throughout 1.x and removing them in 2.0.0. The planned
+        breaking change and `plainui migrate` prerequisite are recorded in `CHANGELOG.md`.
+  - [x] **2.7 — Docs and golden updates.** The language reference, CLI guide, playground samples,
+        example projects and golden `.pui` fixtures use PlainUI primitive spellings; targeted tests
+        retain legacy spellings to prove the compatibility alias and deprecation warning still work.
   - [ ] **2.8 — Typed task errors, `Result<T, E>`** (decision B5, unblocks once 2.1–2.4 land) —
         `task.error` becomes `Result<T, E>` instead of a bare `String`; mapped error type per
         target.

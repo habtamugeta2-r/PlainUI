@@ -75,7 +75,12 @@ maps them:
 | `Duration` | `Duration` | `Duration` | `number` (ms) |
 | `List<T>` / `Optional<T>` / `Result<T>` | `List` / `T?` / sealed class | `List` / `T?` / `Result` | `T[]` / `T \| null` / union |
 
-A type error therefore reads the same in every target, and the type checker is written once.
+A type error therefore reads the same in every target, and the type checker is written once. The
+compiler keeps the semantic `UiType` target-neutral; each `Target` owns a `types` map for primitive
+names, generic constructors, and Optional representation. Flutter maps to Dart (`Text → String`,
+`Optional<T> → T?`); the static HTML preview has its own descriptive map (`Text → string`,
+`Optional<T> → T | null`) even though it emits no typed source. `tests/targets.test.ts` exercises both
+maps, including nested generics, so adding a target cannot inherit Dart's type shapes by default.
 
 ## The programming model is the real design problem
 

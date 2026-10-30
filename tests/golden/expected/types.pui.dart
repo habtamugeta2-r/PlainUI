@@ -22,7 +22,7 @@ class Badge extends StatelessWidget {
       children: <Widget>[
         Text(label, style: Theme.of(context).textTheme.bodySmall),
         SizedBox(width: 4),
-        Text("${count}"),
+        Text("${(count ?? 0)}"),
       ],
     );
   }
@@ -93,7 +93,7 @@ class _TypesState extends State<Types> {
           SizedBox(height: 8),
           Text("${ready}"),
           SizedBox(height: 8),
-          Text("${note}"),
+          Text((note ?? "No note")),
           SizedBox(height: 8),
           Badge(label: name, count: count),
           SizedBox(height: 8),

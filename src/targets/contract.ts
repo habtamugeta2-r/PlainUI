@@ -55,6 +55,43 @@ export interface CapabilityNote {
   readonly note: string;
 }
 
+export interface TargetTypeSyntax {
+  /** Text placed before a mapped type or generic arguments. */
+  readonly prefix: string;
+  /** Text placed after a mapped type or generic arguments. */
+  readonly suffix: string;
+  /** Separator between generic arguments; defaults to `, `. */
+  readonly separator?: string;
+}
+
+/** Target-owned spellings for PlainUI's semantic types and generic constructors. */
+export interface TargetTypeNames {
+  readonly Text: string;
+  readonly Int: string;
+  readonly Float: string;
+  readonly Bool: string;
+  readonly Num: string;
+  readonly Dynamic: string;
+  readonly Color: string;
+  readonly Duration: string;
+  readonly [alias: string]: string;
+}
+
+export interface TargetTypeMap {
+  /** PlainUI names and recognized legacy/host aliases mapped to output-language names. */
+  readonly names: TargetTypeNames;
+  /** How this target represents `Optional<T>`. */
+  readonly optional: TargetTypeSyntax;
+  /** Output syntax for core and host generic constructors. */
+  readonly generics: Readonly<{
+    List: TargetTypeSyntax;
+    Iterable: TargetTypeSyntax;
+    Set: TargetTypeSyntax;
+    Map: TargetTypeSyntax;
+    Future: TargetTypeSyntax;
+  }>;
+}
+
 export interface Target {
   readonly id: TargetId;
   /** The name to use in diagnostics: `Flutter`, `HTML preview`. */
@@ -72,6 +109,8 @@ export interface Target {
   readonly shadowedTypes: ReadonlySet<string>;
   /** Spellings people write by mistake, mapped to the spelling the target uses. */
   readonly typeSpellings: Readonly<Record<string, string>>;
+  /** How PlainUI semantic types lower into this target's output language. */
+  readonly types: TargetTypeMap;
   /** Enum names from the target's own API, mapped to the PlainUI spelling. */
   readonly enumAliases: Readonly<Record<string, string>>;
 

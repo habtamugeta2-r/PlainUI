@@ -4,11 +4,11 @@
 
 import "../data.dart" as data:
 
-    loadSlowThenFast() -> Future<List<String>>
+    loadSlowThenFast() -> Future<List<Text>>
 
 screen Race:
 
-    task items: List<String> = data.loadSlowThenFast()
+    task items: List<Text> = data.loadSlowThenFast()
 
     column padding=16 gap=12:
 
@@ -21,9 +21,9 @@ screen Race:
                 progress
                 text "Loading…"
 
-        elif items.error != null:
+        elif items.error.exists:
 
-            text items.error
+            text items.error.orElse("Unknown error")
 
         else:
 

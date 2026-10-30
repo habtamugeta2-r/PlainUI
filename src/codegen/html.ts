@@ -62,13 +62,36 @@ function lookup(env: Env, name: string): Value | undefined {
   return env.values.get(name);
 }
 
+function interpolationValue(text: string, env: Env): Value | undefined {
+  const inner = text.trim();
+  const exists = /^([A-Za-z_][A-Za-z0-9_]*)(\.error)?\.exists$/.exec(inner);
+  if (exists !== null) {
+    const receiver = exists[2] === '.error' ? env.tasks.get(exists[1]!)?.error : lookup(env, exists[1]!);
+    if (receiver === undefined || receiver.kind === 'unknown') return undefined;
+    return { kind: 'bool', value: receiver.kind !== 'null' };
+  }
+  const fallbackMatch = /^([A-Za-z_][A-Za-z0-9_]*)(\.error)?\.orElse\(([\s\S]*)\)$/.exec(inner);
+  if (fallbackMatch !== null) {
+    const receiver = fallbackMatch[2] === '.error' ? env.tasks.get(fallbackMatch[1]!)?.error : lookup(env, fallbackMatch[1]!);
+    if (receiver === undefined || receiver.kind === 'unknown') return undefined;
+    if (receiver.kind !== 'null') return receiver;
+    const fallback = fallbackMatch[3]!.trim();
+    if (/^"(?:[^"\\\\]|\\\\.)*"$/.test(fallback) || /^'(?:[^'\\\\]|\\\\.)*'$/.test(fallback)) {
+      return { kind: 'string', value: fallback.slice(1, -1) };
+    }
+    if (/^-?\\d+(?:\\.\\d+)?$/.test(fallback)) return { kind: 'number', value: Number(fallback) };
+    if (fallback === 'true' || fallback === 'false') return { kind: 'bool', value: fallback === 'true' };
+    return lookup(env, fallback);
+  }
+  return lookup(env, inner);
+}
+
 function evaluate(expr: Expr, env: Env): Value {
   switch (expr.kind) {
     case 'String': {
       // `expr.value` keeps `${...}` intact; substitute the pieces we can evaluate.
       const text = expr.value.replace(/\$\{([^}]*)\}/g, (whole: string, inner: string) => {
-        const name = inner.trim();
-        const value = lookup(env, name);
+        const value = interpolationValue(inner, env);
         return value === undefined ? whole : asText(value);
       });
       return { kind: 'string', value: text };
@@ -93,6 +116,12 @@ function evaluate(expr: Expr, env: Env): Value {
     case 'Paren':
       return evaluate(expr.inner, env);
     case 'Member': {
+      // Optional presence is part of the language even in the static preview.
+      if (expr.name === 'exists') {
+        const receiver = evaluate(expr.object, env);
+        if (receiver.kind === 'null') return { kind: 'bool', value: false };
+        if (receiver.kind !== 'unknown') return { kind: 'bool', value: true };
+      }
       // `items.loading` and friends: a task is not a value, its parts are.
       if (expr.object.kind === 'Ident') {
         const task = env.tasks.get(expr.object.name);
@@ -115,6 +144,16 @@ function evaluate(expr: Expr, env: Env): Value {
         if (expr.name === 'length') return { kind: 'number', value: object.value.length };
         if (expr.name === 'isEmpty') return { kind: 'bool', value: object.value.length === 0 };
         if (expr.name === 'isNotEmpty') return { kind: 'bool', value: object.value.length > 0 };
+      }
+      return UNKNOWN(expr);
+    }
+    case 'Call': {
+      if (expr.callee.kind === 'Member' && expr.callee.name === 'orElse') {
+        const receiver = evaluate(expr.callee.object, env);
+        if (receiver.kind === 'unknown') return UNKNOWN(expr);
+        if (receiver.kind !== 'null') return receiver;
+        const fallback = expr.args[0];
+        return fallback === undefined ? UNKNOWN(expr) : evaluate(fallback.value, env);
       }
       return UNKNOWN(expr);
     }

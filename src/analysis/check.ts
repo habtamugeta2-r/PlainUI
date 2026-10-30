@@ -99,6 +99,8 @@ export interface VarInfo {
   readonly kind: 'state' | 'param' | 'loop' | 'token' | 'task' | 'derived';
   readonly nameSpan: Span;
   used: boolean;
+  /** This scope proves an Optional value is present via its enclosing `if value.exists:`. */
+  narrowedOptional?: boolean;
 }
 
 export interface Analysis {
@@ -115,6 +117,10 @@ export interface Analysis {
   readonly componentHasSlot: ReadonlyMap<string, boolean>;
   /** Loop variable types, per `for` node (used by the generator for text conversion). */
   readonly loopTypes: ReadonlyMap<ForNode, ReadonlyMap<string, UiType>>;
+  /** Identifier expressions proven present by an enclosing `if optional.exists:` branch. */
+  readonly narrowedOptionals: ReadonlySet<Expr>;
+  /** Rewritten interpolation expression text, keyed by its source offset, for nullable accessors. */
+  readonly optionalInterpolationRewrites: ReadonlyMap<number, string>;
   /** Value types of each screen/component's tasks, per declaration. */
   readonly taskTypes: ReadonlyMap<string, ReadonlyMap<string, UiType>>;
   /** Types of each screen/component's `derived` values, in declaration order. */
@@ -124,6 +130,13 @@ export interface Analysis {
   /** This file's own `theme` declaration, when it has one. */
   readonly theme?: ThemeDecl;
 }
+
+const DEPRECATED_TYPE_SPELLINGS: ReadonlyMap<string, string> = new Map([
+  ['String', 'Text'],
+  ['int', 'Int'],
+  ['double', 'Float'],
+  ['bool', 'Bool'],
+]);
 
 export interface CheckOptions {
   /** Components declared in other `.pui` files that this file imports. */
@@ -225,6 +238,8 @@ class Checker {
   readonly paramTypes = new Map<string, Map<string, UiType>>();
   readonly componentHasSlot = new Map<string, boolean>();
   readonly loopTypes = new Map<ForNode, Map<string, UiType>>();
+  readonly narrowedOptionals = new Set<Expr>();
+  readonly optionalInterpolationRewrites = new Map<number, string>();
   readonly tokens = new Map<string, TokenDecl>();
   theme: ThemeDecl | undefined;
   /**
@@ -322,6 +337,8 @@ class Checker {
       paramTypes: this.paramTypes,
       componentHasSlot: this.componentHasSlot,
       loopTypes: this.loopTypes,
+      narrowedOptionals: this.narrowedOptionals,
+      optionalInterpolationRewrites: this.optionalInterpolationRewrites,
       tokens: this.tokens,
       ...(this.theme === undefined ? {} : { theme: this.theme }),
     };
@@ -333,6 +350,15 @@ class Checker {
 
   private warning(code: string, message: string, span: Span, hint?: string): void {
     this.bag.warning({ code, message, span, ...(hint === undefined ? {} : { hint }) });
+  }
+
+  private optionalValueError(span: Span, value: string): void {
+    this.error(
+      'PUI2365',
+      `Optional value ${value === 'null' ? 'cannot be assigned here' : `"${value}" may be absent`}`,
+      span,
+      'use value.orElse(fallback), or test value.exists before choosing a branch',
+    );
   }
 
   private info(code: string, message: string, span: Span, hint?: string): void {
@@ -350,10 +376,29 @@ class Checker {
    * keeps the mistake in the .pui file instead of in the output.
    */
   private checkTypeSpelling(typeText: string, span: Span): void {
+    if (/(?:^|[<,])\s*Optional\s*(?=$|[,>])/.test(typeText)) {
+      this.error('PUI2368', 'Optional needs a type argument', span, 'write Optional<T>, for example Optional<Text>');
+    }
     const base = typeText.replace(/<.*$/s, '').trim();
     const suggestion = this.target.typeSpellings[base];
     if (suggestion !== undefined && suggestion !== base) {
       this.error('PUI2206', `"${base}" is not a ${this.target.language} type`, span, `write "${suggestion}" instead`);
+    }
+
+    // Dart spellings remain accepted during the 1.x migration window, but PlainUI owns the
+    // vocabulary. Report each legacy type token (including nested generic arguments) at its exact
+    // source location so editors can underline and users can migrate without breaking builds.
+    const sourceText = this.file.text.slice(span.start, span.end);
+    for (const match of sourceText.matchAll(/\b(?:String|int|double|bool)\b/g)) {
+      const legacy = match[0]!;
+      const replacement = DEPRECATED_TYPE_SPELLINGS.get(legacy)!;
+      const start = span.start + match.index!;
+      this.warning(
+        'PUI2207',
+        `"${legacy}" is a deprecated host-language type spelling; write "${replacement}"`,
+        { start, end: start + legacy.length },
+        `replace "${legacy}" with "${replacement}"`,
+      );
     }
   }
 
@@ -714,21 +759,39 @@ class Checker {
     // while the only interesting thing about them was their type; a declared host surface makes
     // them the place where a typo is most likely to hide.
     for (const state of decl.state) {
-      this.checkExpr(state.init, scope, 'value', true);
-      const type = this.hostValueType(state.init, scope);
-      if (type !== undefined) this.checkHostAssign(type, this.stateTypes.get(decl.name)?.get(state.name), state.init.span, `state "${state.name}"`);
+      const stateType = this.stateTypes.get(decl.name)?.get(state.name);
+      this.checkExpr(state.init, scope, 'value', true, false, stateType);
+      const hostType = this.hostValueType(state.init, scope);
+      if (hostType !== undefined) {
+        this.checkHostAssign(hostType, stateType, state.init.span, `state "${state.name}"`);
+      } else {
+        const actualType = this.typeOfExpression(state.init, scope);
+        if (stateType !== undefined && stateType.kind !== 'named' && actualType.kind !== 'dynamic' && !assignable(stateType, actualType)) {
+          this.error('PUI2110', `state "${state.name}" expects ${typeName(stateType)}`, state.init.span, `got ${typeName(actualType)}`);
+        }
+      }
+
     }
     for (const task of decl.tasks) {
       // A task awaits its call: that is what the generated loader does, so an asynchronous host
       // function is legal here without an explicit `await`.
-      this.checkExpr(task.init, scope, 'value', true, true);
-      const type = this.hostValueType(task.init, scope);
-      if (type !== undefined) this.checkHostAssign(type, this.taskTypes.get(decl.name)?.get(task.name), task.init.span, `task "${task.name}"`);
+      const taskType = this.taskTypes.get(decl.name)?.get(task.name);
+      this.checkExpr(task.init, scope, 'value', true, true, taskType);
+      const hostType = this.hostValueType(task.init, scope);
+      if (hostType !== undefined) {
+        this.checkHostAssign(hostType, taskType, task.init.span, `task "${task.name}"`);
+      } else {
+        const actualType = this.typeOfExpression(task.init, scope);
+        if (taskType !== undefined && taskType.kind !== 'dynamic' && actualType.kind !== 'dynamic' && !assignable(taskType, actualType)) {
+          this.error('PUI2110', `task "${task.name}" expects ${typeName(taskType)}`, task.init.span, `got ${typeName(actualType)}`);
+        }
+      }
     }
 
     for (const item of decl.derived) {
       // Value position: a derived value is a pure expression, never an action.
-      this.checkExpr(item.init, scope, 'value', false);
+      const derivedType = item.typeText === undefined ? undefined : typeFromText(item.typeText);
+      this.checkExpr(item.init, scope, 'value', false, false, derivedType);
       if (item.typeText !== undefined) {
         const expected = typeFromText(item.typeText);
         const actual = this.typeOfExpression(item.init, scope);
@@ -772,6 +835,16 @@ class Checker {
     }
   }
 
+  private narrowOptionalScope(condition: Expr, scope: Scope): Scope {
+    let test = condition;
+    while (test.kind === 'Paren') test = test.inner;
+    if (test.kind !== 'Member' || test.name !== 'exists' || test.object.kind !== 'Ident') return scope;
+    const original = this.resolve(test.object.name, scope);
+    if (original?.type.kind !== 'nullable') return scope;
+    const narrowed: VarInfo = { ...original, type: original.type.inner, narrowedOptional: true };
+    return { vars: new Map([[test.object.name, narrowed]]), parent: scope };
+  }
+
   private checkBody(nodes: readonly Node[], scope: Scope, ctx: DeclContext): void {
     for (const node of nodes) {
       switch (node.kind) {
@@ -811,7 +884,7 @@ class Checker {
         case 'If':
           for (const branch of node.branches) {
             this.checkExpr(branch.cond, scope, 'value', false);
-            this.checkBody(branch.body, scope, ctx);
+            this.checkBody(branch.body, this.narrowOptionalScope(branch.cond, scope), ctx);
           }
           if (node.elseBody !== undefined) this.checkBody(node.elseBody, scope, ctx);
           break;
@@ -1120,8 +1193,8 @@ class Checker {
         this.error('PUI2108', `argument "${param.name}" was supplied twice`, arg.span);
       }
       provided.add(param.name);
-      this.checkParamType(param, arg.value);
-      this.checkExpr(arg.value, scope, 'value', false);
+      this.checkParamType(param, arg.value, scope);
+      this.checkExpr(arg.value, scope, 'value', false, false, param.typeText === undefined ? undefined : typeFromText(param.typeText));
     }
 
     if (!external) {
@@ -1146,17 +1219,19 @@ class Checker {
     }
   }
 
-  private checkParamType(param: Param, value: Expr): void {
+  private checkParamType(param: Param, value: Expr, scope: Scope): void {
     if (param.typeText === undefined) return;
     const expected = typeFromText(param.typeText);
-    const actual = inferType(value);
-    if (actual.kind === 'dynamic') return;
+    const actual = this.typeOfExpression(value, scope);
+    if (actual.kind === 'dynamic' || assignable(expected, actual)) return;
     if (isStringType(expected) && !isStringType(actual)) {
       this.error('PUI2110', `"${param.name}" expects a String`, value.span, `got ${typeName(actual)}`);
     } else if (isBoolType(expected) && !isBoolType(actual)) {
       this.error('PUI2110', `"${param.name}" expects a bool`, value.span, `got ${typeName(actual)}`);
     } else if (isNumericType(expected) && !isNumericType(actual)) {
       this.error('PUI2110', `"${param.name}" expects a number`, value.span, `got ${typeName(actual)}`);
+    } else {
+      this.error('PUI2110', `"${param.name}" expects ${typeName(expected)}`, value.span, `got ${typeName(actual)}`);
     }
   }
 
@@ -1244,8 +1319,12 @@ class Checker {
   }
 
   private checkHostArg(param: Param, value: Expr, scope: Scope): void {
-    if (param.typeText === undefined) return;
+    if (param.typeText === undefined) {
+      this.checkExpr(value, scope, 'value', false);
+      return;
+    }
     const expected = typeFromText(param.typeText);
+    this.checkExpr(value, scope, 'value', false, false, expected);
     const actual = this.typeOfExpression(value, scope);
     if (assignable(expected, actual)) return;
     this.error(
@@ -1508,7 +1587,13 @@ class Checker {
               'call it as its own statement inside the handler that submits the form',
             );
           }
-          this.checkExpr(action.value, scope, 'value', true);
+          this.checkExpr(action.value, scope, 'value', true, false, varInfo?.type);
+          if (varInfo?.kind === 'state' && action.op === '=' && hostType === undefined) {
+            const actual = this.typeOfExpression(action.value, scope);
+            if (actual.kind !== 'dynamic' && !assignable(varInfo.type, actual)) {
+              this.error('PUI2110', `state "${action.target.name}" expects ${typeName(varInfo.type)}`, action.value.span, `got ${typeName(actual)}`);
+            }
+          }
           break;
         }
         case 'Call':
@@ -1734,8 +1819,6 @@ class Checker {
 
     const target = call.args.find((arg) => arg.name === undefined);
     const named = call.args.filter((arg) => arg.name !== undefined);
-    for (const arg of named) this.checkExpr(arg.value, scope, 'value', allowAwait);
-
     if (target === undefined) {
       this.error('PUI2320', '"navigate" needs a screen to open', call.span, 'for example: navigate Detail(id: "42")');
       return;
@@ -1777,7 +1860,8 @@ class Checker {
         );
         continue;
       }
-      this.checkParamType(param, arg.value);
+      this.checkParamType(param, arg.value, scope);
+      this.checkExpr(arg.value, scope, 'value', allowAwait, false, param.typeText === undefined ? undefined : typeFromText(param.typeText));
     }
 
     const supplied = new Set(named.map((arg) => arg.name));
@@ -1832,12 +1916,23 @@ class Checker {
    * (`signIn(...)`), which is the seam where application logic stays in Dart. A *value* must
    * resolve to something the compiler knows about.
    */
-  private checkExpr(expr: Expr, scope: Scope, position: 'value' | 'callee', allowAwait: boolean, awaiting = false): void {
+  private checkExpr(
+    expr: Expr,
+    scope: Scope,
+    position: 'value' | 'callee',
+    allowAwait: boolean,
+    awaiting = false,
+    expectedType?: UiType,
+  ): void {
     switch (expr.kind) {
       case 'Ident': {
         const varInfo = this.resolve(expr.name, scope);
         if (varInfo !== undefined) {
           varInfo.used = true;
+          if (varInfo.narrowedOptional === true) this.narrowedOptionals.add(expr);
+          if (varInfo.type.kind === 'nullable' && expectedType?.kind !== 'nullable') {
+            this.optionalValueError(expr.span, expr.name);
+          }
           return;
         }
         if (position === 'callee') return;
@@ -1854,6 +1949,24 @@ class Checker {
         return;
       }
       case 'Member': {
+        const receiverType = this.typeOfExpression(expr.object, scope);
+        if (receiverType.kind === 'nullable') {
+          this.checkExpr(expr.object, scope, 'value', allowAwait, false, receiverType);
+          if (expr.name === 'exists') {
+            if (position === 'callee') {
+              this.error('PUI2366', 'exists is a property, not a function', expr.span, 'write value.exists without parentheses');
+            }
+            return;
+          }
+          if (expr.name === 'orElse' && position === 'callee') return;
+          this.error(
+            'PUI2366',
+            `Optional values have no member "${expr.name}"`,
+            expr.span,
+            'use .exists or .orElse(fallback)',
+          );
+          return;
+        }
         this.checkExpr(expr.object, scope, position, allowAwait);
         if (expr.object.kind !== 'Ident') return;
         const varInfo = this.resolve(expr.object.name, scope);
@@ -1865,6 +1978,8 @@ class Checker {
             expr.span,
             `a task exposes ${TASK_MEMBERS.join(', ')}`,
           );
+        } else if (expr.name === 'error' && expectedType?.kind !== 'nullable') {
+          this.optionalValueError(expr.span, `${expr.object.name}.error`);
         }
         return;
       }
@@ -1882,13 +1997,46 @@ class Checker {
           this.checkBack(expr, allowAwait);
           return;
         }
-        this.checkExpr(expr.callee, scope, 'callee', allowAwait);
-        for (const arg of expr.args) this.checkExpr(arg.value, scope, 'value', allowAwait);
+
+        if (expr.callee.kind === 'Member') {
+          const receiverType = this.typeOfExpression(expr.callee.object, scope);
+          if (receiverType.kind === 'nullable') {
+            this.checkExpr(expr.callee.object, scope, 'value', allowAwait, false, receiverType);
+            if (expr.callee.name !== 'orElse') {
+              this.error('PUI2366', `Optional values cannot call "${expr.callee.name}"`, expr.callee.span, 'use .exists or .orElse(fallback)');
+              for (const arg of expr.args) this.checkExpr(arg.value, scope, 'value', allowAwait);
+              return;
+            }
+            if (expr.args.length !== 1 || expr.args[0]!.name !== undefined) {
+              this.error('PUI2367', 'orElse takes exactly one positional fallback', expr.span, 'write value.orElse(fallback)');
+            }
+            for (const arg of expr.args) {
+              this.checkExpr(arg.value, scope, 'value', allowAwait, false, receiverType.inner);
+              if (!assignable(receiverType.inner, this.typeOfExpression(arg.value, scope))) {
+                this.error('PUI2367', 'orElse fallback has the wrong type', arg.value.span, `expected ${typeName(receiverType.inner)}`);
+              }
+            }
+            return;
+          }
+        }
+
         const target = this.hostTarget(expr, scope, true);
+        this.checkExpr(expr.callee, scope, 'callee', allowAwait);
+        for (const [index, arg] of expr.args.entries()) {
+          const param = target?.decl.params.find((candidate, paramIndex) =>
+            arg.name === undefined ? paramIndex === index : candidate.name === arg.name,
+          );
+          const expectedArg = param?.typeText === undefined ? undefined : typeFromText(param.typeText);
+          this.checkExpr(arg.value, scope, 'value', allowAwait, false, expectedArg);
+        }
         if (target !== undefined) {
           this.checkHostCall(expr, target, scope, awaiting);
         } else {
           this.nearMissHostCall(expr);
+        }
+        const callType = this.typeOfExpression(expr, scope);
+        if (position === 'value' && callType.kind === 'nullable' && expectedType?.kind !== 'nullable') {
+          this.optionalValueError(expr.span, 'host call result');
         }
         return;
       }
@@ -1905,7 +2053,7 @@ class Checker {
             'a widget tree is built synchronously; move the async work into an event handler',
           );
         }
-        this.checkExpr(expr.operand, scope, 'value', allowAwait, expr.op === 'await' ? true : awaiting);
+        this.checkExpr(expr.operand, scope, 'value', allowAwait, expr.op === 'await' ? true : awaiting, expr.op === 'await' ? expectedType : undefined);
         return;
       case 'Binary':
         this.checkExpr(expr.left, scope, 'value', allowAwait);
@@ -1913,14 +2061,19 @@ class Checker {
         return;
       case 'Ternary':
         this.checkExpr(expr.cond, scope, 'value', allowAwait);
-        this.checkExpr(expr.then, scope, 'value', allowAwait);
-        this.checkExpr(expr.otherwise, scope, 'value', allowAwait);
+        this.checkExpr(expr.then, scope, 'value', allowAwait, false, expectedType);
+        this.checkExpr(expr.otherwise, scope, 'value', allowAwait, false, expectedType);
         return;
-      case 'List':
-        for (const item of expr.items) this.checkExpr(item, scope, 'value', allowAwait);
+      case 'List': {
+        const elementType = expectedType?.kind === 'list' ? expectedType.element : undefined;
+        for (const item of expr.items) this.checkExpr(item, scope, 'value', allowAwait, false, elementType);
         return;
+      }
       case 'Paren':
-        this.checkExpr(expr.inner, scope, 'value', allowAwait);
+        this.checkExpr(expr.inner, scope, 'value', allowAwait, false, expectedType);
+        return;
+      case 'Null':
+        if (expectedType?.kind !== 'nullable') this.optionalValueError(expr.span, 'null');
         return;
       case 'String':
         for (const interpolation of expr.interpolations) this.checkInterpolation(interpolation.text, interpolation.span, scope);
@@ -1930,20 +2083,70 @@ class Checker {
     }
   }
 
-  /** Identifier checking inside `${...}` without re-parsing the whole fragment. */
+  /** Identifier checking inside `${...}`, including the Optional accessors that lower differently. */
   private checkInterpolation(text: string, span: Span, scope: Scope): void {
-    const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(\S?)/.exec(text);
-    if (match === null) return;
-    const root = match[1]!;
-    const next = match[2] ?? '';
-    if (next === '(') return; // a call: assumed to be a host function
+    const trimmed = text.trim();
+    const rootMatch = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(trimmed);
+    if (rootMatch === null) return;
+    const root = rootMatch[1]!;
     const varInfo = this.resolve(root, scope);
-    if (varInfo !== undefined) {
-      varInfo.used = true;
+    if (varInfo === undefined) {
+      if (trimmed[root.length] === '(' || isHostReference(root, this.options.hostRoots)) return;
+      this.error('PUI2005', `unknown identifier "${root}" in string interpolation`, span, 'declare it with "state", or pass it as a parameter');
       return;
     }
-    if (isHostReference(root, this.options.hostRoots)) return;
-    this.error('PUI2005', `unknown identifier "${root}" in string interpolation`, span, 'declare it with "state", or pass it as a parameter');
+    varInfo.used = true;
+
+    let receiver = root;
+    let suffix = trimmed.slice(root.length).trimStart();
+    let optionalType: UiType | undefined = varInfo.type.kind === 'nullable' ? varInfo.type : undefined;
+    if (optionalType === undefined && varInfo.type.kind === 'task' && suffix.startsWith('.error')) {
+      receiver = `${root}.error`;
+      suffix = suffix.slice('.error'.length);
+      optionalType = { kind: 'nullable', inner: STRING };
+    }
+    if (optionalType === undefined) return;
+
+    if (suffix.startsWith('.exists')) {
+      const tail = suffix.slice('.exists'.length);
+      if (tail.startsWith('(')) {
+        this.error('PUI2366', 'exists is a property, not a function', span, 'write value.exists without parentheses');
+        return;
+      }
+      if (/^\b/.test(tail)) {
+        this.error('PUI2366', 'Optional values have no member after "exists"', span, 'use .exists or .orElse(fallback)');
+        return;
+      }
+      this.optionalInterpolationRewrites.set(span.start, `(${receiver} != null)${tail}`);
+      return;
+    }
+
+    const fallback = /^\.orElse\s*\((.*)\)(.*)$/s.exec(suffix);
+    if (fallback !== null) {
+      const valueText = fallback[1]!.trim();
+      const tail = fallback[2]!.trim();
+      const stringFallback = /^"(?:[^"\\]|\\.)*"$/.test(valueText) || /^'(?:[^'\\]|\\.)*'$/.test(valueText);
+      if (valueText === '' || (!stringFallback && /,/.test(valueText))) {
+        this.error('PUI2367', 'orElse takes exactly one fallback', span, 'write value.orElse(fallback)');
+        return;
+      }
+      let fallbackType: UiType = DYNAMIC;
+      if (stringFallback) fallbackType = STRING;
+      else if (/^-?\d+$/.test(valueText)) fallbackType = INT;
+      else if (/^-?\d+\.\d+$/.test(valueText)) fallbackType = DOUBLE;
+      else if (valueText === 'true' || valueText === 'false') fallbackType = BOOL;
+      else if (valueText === 'null') fallbackType = { kind: 'nullable', inner: DYNAMIC };
+      else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(valueText)) fallbackType = this.resolve(valueText, scope)?.type ?? DYNAMIC;
+      if (!assignable(optionalType.inner, fallbackType)) {
+        this.error('PUI2367', 'orElse fallback has the wrong type', span, `expected ${typeName(optionalType.inner)}`);
+        return;
+      }
+      this.optionalInterpolationRewrites.set(span.start, `(${receiver} ?? ${valueText})${tail}`);
+      return;
+    }
+
+    if (suffix === '') this.optionalValueError(span, receiver);
+    else this.error('PUI2366', `Optional values have no member in "${suffix.trim()}"`, span, 'use .exists or .orElse(fallback)');
   }
 
   // ------------------------------------------------------------------------------------------
@@ -2384,6 +2587,10 @@ class Checker {
         return varInfo?.type ?? DYNAMIC;
       }
       case 'Call': {
+        if (expr.callee.kind === 'Member' && expr.callee.name === 'orElse') {
+          const receiver = this.typeOfExpression(expr.callee.object, scope);
+          if (receiver.kind === 'nullable') return receiver.inner;
+        }
         const target = this.hostTarget(expr, scope, false);
         if (target !== undefined && target.decl.kind === 'HostFn' && target.decl.typeText !== undefined) {
           return returnTypeFromText(target.decl.typeText).type;
@@ -2391,6 +2598,8 @@ class Checker {
         return DYNAMIC;
       }
       case 'Member': {
+        const receiver = this.typeOfExpression(expr.object, scope);
+        if (receiver.kind === 'nullable' && expr.name === 'exists') return BOOL;
         if (expr.object.kind === 'Ident') {
           const varInfo = this.resolve(expr.object.name, scope);
           if (varInfo !== undefined && varInfo.type.kind === 'task') {
@@ -2662,7 +2871,7 @@ function typeName(type: UiType): string {
     case 'named':
       return type.name;
     case 'nullable':
-      return `${typeName(type.inner)}?`;
+      return `Optional<${typeName(type.inner)}>`;
     case 'dynamic':
       return 'dynamic';
     case 'task':

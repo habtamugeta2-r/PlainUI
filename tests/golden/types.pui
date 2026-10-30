@@ -4,7 +4,7 @@ component Badge(label: Text, count: Optional<Int>):
 
     row gap=4:
         text label style=caption
-        text "${count}"
+        text "${count.orElse(0)}"
 
 screen Types:
 
@@ -24,7 +24,7 @@ screen Types:
         text label style=heading
         text "${ratio}"
         text "${ready}"
-        text "${note}"
+        text note.orElse("No note")
 
         Badge(name, count)
 

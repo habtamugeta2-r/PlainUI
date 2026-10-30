@@ -1,6 +1,6 @@
 // `navigate` and `back()`, with parameters on the screen being opened.
 
-screen Detail(id: String, title: String = "Task"):
+screen Detail(id: Text, title: Text = "Task"):
 
     column padding=16 gap=12:
 
@@ -13,7 +13,7 @@ screen Detail(id: String, title: String = "Task"):
 
 screen Home:
 
-    state items: List<String> = ["Write the spec", "Ship it"]
+    state items: List<Text> = ["Write the spec", "Ship it"]
 
     column padding=16 gap=12:
 

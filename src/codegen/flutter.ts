@@ -38,11 +38,11 @@ import {
   rootIdentifiers,
   walkExpr,
   walkNodes,
-  typeToText,
-  toDartTypeText,
   walkExpressions,
 } from '../frontend/ast.ts';
 import { isSubmitCall, type Analysis } from '../analysis/check.ts';
+import { FLUTTER_TARGET } from '../targets/index.ts';
+import { typeTextForTarget, typeToTargetText } from './types.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
 import { BUILTIN_STYLES } from '../analysis/styles.ts';
@@ -500,7 +500,7 @@ class FlutterGenerator {
 
   private fields(decl: ScreenDecl | ComponentDecl): string[] {
     return decl.params.map((param) => {
-      const type = param.typeText === undefined ? 'dynamic' : toDartTypeText(param.typeText);
+      const type = param.typeText === undefined ? typeToTargetText(DYNAMIC, FLUTTER_TARGET.types) : typeTextForTarget(param.typeText, FLUTTER_TARGET.types);
       const needsInitializer = param.defaultValue !== undefined && !isConstExpr(param.defaultValue);
       return needsInitializer
         ? `final ${type} ${param.name} = ${this.expr(param.defaultValue!)};`
@@ -632,8 +632,8 @@ class FlutterGenerator {
     for (const item of decl.derived) {
       const type =
         item.typeText === undefined
-          ? typeToText(this.analysis.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC)
-          : toDartTypeText(item.typeText);
+          ? typeToTargetText(this.analysis.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC, FLUTTER_TARGET.types)
+          : typeTextForTarget(item.typeText, FLUTTER_TARGET.types);
       lines.push('');
       lines.push(`  /// \`derived ${item.name}\` — computed on every read, never stored.`);
       lines.push(`  ${type} get ${item.name} => ${this.expr(item.init)};`);
@@ -679,9 +679,9 @@ class FlutterGenerator {
   /** The declared or inferred type of a state, as Dart text. */
   private stateTypeText(decl: ScreenDecl | ComponentDecl, name: string): string {
     const state = decl.state.find((item) => item.name === name);
-    if (state?.typeText !== undefined) return toDartTypeText(state.typeText);
+    if (state?.typeText !== undefined) return typeTextForTarget(state.typeText, FLUTTER_TARGET.types);
     const inferred = this.analysis.stateTypes.get(decl.name)?.get(name);
-    return inferred === undefined ? 'dynamic' : typeToText(inferred);
+    return inferred === undefined ? typeToTargetText(DYNAMIC, FLUTTER_TARGET.types) : typeToTargetText(inferred, FLUTTER_TARGET.types);
   }
 
   private effectMethods(decl: ScreenDecl | ComponentDecl): string[][] {
@@ -753,7 +753,7 @@ class FlutterGenerator {
     const lines: string[] = [];
     for (const task of decl.tasks) {
       const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
-      const valueText = task.typeText === undefined ? typeToText(value) : toDartTypeText(task.typeText);
+      const valueText = task.typeText === undefined ? typeToTargetText(value, FLUTTER_TARGET.types) : typeTextForTarget(task.typeText, FLUTTER_TARGET.types);
       lines.push(`  ${valueText}? ${this.taskField(task.name, 'value')};`);
       lines.push(`  String? ${this.taskField(task.name, 'error')};`);
       lines.push(`  bool ${this.taskField(task.name, 'loading')} = true;`);
@@ -814,7 +814,7 @@ class FlutterGenerator {
         // stay nullable, and `items.value != null` is the gate for those.
         const field = this.taskField(expr.object.name, 'value');
         const value = entry.type.value;
-        if (value.kind === 'list') return `(${field} ?? const <${typeToText(value.element)}>[])`;
+        if (value.kind === 'list') return `(${field} ?? const <${typeToTargetText(value.element, FLUTTER_TARGET.types)}>[])`;
         return field;
       }
       case 'error':
@@ -830,7 +830,7 @@ class FlutterGenerator {
 
   private stateField(state: StateDecl): string {
     const type = this.analysis.stateTypes.get(this.currentDeclName())?.get(state.name) ?? DYNAMIC;
-    const typeText = state.typeText === undefined ? typeToText(type) : toDartTypeText(state.typeText);
+    const typeText = state.typeText === undefined ? typeToTargetText(type, FLUTTER_TARGET.types) : typeTextForTarget(state.typeText, FLUTTER_TARGET.types);
     return `${typeText} ${state.name} = ${this.expr(state.init)};`;
   }
 
@@ -898,7 +898,7 @@ class FlutterGenerator {
     const iterableType = this.typeOf(node.iterable);
     const iterable =
       iterableType.kind === 'nullable'
-        ? `(${raw} ?? const <${iterableType.inner.kind === 'list' ? typeToText(iterableType.inner.element) : 'dynamic'}>[])`
+        ? `(${raw} ?? const <${iterableType.inner.kind === 'list' ? typeToTargetText(iterableType.inner.element, FLUTTER_TARGET.types) : typeToTargetText(DYNAMIC, FLUTTER_TARGET.types)}>[])`
         : raw;
     const types = this.analysis.loopTypes.get(node);
     const savedScope = this.scope;
@@ -1838,8 +1838,17 @@ class FlutterGenerator {
   }
 
   private typeOf(expr: Expr): UiType {
+    if (expr.kind === 'Call' && expr.callee.kind === 'Member' && expr.callee.name === 'orElse') {
+      const receiver = this.typeOf(expr.callee.object);
+      if (receiver.kind === 'nullable') return receiver.inner;
+    }
+    if (expr.kind === 'Member' && expr.name === 'exists' && this.typeOf(expr.object).kind === 'nullable') {
+      return BOOL;
+    }
     if (expr.kind === 'Ident') {
-      return this.scope.get(expr.name)?.type ?? DYNAMIC;
+      const type = this.scope.get(expr.name)?.type ?? DYNAMIC;
+      if (this.analysis.narrowedOptionals.has(expr) && type.kind === 'nullable') return type.inner;
+      return type;
     }
     if (expr.kind === 'Member' && expr.object.kind === 'Ident') {
       const owner = this.scope.get(expr.object.name);
@@ -1889,8 +1898,20 @@ class FlutterGenerator {
 
   private expr(expr: Expr): string {
     switch (expr.kind) {
-      case 'String':
-        return expr.raw;
+      case 'String': {
+        let raw = expr.raw;
+        for (const interpolation of expr.interpolations) {
+          const replacement = this.analysis.optionalInterpolationRewrites.get(interpolation.span.start);
+          if (replacement === undefined) continue;
+          const lowered = replacement.replace(/\b([A-Za-z_][A-Za-z0-9_]*)\.error\b/g, (member, name: string) =>
+            this.scope.get(name)?.type.kind === 'task' ? this.taskField(name, 'error') : member,
+          );
+          const start = interpolation.span.start - expr.span.start;
+          const end = start + interpolation.text.length;
+          raw = `${raw.slice(0, start)}${lowered}${raw.slice(end)}`;
+        }
+        return raw;
+      }
       case 'Number':
         return expr.raw;
       case 'Bool':
@@ -1901,7 +1922,9 @@ class FlutterGenerator {
         return this.color(expr);
       case 'Ident': {
         const entry = this.scope.get(expr.name);
-        if (entry !== undefined) return entry.emittedName;
+        if (entry !== undefined) {
+          return this.analysis.narrowedOptionals.has(expr) ? `${entry.emittedName}!` : entry.emittedName;
+        }
         const token = this.analysis.tokens.get(expr.name);
         if (token !== undefined) return token.category === 'color' ? this.color(token.value) : this.num(token.value);
         return expr.name;
@@ -1909,9 +1932,20 @@ class FlutterGenerator {
       case 'Member': {
         const task = this.taskMember(expr);
         if (task !== undefined) return task;
+        if (expr.name === 'exists' && this.typeOf(expr.object).kind === 'nullable') {
+          return `(${this.expr(expr.object)} != null)`;
+        }
         return `${this.expr(expr.object)}.${expr.name}`;
       }
       case 'Call': {
+        if (
+          expr.callee.kind === 'Member' &&
+          expr.callee.name === 'orElse' &&
+          this.typeOf(expr.callee.object).kind === 'nullable'
+        ) {
+          const fallback = expr.args[0] === undefined ? 'null' : this.expr(expr.args[0].value);
+          return `(${this.expr(expr.callee.object)} ?? ${fallback})`;
+        }
         const args = expr.args.map((a) => (a.name === undefined ? this.expr(a.value) : `${a.name}: ${this.expr(a.value)}`));
         return `${this.expr(expr.callee)}(${args.join(', ')})`;
       }

@@ -86,11 +86,14 @@ class _TasksState extends State<Tasks> {
           SizedBox(height: 8),
           if (_itemsLoading)
             CircularProgressIndicator()
-          else if (_itemsError != null)
+          else if ((_itemsError != null))
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text((_itemsError ?? ''), style: TextStyle(color: Color(0xFFDC2626))),
+                Text(
+                  (_itemsError ?? "Unknown error"),
+                  style: TextStyle(color: Color(0xFFDC2626)),
+                ),
                 ElevatedButton(
                   onPressed: () {
                     _loadItems();

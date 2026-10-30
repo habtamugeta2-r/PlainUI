@@ -2,17 +2,17 @@
 
 import "../data.dart" as data:
 
-    loadTasks(filter: String) -> Future<List<String>>
-    count(word: String, pad: int) -> int
-    formatCount(count: int) -> String
-    AppLogo(size: double=24)
+    loadTasks(filter: Text) -> Future<List<Text>>
+    count(word: Text, pad: Int) -> Int
+    formatCount(count: Int) -> Text
+    AppLogo(size: Float=24)
 
 screen Host:
 
-    state filter: String = ""
-    state label: String = ""
+    state filter: Text = ""
+    state label: Text = ""
 
-    task tasks: List<String> = data.loadTasks(filter)
+    task tasks: List<Text> = data.loadTasks(filter)
 
     column padding=20 gap=12:
 
@@ -39,9 +39,9 @@ screen Host:
 
             progress
 
-        elif tasks.error != null:
+        elif tasks.error.exists:
 
-            text tasks.error
+            text tasks.error.orElse("Unknown error")
 
         else:
 

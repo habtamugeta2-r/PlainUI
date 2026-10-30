@@ -77,6 +77,26 @@ const ENUM_ALIASES: Readonly<Record<string, string>> = {
   bottomEnd: 'bottomRight',
 };
 
+const TYPES: Target['types'] = {
+  names: {
+    Text: 'String', String: 'String',
+    Int: 'int', int: 'int',
+    Float: 'double', double: 'double',
+    Bool: 'bool', bool: 'bool',
+    Num: 'num', num: 'num',
+    Dynamic: 'dynamic', dynamic: 'dynamic',
+    Object: 'Object', Color: 'Color', Duration: 'Duration',
+  },
+  optional: { prefix: '', suffix: '?' },
+  generics: {
+    List: { prefix: 'List<', suffix: '>' },
+    Iterable: { prefix: 'Iterable<', suffix: '>' },
+    Set: { prefix: 'Set<', suffix: '>' },
+    Map: { prefix: 'Map<', suffix: '>' },
+    Future: { prefix: 'Future<', suffix: '>' },
+  },
+};
+
 export const FLUTTER_TARGET: Target = {
   id: 'flutter',
   label: 'Flutter',
@@ -86,6 +106,7 @@ export const FLUTTER_TARGET: Target = {
   reservedWords: RESERVED_WORDS,
   shadowedTypes: SHADOWED_TYPES,
   typeSpellings: TYPE_SPELLINGS,
+  types: TYPES,
   enumAliases: ENUM_ALIASES,
   capabilities: {
     state: { level: 'full', note: 'State is a field on the generated `State` class, changed through `setState`.' },

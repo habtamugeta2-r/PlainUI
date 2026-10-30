@@ -110,7 +110,7 @@ must contain at least one element (`PUI2010`).
 A screen may take parameters, which is what makes it a destination:
 
 ```
-screen Detail(id: String, title: String = "Task"):
+screen Detail(id: Text, title: Text = "Task"):
     <body>
 ```
 
@@ -125,7 +125,7 @@ parameterless form stays the common one.
 ### 2.2 Components
 
 ```
-component ProfileCard(user: User, compact: bool = false):
+component ProfileCard(user: User, compact: Bool = false):
     <body>
 ```
 
@@ -135,7 +135,7 @@ component ProfileCard(user: User, compact: bool = false):
   declares `state`.
 * `slot` may appear in the body at most once; it marks where the children supplied by the call
   site are rendered. A component that uses `slot` must declare a `children` parameter:
-  `component Shell(children: List<Widget>, title: String)`. Using `slot` without `children` is
+  `component Shell(children: List<Widget>, title: Text)`. Using `slot` without `children` is
   an error (`PUI2204`); supplying children to a component with no `slot` is an error (`PUI2203`).
 
 ### 2.3 Styles
@@ -196,12 +196,18 @@ switching to a dark token set, is a separate feature and is not part of this one
 
 ### 2.5 Host surfaces
 
+`Optional<T>` is PlainUI's non-null-by-default absence type. A `null` literal is legal only in a
+context expecting `Optional<T>`; an Optional value cannot be used as `T` directly. Use
+`value.orElse(fallback)` to produce a `T`, or branch on `value.exists` (a `Bool`); inside the true
+branch, `value` is narrowed to `T`. `Optional<T>` lowers to the target's nullable representation,
+including in typed host signatures, while the PlainUI source remains target-neutral.
+
 ```
 import "../data.dart" as data:
 
-    loadTasks(filter: String) -> Future<List<String>>
-    save(email: String, password: String)
-    AppLogo(size: double = 24)
+    loadTasks(filter: Text) -> Future<List<Text>>
+    save(email: Text, password: Text)
+    AppLogo(size: Float = 24)
 ```
 
 ```
@@ -212,9 +218,11 @@ import "<path>" as <name>:
 
 * The block declares the host's surface. The **case of the name decides what it is**, exactly as it
   does for elements: lowercase is a function, capitalised is a widget constructor (`PUI2346`).
-* Every parameter needs a type (`PUI2346`). Types are written in the same vocabulary as `state` and
-  parameters — the host's own type text, today Dart's (`String`, `int`, `double`, `List<String>`,
-  `Todo`). A return type of `Future<T>` says the call is **asynchronous** and yields a `T`.
+* Every parameter needs a type (`PUI2346`). Primitive and collection types use PlainUI's vocabulary
+  (`Text`, `Int`, `Float`, `Bool`, `List<Text>`); a host model such as `Todo` is named as an opaque
+  type and mapped by the target. Legacy Dart primitive spellings remain accepted during 1.x but
+  produce `PUI2207`; `plainui migrate` rewrites recognized type annotations. A return type of
+  `Future<T>` says the call is **asynchronous** and yields a `T`.
 * A declared name is checked at every call site: it takes its declared parameters, once each, by
   name or position (`PUI2341`, `PUI2342`), and each argument has the declared type (`PUI2343`).
 * An asynchronous call needs `await` or a `task` (`PUI2344`); the value it produces is checked where
@@ -316,9 +324,9 @@ reconciliation, so it ignores them.
 ### 3.4 State
 
 ```
-state count: int = 0
-state email: String = ""
-state items: List<String> = []
+state count: Int = 0
+state email: Text = ""
+state items: List<Text> = []
 ```
 
 * `state` is only valid at the **top level** of a screen or component (`PUI2002`).
@@ -340,8 +348,8 @@ screen Tasks:
     if items.loading:
         progress
 
-    elif items.error != null:
-        text items.error color=danger
+    elif items.error.exists:
+        text items.error.orElse("Unknown error") color=danger
         button "Try again":
             on tap:
                 items.retry()
@@ -357,11 +365,12 @@ screen Tasks:
 * The type is optional but strongly recommended: it is what `items.value` is typed as, and what a
   `for` over it uses for the loop variable.
 * A task exposes exactly four parts (`PUI2312`):
-  * `items.loading` — `bool`, true while a load is in flight, including during a retry;
-  * `items.error` — `String?`, the failure text of the last attempt, cleared when a new one starts;
+  * `items.loading` — `Bool`, true while a load is in flight, including during a retry;
+  * `items.error` — `Optional<Text>`, the failure text of the last attempt, cleared when a new one starts;
+    check it with `items.error.exists` and read it with `items.error.orElse("Unknown error")`;
   * `items.value` — the loaded value. For a `List<T>` it reads as an empty list before the first
-    load finishes, so `for item in items.value` and `items.value.isEmpty` need no null handling;
-    for any other type it is nullable, and `items.value != null` is the gate;
+    load finishes, so `for item in items.value` and `items.value.isEmpty` need no absence handling;
+    for any other type it is `Optional<T>` and must be handled explicitly;
   * `items.retry()` — runs the load again, resetting the error first.
 * A task starts when its screen is created. It cannot be assigned (`PUI2311`); `retry()` is the
   only way to run it again. A task and a state variable may not share a name (`PUI2003`).
@@ -378,8 +387,8 @@ hand.
 ```
 screen Counter:
 
-    state count: int = 0
-    state name: String = ""
+    state count: Int = 0
+    state name: Text = ""
 
     derived doubled = count * 2
     derived greeting = name == "" ? "Hello, stranger" : "Hello, ${name}"
@@ -428,9 +437,9 @@ when one particular piece of state moves. That is what `effect` is for.
 ```
 screen Search:
 
-    state query: String = ""
-    state busy: bool = false
-    state results: List<String> = []
+    state query: Text = ""
+    state busy: Bool = false
+    state results: List<Text> = []
 
     effect on query:
         set busy = true
@@ -506,7 +515,7 @@ screen Home:
     button "Open":
         on tap: navigate Detail(id: "42", title: "Item 42")
 
-screen Detail(id: String, title: String = "Task"):
+screen Detail(id: Text, title: Text = "Task"):
     text title
     button "Back":
         on tap: back()

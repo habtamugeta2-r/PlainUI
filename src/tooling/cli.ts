@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from '../analysis/diagnostics.ts';
 import { formatText } from './format.ts';
+import { migrateTypes } from './migrate.ts';
 import { describeTokens, tokenize } from '../frontend/lexer.ts';
 import { ProjectCache, compileProject } from '../project/project.ts';
 import {
@@ -292,6 +293,56 @@ async function commandFormat(args: Args): Promise<number> {
   return 0;
 }
 
+async function commandMigrate(args: Args): Promise<number> {
+  const { config, roots } = resolveProject(args);
+  const files = sourcesOf(roots, config);
+  if (files.length === 0) {
+    fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
+    return 1;
+  }
+
+  const checkOnly = args.flags.has('--check');
+  const pending: string[] = [];
+  let migrated = 0;
+  let invalid = 0;
+  for (const path of files) {
+    const original = readFileSync(path, 'utf8');
+    const file = sourceFile(path, original);
+    const result = migrateTypes(file);
+    if (result.diagnostics.length > 0) {
+      printDiagnostics(result.diagnostics.map((diagnostic) => ({ ...diagnostic, file })));
+      if (result.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
+        invalid += 1;
+        continue;
+      }
+    }
+    if (!result.changed) continue;
+    const relative = relativePath(process.cwd(), path);
+    if (checkOnly) {
+      pending.push(relative);
+      continue;
+    }
+    writeFileSync(path, result.text, 'utf8');
+    migrated += 1;
+    if (ui.verbose) say(`  migrated ${relative}`);
+  }
+
+  if (invalid > 0) {
+    warn(`plainui migrate: ${invalid} file(s) could not be parsed; no changes were made to those files`);
+    return 1;
+  }
+  if (checkOnly) {
+    if (pending.length > 0) {
+      warn(`plainui migrate: ${pending.length} file(s) need type migration: ${pending.join(', ')}`);
+      return 3;
+    }
+    say(`plainui migrate: ${files.length} file(s) already use PlainUI types`);
+    return 0;
+  }
+  say(`plainui migrate: ${migrated === 0 ? 'already up to date' : `${migrated} file(s) migrated`} (${files.length} checked)`);
+  return 0;
+}
+
 async function commandWatch(args: Args): Promise<number> {
   const { config, roots, root } = resolveProject(args);
   const sourceCount = sourcesOf(roots, config).length;
@@ -393,7 +444,7 @@ async function commandInit(args: Args): Promise<number> {
       [
         'screen Home:',
         '',
-        '    state count: int = 0',
+        '    state count: Int = 0',
         '',
         '    column padding=24 gap=16 main=center:',
         '',
@@ -591,6 +642,7 @@ Commands:
   watch      rebuild whenever a .pui file changes
   lsp        language server on stdin/stdout (editors)
   format     rewrite files in canonical form       [--check] [--stdout]
+  migrate    replace deprecated Dart type aliases   [--check]
   init       create plainui.config.json and lib/ui/home.pui
   ast        print the parsed tree of a file
   tokens     print the token stream of a file
@@ -643,6 +695,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return await commandCheck(args);
       case 'format':
         return await commandFormat(args);
+      case 'migrate':
+        return await commandMigrate(args);
       case 'watch':
         return await commandWatch(args);
       case 'lsp':

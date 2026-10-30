@@ -12,7 +12,7 @@ import type { Diagnostic } from '../src/analysis/diagnostics.ts';
 const codes = (diagnostics: readonly Diagnostic[]): string[] => diagnostics.map((d) => d.code);
 
 const SHELL = [
-  'component Shell(title: String, children: List<Widget>):',
+  'component Shell(title: Text, children: List<Widget>):',
   '    card padding=16:',
   '        text title',
   '        slot',
@@ -55,7 +55,7 @@ test('components in the same file keep working without an import', () => {
   const result = compileProject([
     {
       path: 'lib/ui/page.pui',
-      text: ['component Chip(label: String):', '    text label', '', 'screen Page:', '    Chip("x")', ''].join('\n'),
+      text: ['component Chip(label: Text):', '    text label', '', 'screen Page:', '    Chip("x")', ''].join('\n'),
     },
   ]);
   assert.equal(result.ok, true);

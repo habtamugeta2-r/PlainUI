@@ -26,8 +26,9 @@ const SCREEN = [
   '        if items.loading:',
   '            progress',
   '',
-  '        elif items.error != null:',
-  '            text items.error',
+  '        elif items.error.exists:',
+  '            text items.error.orElse("Unknown error")',
+  "            text \"Reported: ${items.error.orElse('Unknown')}\"",
   '',
   '            button "Try again":',
   '                on tap:',
@@ -103,7 +104,7 @@ test('a retry cannot be overwritten by the older load it superseded', () => {
   assert.equal(loader.match(/request != _itemsRequest/g)?.length, 2, 'both the success and the error path');
   // The counter is per task, not per screen: two tasks can be in flight at once.
   const two = compile(
-    ['screen Two:', '', '    task a: List<String> = loadA()', '    task b: List<String> = loadB()', '', '    column:', '', '        text a.error ?? ""', '        text b.error ?? ""', ''].join('\n'),
+    ['screen Two:', '', '    task a: List<String> = loadA()', '    task b: List<String> = loadB()', '', '    column:', '', '        text a.error.orElse("")', '        text b.error.orElse("")', ''].join('\n'),
   ).code!;
   assert.match(two, /int _aRequest = 0;/);
   assert.match(two, /int _bRequest = 0;/);
@@ -112,9 +113,10 @@ test('a retry cannot be overwritten by the older load it superseded', () => {
 test('task members map to those fields, and a missing value reads as an empty list', () => {
   const code = compile(SCREEN).code!;
   assert.match(code, /if \(_itemsLoading\)/);
-  assert.match(code, /else if \(_itemsError != null\)/);
-  // A nullable error inside Text would not compile; the compiler supplies the fallback.
-  assert.match(code, /Text\(\(_itemsError \?\? ''\)/);
+  assert.match(code, /else if \(\(_itemsError != null\)\)/);
+  // The Optional is explicit in source; the fallback lowers to Dart's null-coalescing operator.
+  assert.match(code, /Text\(\(_itemsError \?\? "Unknown error"\)\)/);
+  assert.match(code, /Reported: \$\{\(_itemsError \?\? 'Unknown'\)\}/);
   // `items.value` is iterable before the first load finishes.
   assert.match(code, /for \(final item in \(_items \?\? const <String>\[\]\)\)/);
 });

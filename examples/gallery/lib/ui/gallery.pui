@@ -23,10 +23,10 @@ style mono:
 
 screen Gallery:
 
-    state name: String = "Ada"
-    state volume: double = 0.4
-    state dark: bool = false
-    state notes: String = ""
+    state name: Text = "Ada"
+    state volume: Float = 0.4
+    state dark: Bool = false
+    state notes: Text = ""
 
     scaffold title="PlainUI gallery":
 

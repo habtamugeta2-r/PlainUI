@@ -17,11 +17,11 @@ import { formatText } from '../src/tooling/format.ts';
 const DATA_SURFACE = [
   'import "../data.dart" as data:',
   '',
-  '    loadTasks(filter: String) -> Future<List<String>>',
-  '    loadSlowThenFast() -> Future<List<String>>',
-  '    count(word: String, pad: int = 0) -> int',
-  '    formatCount(count: int) -> String',
-  '    AppLogo(size: double = 24)',
+  '    loadTasks(filter: Text) -> Future<List<Text>>',
+  '    loadSlowThenFast() -> Future<List<Text>>',
+  '    count(word: Text, pad: Int = 0) -> Int',
+  '    formatCount(count: Int) -> Text',
+  '    AppLogo(size: Float = 24)',
   '',
 ].join('\n');
 
@@ -35,7 +35,7 @@ function compile(text: string) {
 }
 
 function file(...body: readonly string[]): string {
-  return [DATA_SURFACE, 'screen Home:', '', '    state note: String = ""', '', ...body, ''].join('\n');
+  return [DATA_SURFACE, 'screen Home:', '', '    state note: Text = ""', '', ...body, ''].join('\n');
 }
 
 /** Codes, minus the "declared but unused" chatter that every fixture would otherwise collect. */
@@ -89,8 +89,8 @@ test('the formatter keeps a surface stable', () => {
   const messy = [
     'import "../data.dart" as data:',
     '',
-    '    loadTasks(filter:String)->Future<List<String>>',
-    '    AppLogo(size:double=24)',
+    '    loadTasks(filter:Text)->Future<List<Text>>',
+    '    AppLogo(size:Float=24)',
     '',
     'screen Home:',
     '',
@@ -100,8 +100,8 @@ test('the formatter keeps a surface stable', () => {
     '',
   ].join('\n');
   const once = formatText('home.pui', messy).text;
-  assert.match(once, /loadTasks\(filter: String\) -> Future<List<String>>/);
-  assert.match(once, /AppLogo\(size: double=24\)/);
+  assert.match(once, /loadTasks\(filter: Text\) -> Future<List<Text>>/);
+  assert.match(once, /AppLogo\(size: Float=24\)/);
   assert.equal(formatText('home.pui', once).text, once);
   // The formatted text still compiles to the same tree: the formatter never changes meaning.
   assert.deepEqual(compile(once).diagnostics.filter((diagnostic) => diagnostic.severity === 'error'), []);
@@ -113,12 +113,12 @@ test('the formatter keeps a surface stable', () => {
 
 test('a declared call is checked instead of passed through', () => {
   assert.deepEqual(errors(tap('log(data.count("a", 2))')), []);
-  assert.deepEqual(errors(file('    state n: int = count("a")', '', '    text "${n}"')), []);
+  assert.deepEqual(errors(file('    state n: Int = count("a")', '', '    text "${n}"')), []);
   assert.deepEqual(errors(tap('log(data.formatCount(3))')), []);
 });
 
 test('an unqualified call works when only one module declares the name', () => {
-  const text = file('    task tasks: List<String> = loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"');
+  const text = file('    task tasks: List<Text> = loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"');
   assert.deepEqual(errors(text), []);
 });
 
@@ -153,25 +153,25 @@ test('an asynchronous function cannot be used as a value', () => {
   assert.match(hints(tap('log(data.loadTasks(""))')), /await/);
   // With await it is a value again, and inside a task it is awaited by the loader.
   assert.deepEqual(errors(tap('log(await data.loadTasks(""))')), []);
-  assert.deepEqual(errors(file('    task tasks: List<String> = data.loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"')), []);
+  assert.deepEqual(errors(file('    task tasks: List<Text> = data.loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"')), []);
 });
 
 test('the value a host call produces is checked where it lands', () => {
-  assert.deepEqual(errors(file('    state n: int = count("a")', '', '    text "${n}"')), []);
-  assert.deepEqual(errors(file('    state label: int = formatCount(3)', '', '    text "${label}"')), ['PUI2343']);
+  assert.deepEqual(errors(file('    state n: Int = count("a")', '', '    text "${n}"')), []);
+  assert.deepEqual(errors(file('    state label: Int = formatCount(3)', '', '    text "${label}"')), ['PUI2343']);
   assert.deepEqual(errors(tap('set note = count("a")')), ['PUI2343']);
-  assert.deepEqual(errors(file('    task numbers: List<String> = formatCount(1)', '', '    column:', '', '        text "${numbers.value.length}"')), ['PUI2343']);
+  assert.deepEqual(errors(file('    task numbers: List<Text> = formatCount(1)', '', '    column:', '', '        text "${numbers.value.length}"')), ['PUI2343']);
 });
 
 test('two modules declaring one name need a qualifier', () => {
   const text = [
     'import "../data.dart" as data:',
     '',
-    '    count(word: String) -> int',
+    '    count(word: Text) -> Int',
     '',
     'import "../other.dart" as other:',
     '',
-    '    count(word: String) -> int',
+    '    count(word: Text) -> Int',
     '',
     'screen Home:',
     '',
@@ -194,17 +194,17 @@ test('a qualified call needs a surface to be qualified with', () => {
 });
 
 test('a surface that cannot mean anything is refused', () => {
-  const exposedPui = ['import "other.pui" as other:', '', '    helper(x: String)', '', 'screen Home:', '', '    text "x"', ''].join('\n');
+  const exposedPui = ['import "other.pui" as other:', '', '    helper(x: Text)', '', 'screen Home:', '', '    text "x"', ''].join('\n');
   assert.deepEqual(uniqueErrors(exposedPui), ['PUI2346']);
 
-  const anonymous = ['import "../data.dart":', '', '    helper(x: String)', '', 'screen Home:', '', '    text "x"', ''].join('\n');
+  const anonymous = ['import "../data.dart":', '', '    helper(x: Text)', '', 'screen Home:', '', '    text "x"', ''].join('\n');
   assert.deepEqual(errors(anonymous), ['PUI2346']);
 
   const duplicate = [
     'import "../data.dart" as data:',
     '',
-    '    helper(x: String)',
-    '    helper(x: String)',
+    '    helper(x: Text)',
+    '    helper(x: Text)',
     '',
     'screen Home:',
     '',
@@ -216,12 +216,12 @@ test('a surface that cannot mean anything is refused', () => {
   const untyped = ['import "../data.dart" as data:', '', '    helper(x)', '', 'screen Home:', '', '    column:', '', '        button "Go":', '            on tap: helper("a")', ''].join('\n');
   assert.deepEqual(uniqueErrors(untyped), ['PUI2346']);
 
-  const widgetWithReturn = ['import "../data.dart" as data:', '', '    AppLogo(size: double) -> double', '', 'screen Home:', '', '    text "x"', ''].join('\n');
+  const widgetWithReturn = ['import "../data.dart" as data:', '', '    AppLogo(size: Float) -> Float', '', 'screen Home:', '', '    text "x"', ''].join('\n');
   assert.deepEqual(uniqueErrors(widgetWithReturn), ['PUI2346']);
 
   // A lowercase declaration without a return type is a function that returns nothing: the case of
   // the name is what makes it a constructor, exactly as it is for elements.
-  const voidFunction = ['import "../data.dart" as data:', '', '    appLogo(size: double)', '', 'screen Home:', '', '    column:', '', '        button "Go":', '            on tap: appLogo(2)', ''].join('\n');
+  const voidFunction = ['import "../data.dart" as data:', '', '    appLogo(size: Float)', '', 'screen Home:', '', '    column:', '', '        button "Go":', '            on tap: appLogo(2)', ''].join('\n');
   assert.deepEqual(uniqueErrors(voidFunction), []);
 });
 
@@ -239,21 +239,21 @@ test('a near miss in an undeclared call is a warning, not silence', () => {
 // ---------------------------------------------------------------------------------------------
 
 test('a qualified source call produces a prefixed import', () => {
-  const code = compile(file('    task tasks: List<String> = data.loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"')).code!;
+  const code = compile(file('    task tasks: List<Text> = data.loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"')).code!;
   assert.match(code, /import '\.\.\/data\.dart';/);
   assert.match(code, /import '\.\.\/data\.dart' as data;/);
   assert.match(code, /await data\.loadTasks\(""\)/);
 });
 
 test('an unqualified call keeps the plain import, because a prefix would hide the rest', () => {
-  const code = compile(file('    task tasks: List<String> = loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"')).code!;
+  const code = compile(file('    task tasks: List<Text> = loadTasks("")', '', '    column:', '', '        text "${tasks.value.length}"')).code!;
   assert.match(code, /import '\.\.\/data\.dart';/);
   assert.doesNotMatch(code, /as data;/);
   assert.match(code, /await loadTasks\(""\)/);
 });
 
 test('the preview does not need the surface, and does not lose the content', () => {
-  const text = file('    task tasks: List<String> = data.loadTasks("")', '', '    column:', '', '        text note', '', '        AppLogo(size: 32)');
+  const text = file('    task tasks: List<Text> = data.loadTasks("")', '', '    column:', '', '        text note', '', '        AppLogo(size: 32)');
   const compiled = compile(text);
   assert.deepEqual(errors(text), []);
   const html = compiled.html!;

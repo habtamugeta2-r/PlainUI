@@ -120,8 +120,8 @@ class _HostState extends State<Host> {
           SizedBox(height: 12),
           if (_tasksLoading)
             CircularProgressIndicator()
-          else if (_tasksError != null)
-            Text((_tasksError ?? ''))
+          else if ((_tasksError != null))
+            Text((_tasksError ?? "Unknown error"))
           else
             for (final (index, task) in (_tasks ?? const <String>[]).indexed)
               KeyedSubtree(

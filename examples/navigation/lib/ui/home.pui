@@ -6,7 +6,7 @@ import "detail.pui"
 
 screen Home:
 
-    state items: List<String> = ["Write the spec", "Ship it", "Celebrate"]
+    state items: List<Text> = ["Write the spec", "Ship it", "Celebrate"]
 
     column padding=20 gap=12:
 

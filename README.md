@@ -149,10 +149,11 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 |---|---|
 | Lexer, parser, AST, formatter | ✅ implemented, tested |
 | Semantic validation with coded, caret-accurate diagnostics | ✅ |
+| PlainUI-native types (`Text`, `Int`, `Float`, `Bool`, `Optional<T>`), legacy-alias warnings and `plainui migrate` | ✅ A1/A2 semantics and target-owned Flutter/HTML maps; aliases scheduled for removal in v2.0.0 |
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
 | Design tokens (`theme` blocks, shared by import, lowered per target) | ✅ |
 | `task` — async values with `loading` / `error` / `value` / `retry()` | ✅ |
-| CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets`, `next` | ✅ |
+| CLI: `build`, `check`, `format`, `migrate`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets`, `next` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
 | Examples (`examples/`), golden files, generated docs | ✅ |
 | Language server (`plainui lsp`) | ✅ diagnostics, formatting, hover |
@@ -206,6 +207,8 @@ npm test               # lexer, parser, checker, codegen, formatter, CLI, LSP, d
 node dist/cli.js build examples/counter   # .pui -> lib/generated/*.pui.dart
 node dist/cli.js watch examples/counter   # rebuild on save, incrementally
 node dist/cli.js check .                  # validate only
+node dist/cli.js migrate --check          # check for deprecated Dart type spellings
+node dist/cli.js migrate                  # rewrite legacy type annotations
 node dist/cli.js format .                 # canonical formatting
 node dist/cli.js widgets                  # what the language accepts
 node dist/cli.js lsp                      # language server (stdio)

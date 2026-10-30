@@ -12,7 +12,9 @@
  * file, and every example's generated directory stays exactly as small as its features.
  */
 
-import { toDartTypeText, walkActions, walkNodes, type Param, type Program, type ScreenDecl } from '../frontend/ast.ts';
+import { walkActions, walkNodes, type Param, type Program, type ScreenDecl } from '../frontend/ast.ts';
+import { FLUTTER_TARGET } from '../targets/index.ts';
+import { typeTextForTarget } from './types.ts';
 import { containsNavigation } from '../analysis/check.ts';
 import { sanitizeName } from './dart.ts';
 
@@ -92,7 +94,7 @@ function routeArguments(screen: ScreenDecl): { arguments: string[]; notes: strin
   const notes: string[] = [];
   for (const param of screen.params) {
     if (param.name === 'children') continue;
-    const type = param.typeText === undefined ? undefined : toDartTypeText(param.typeText);
+    const type = param.typeText === undefined ? undefined : typeTextForTarget(param.typeText, FLUTTER_TARGET.types);
     const read = `args['${param.name}']`;
     if (param.defaultValue === undefined) {
       args.push(type === undefined ? `${param.name}: ${read}!` : `${param.name}: ${read}! as ${type}`);

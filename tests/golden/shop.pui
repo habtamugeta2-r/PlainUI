@@ -1,6 +1,6 @@
 // A component with a slot, a loop, a conditional and the layout widgets around them.
 
-component ProductCard(title: String, price: int, children: List<Widget>):
+component ProductCard(title: Text, price: Int, children: List<Widget>):
 
     card padding=16 radius=16:
 
@@ -16,9 +16,9 @@ component ProductCard(title: String, price: int, children: List<Widget>):
 
 screen Shop:
 
-    state query: String = ""
-    state products: List<String> = ["Coffee", "Tea", "Juice"]
-    state cart: int = 0
+    state query: Text = ""
+    state products: List<Text> = ["Coffee", "Tea", "Juice"]
+    state cart: Int = 0
 
     column padding=20 gap=16:
 

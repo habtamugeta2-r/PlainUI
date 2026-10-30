@@ -321,6 +321,36 @@ export const CODES = {
     description: 'A type annotation looks like a Dart type but Dart spells it differently, so the generated file would not compile.',
     fix: 'Use the lowercase Dart spelling.',
   },
+  PUI2207: {
+    severity: 'warning',
+    title: 'Deprecated host type spelling',
+    description: 'Dart primitive type spellings are accepted for compatibility, but PlainUI has its own target-independent type vocabulary.',
+    fix: 'Replace String/int/double/bool with Text/Int/Float/Bool, respectively.',
+  },
+  PUI2365: {
+    severity: 'error',
+    title: 'Optional value needs handling',
+    description: 'An Optional<T> may be absent and cannot be used as a T without an explicit fallback or presence test.',
+    fix: 'Use value.orElse(fallback), or test value.exists before choosing a branch.',
+  },
+  PUI2366: {
+    severity: 'error',
+    title: 'Unsupported Optional operation',
+    description: 'Optional<T> exposes only the exists property and the orElse(fallback) operation.',
+    fix: 'Use .exists or .orElse(fallback).',
+  },
+  PUI2367: {
+    severity: 'error',
+    title: 'Invalid Optional fallback',
+    description: 'orElse takes exactly one positional fallback whose type matches the Optional value.',
+    fix: 'Write value.orElse(fallback) with one compatible fallback.',
+  },
+  PUI2368: {
+    severity: 'error',
+    title: 'Optional needs a type argument',
+    description: 'Optional without a type argument has no statically known value type.',
+    fix: 'Write Optional<T>, for example Optional<Text>.',
+  },
   PUI2205: {
     severity: 'error',
     title: 'slot outside a component',

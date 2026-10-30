@@ -5,12 +5,12 @@ import "theme.pui"
 import "inbox.pui"
 import "../model/data.dart" as data:
 
-    createIssue(title: String, body: String) -> Future<void>
+    createIssue(title: Text, body: Text) -> Future<void>
 
 screen NewIssue:
 
-    state title: String = ""
-    state body: String = ""
+    state title: Text = ""
+    state body: Text = ""
 
     // The screen is a page, not a fragment: `scaffold` is what gives a pushed screen its own
     // Material, which `Card`, `TextField` and the rest need wherever they are used.

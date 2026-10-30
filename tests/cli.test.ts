@@ -65,7 +65,7 @@ function project(files: Record<string, string>): string {
 const HOME = [
   'screen Home:',
   '',
-  '    state count: int = 0',
+  '    state count: Int = 0',
   '',
   '    column padding=24:',
   '        text "PlainUI"',
@@ -141,6 +141,7 @@ test('check exits 0 on clean input and 1 on errors', async () => {
   const ok = await run(['check', 'lib/ui'], clean);
   assert.equal(ok.code, 0);
   assert.match(ok.out, /no problems/);
+  assert.equal(ok.err, '');
 
   const broken = project({ 'lib/ui/home.pui': 'screen Home:\n    text\n' });
   const bad = await run(['check', 'lib/ui'], broken);
@@ -159,6 +160,30 @@ test('--json emits one machine readable object per diagnostic', async () => {
   assert.equal(parsed['severity'], 'error');
   assert.equal((parsed['start'] as { line: number }).line, 2);
   assert.equal(typeof parsed['file'], 'string');
+});
+
+test('migrate --check is dry-run and reports files needing PlainUI types', async () => {
+  const directory = project({
+    'lib/ui/home.pui': 'screen Home:\n    state count: int = 0\n    text "${count}"\n',
+  });
+  const check = await run(['migrate', 'lib/ui', '--check'], directory);
+  assert.equal(check.code, 3);
+  assert.match(check.err, /home\.pui/);
+  assert.match(readFileSync(join(directory, 'lib/ui/home.pui'), 'utf8'), /state count: int/);
+
+  const migrated = await run(['migrate', 'lib/ui'], directory);
+  assert.equal(migrated.code, 0);
+  assert.equal(readFileSync(join(directory, 'lib/ui/home.pui'), 'utf8'), 'screen Home:\n    state count: Int = 0\n    text "${count}"\n');
+  assert.equal((await run(['migrate', 'lib/ui', '--check'], directory)).code, 0);
+});
+
+test('migrate refuses malformed files without changing them', async () => {
+  const malformed = 'screen Home:\n    state count: int =\n';
+  const directory = project({ 'lib/ui/home.pui': malformed });
+  const result = await run(['migrate', 'lib/ui'], directory);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /PUI1006|PUI1007|PUI1023/);
+  assert.equal(readFileSync(join(directory, 'lib/ui/home.pui'), 'utf8'), malformed);
 });
 
 test('format rewrites files, --check reports and --stdout prints', async () => {

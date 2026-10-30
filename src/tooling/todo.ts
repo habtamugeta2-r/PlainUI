@@ -208,8 +208,9 @@ export const TODO: readonly TodoItem[] = [
     size: 'XL',
     status: 'next',
     acceptance:
-      '`Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and ' +
-      '`plainui migrate` rewrites existing projects.',
+      'A1 replaces Dart primitive spellings in `.pui` (with migration); A2 gives `Optional<T>` explicit ' +
+      'absence semantics; each target owns its type mapping. A1, A2, the Flutter/HTML target maps, and ' +
+      'the v2.0 alias-removal timeline are decided; typed task errors remain.',
     touches: ['src/frontend/ast.ts', 'src/analysis/check.ts', 'src/codegen/'],
   },
   {

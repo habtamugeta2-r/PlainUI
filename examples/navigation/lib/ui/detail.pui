@@ -1,7 +1,7 @@
 // `screen Detail(id: String, title: String = "Task")` — a destination with parameters.
 // The second one has a default, so `navigate Detail(id: "2")` is legal and `title` falls back.
 
-screen Detail(id: String, title: String = "Task"):
+screen Detail(id: Text, title: Text = "Task"):
 
     column padding=20 gap=12:
 

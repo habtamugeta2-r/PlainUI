@@ -9,7 +9,7 @@ This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same
 `plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no
 acceptance criterion, an unknown size, or a phase that does not exist.
 
-**Now:** PlainUI type system (`plainui-types`, XL) — `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and `plainui migrate` rewrites existing projects.
+**Now:** PlainUI type system (`plainui-types`, XL) — A1 replaces Dart primitive spellings in `.pui` (with migration); A2 gives `Optional<T>` explicit absence semantics; each target owns its type mapping. A1, A2, the Flutter/HTML target maps, and the v2.0 alias-removal timeline are decided; typed task errors remain.
 
 ## Flutter depth — 10/10
 
@@ -36,7 +36,7 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 | --- | --- | --- | --- |
 | ✔ | ~~The `Target` contract~~ | `L` | Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind one interface per target; the front end no longer names a framework. |
 | ✔ | ~~Capability matrix and its test~~ | `M` | Every example is compiled for every target; the test asserts which files port and which fail with a code that names the alternative. |
-| ▸ | **PlainUI type system** | `XL` | `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and `plainui migrate` rewrites existing projects. |
+| ▸ | **PlainUI type system** | `XL` | A1 replaces Dart primitive spellings in `.pui` (with migration); A2 gives `Optional<T>` explicit absence semantics; each target owns its type mapping. A1, A2, the Flutter/HTML target maps, and the v2.0 alias-removal timeline are decided; typed task errors remain. |
 | · | Jetpack Compose target | `XL` | A `.pui` project generates Kotlin that compiles under Gradle in CI; `state`, `derived` and `task` lower to `remember`, `derivedStateOf` and `produceState` without special cases. |
 
 ## Adoption surface — 1/3

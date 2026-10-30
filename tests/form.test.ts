@@ -20,9 +20,9 @@ import { codes } from './helpers.ts';
 const SIGNUP = [
   'screen Signup:',
   '',
-  '    state email: String = ""',
-  '    state password: String = ""',
-  '    state feedback: String = ""',
+  '    state email: Text = ""',
+  '    state password: Text = ""',
+  '    state feedback: Text = ""',
   '',
   '    form:',
   '',
@@ -61,7 +61,7 @@ function hints(text: string): string[] {
 }
 
 function screen(...body: readonly string[]): string {
-  return ['screen Home:', '', '    state email: String = ""', '', ...body, ''].join('\n');
+  return ['screen Home:', '', '    state email: Text = ""', '', ...body, ''].join('\n');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -254,7 +254,7 @@ test('submit() takes no arguments, and has no value', () => {
   assert.deepEqual(errors(withArgs), ['PUI2336']);
 
   const asValue = screen(
-    '    state done: bool = false',
+    '    state done: Bool = false',
     '',
     '    form:',
     '',
@@ -337,7 +337,7 @@ test('an awaiting submit body makes the button closure async', () => {
   const source = [
     'screen Comment:',
     '',
-    '    state note: String = ""',
+    '    state note: Text = ""',
     '',
     '    form:',
     '',
