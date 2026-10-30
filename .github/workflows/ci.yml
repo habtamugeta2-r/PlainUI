@@ -13,7 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['20', '22']
+        # `npm test` runs TypeScript directly via --experimental-strip-types, which needs Node
+        # 22.6+. The declared `engines` floor matches this.
+        node: ['22', '24']
 
     steps:
       - uses: actions/checkout@v4
