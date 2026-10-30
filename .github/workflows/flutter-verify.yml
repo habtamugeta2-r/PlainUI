@@ -158,6 +158,27 @@ jobs:
               expect(find.text('1'), findsWidgets);
             });
 
+            testWidgets('a derived value recomputes, and unrelated state leaves it alone',
+                (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: counter.Counter())));
+
+              // `derived doubled = count * 2`, read in a Text — computed for the first build.
+              expect(find.text('x2 = 0'), findsOneWidget);
+
+              await tester.tap(find.text('One more'));
+              await tester.pumpAndSettle();
+              expect(find.text('1'), findsWidgets);
+              expect(find.text('x2 = 2'), findsOneWidget);
+
+              // Typing a name changes state the derived value does not read. The screen rebuilds,
+              // and the computed value is still the right one — because there is nothing stored
+              // that could have gone stale.
+              await tester.enterText(find.byType(TextField), 'Ada');
+              await tester.pumpAndSettle();
+              expect(find.text('Hello, Ada'), findsOneWidget);
+              expect(find.text('x2 = 2'), findsOneWidget);
+            });
+
             testWidgets('a task loads its value and shows it', (tester) async {
               await tester.pumpWidget(const MaterialApp(home: Scaffold(body: async_example.Async())));
 

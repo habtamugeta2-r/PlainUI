@@ -1,0 +1,40 @@
+// `derived`: computed values, in every shape the checker knows how to type.
+
+screen Derived:
+
+    state count: int = 2
+    state step: int = 3
+    state name: String = "PlainUI"
+
+    task items: List<String> = loadItems()
+
+    derived doubled = count * 2
+    derived ratio = count / step
+    derived bigger = count > step
+    derived shout = name + "!"
+    derived pair = [count, step]
+    derived first = pair[0]
+    derived total: String = "${doubled} computed"
+    derived label = "${shout} (${first})"
+    derived loaded = items.value.length
+    derived busy = items.loading
+
+    column padding=20 gap=8:
+
+        text label style=heading
+        text total style=caption
+
+        row gap=8:
+
+            text "${ratio}"
+            text "${bigger}"
+            text "${loaded}"
+            text "${busy}"
+
+        for index, item in items.value key=item:
+
+            text "${index + 1}. ${item}"
+
+        button "Add":
+
+            on tap: set count += 1
