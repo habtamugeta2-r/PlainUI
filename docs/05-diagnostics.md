@@ -76,6 +76,10 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2334`](#pui2334) | error | submit() inside its own handler |
 | [`PUI2335`](#pui2335) | error | Form inside a form |
 | [`PUI2336`](#pui2336) | error | submit() takes no arguments |
+| [`PUI2350`](#pui2350) | error | Derived value assigned |
+| [`PUI2351`](#pui2351) | error | Derived value depends on itself |
+| [`PUI2352`](#pui2352) | error | Derived value in the wrong place |
+| [`PUI2353`](#pui2353) | error | Derived type mismatch |
 | [`PUI2340`](#pui2340) | error | Host surface has no such name |
 | [`PUI2341`](#pui2341) | error | Wrong arguments for a host declaration |
 | [`PUI2342`](#pui2342) | error | Unknown argument name |
@@ -92,6 +96,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2402`](#pui2402) | error | Loop over a non-iterable |
 | [`PUI2403`](#pui2403) | warning | Multiple children in a single-child element |
 | [`PUI2404`](#pui2404) | warning | Unused state |
+| [`PUI2411`](#pui2411) | warning | Derived value never used |
 | [`PUI2410`](#pui2410) | warning | Call to an undeclared host function |
 | [`PUI2408`](#pui2408) | warning | Submit handler never triggered |
 | [`PUI2409`](#pui2409) | warning | Form validates nothing |
@@ -636,6 +641,38 @@ submit() runs the form it is written in; there is nothing to pass it.
 
 *Fix:* Write submit() on its own.
 
+### PUI2350
+
+**Derived value assigned** — error
+
+A derived value is computed from the values it reads; it has no storage to assign to, so `set` on it would have nothing to change.
+
+*Fix:* Assign the state the derived value reads instead.
+
+### PUI2351
+
+**Derived value depends on itself** — error
+
+The value is defined in terms of its own result, directly or through other derived values, so computing it would never finish.
+
+*Fix:* Compute one of the values in the cycle from state instead.
+
+### PUI2352
+
+**Derived value in the wrong place** — error
+
+A derived value is computed for the whole screen or component, so it is declared at the top level next to the state it reads.
+
+*Fix:* Move it up to the top level of the screen or component.
+
+### PUI2353
+
+**Derived type mismatch** — error
+
+The declared type of a derived value does not match the type of its expression.
+
+*Fix:* Correct the type, or the expression.
+
 ### PUI2340
 
 **Host surface has no such name** — error
@@ -765,6 +802,14 @@ This element renders one child; extra children are wrapped in a column by the ge
 This state variable is declared but never read or written.
 
 *Fix:* Remove it, or use it.
+
+### PUI2411
+
+**Derived value never used** — warning
+
+Nothing reads this computed value, so it costs a computation per build and produces nothing.
+
+*Fix:* Read it, or remove it.
 
 ### PUI2410
 
