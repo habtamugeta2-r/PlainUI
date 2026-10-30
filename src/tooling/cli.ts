@@ -26,6 +26,7 @@ import { renderAst } from './debug.ts';
 import { sourceFile } from '../frontend/source.ts';
 import { WIDGETS, eventsFor, propsFor, widgetsByGroup } from '../analysis/widgets/registry.ts';
 import { COMPILER_VERSION } from '../project/compile.ts';
+import { PHASES, TODO, currentItem, currentPhase, itemsOf, progressOf, type PhaseId } from './todo.ts';
 import { watchForChanges } from './watch.ts';
 import { runLanguageServer } from './lsp.ts';
 
@@ -39,7 +40,7 @@ interface Args {
   readonly flags: Map<string, string | true>;
 }
 
-const FLAGS_WITH_VALUE = new Set(['--out', '--config', '--target', '--port']);
+const FLAGS_WITH_VALUE = new Set(['--out', '--config', '--target', '--port', '--phase']);
 
 function parseArgs(argv: readonly string[]): Args {
   const paths: string[] = [];
@@ -481,6 +482,95 @@ function commandWidgets(): number {
   return 0;
 }
 
+/**
+ * `plainui next` — the roadmap, printed.
+ *
+ * The table in `src/tooling/todo.ts` is the source of truth for what is done and what is next, so
+ * the answer to "what now?" is a command instead of a conversation. `--json` is there because the
+ * most useful consumer of a roadmap is a script.
+ */
+function commandNext(args: Args): number {
+  const phaseArg = args.flags.get('--phase');
+  const phaseId = typeof phaseArg === 'string' ? phaseArg : undefined;
+  const showDone = args.flags.has('--all');
+  const json = args.flags.has('--json');
+
+  if (phaseId !== undefined && !PHASES.some((phase) => phase.id === phaseId)) {
+    warn(`plainui: unknown phase "${phaseId}"`);
+    warn(`plainui: phases are ${PHASES.map((phase) => phase.id).join(', ')}`);
+    return 2;
+  }
+
+  const phases = PHASES.filter((phase) => phaseId === undefined || phase.id === phaseId);
+  const now = currentItem();
+
+  if (json) {
+    const payload = {
+      now:
+        now === undefined
+          ? null
+          : {
+              id: now.id,
+              title: now.title,
+              phase: now.phase,
+              size: now.size,
+              status: now.status,
+              acceptance: now.acceptance,
+              touches: now.touches,
+            },
+      phases: phases.map((phase) => ({
+        id: phase.id,
+        title: phase.title,
+        ...(phase.gate === undefined ? {} : { gate: phase.gate }),
+        ...progressOf(phase.id),
+        items: itemsOf(phase.id)
+          .filter((item) => showDone || item.status !== 'done')
+          .map((item) => ({
+            id: item.id,
+            title: item.title,
+            size: item.size,
+            status: item.status,
+            acceptance: item.acceptance,
+            touches: item.touches,
+          })),
+      })),
+      total: TODO.length,
+      done: TODO.filter((item) => item.status === 'done').length,
+    };
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return 0;
+  }
+
+  const current = currentPhase();
+  if (now !== undefined && phaseId === undefined) {
+    const phase = current === undefined ? '' : ` (${current.title})`;
+    say(`plainui: next — ${now.title}${phase}`);
+    say(`  ${now.acceptance}`);
+    say(`  touches: ${now.touches.join(', ')}`);
+    say('');
+  }
+
+  const marks: Record<string, string> = { done: '✔', next: '▸', todo: '·' };
+  const idWidth = Math.max(...TODO.map((item) => item.id.length));
+
+  for (const phase of phases) {
+    const { done, total } = progressOf(phase.id);
+    const items = itemsOf(phase.id).filter((item) => showDone || item.status !== 'done');
+    say(`${phase.title} — ${done}/${total}`);
+    for (const item of items) {
+      const mark = marks[item.status] ?? '·';
+      const id = item.id.padEnd(idWidth);
+      say(`  ${mark} ${id}  ${item.size.padEnd(2)}  ${item.title}`);
+    }
+    if (items.length === 0) say(`  ${done === total ? 'nothing left in this phase' : 'nothing here yet'}`);
+    say('');
+  }
+
+  const remaining = TODO.filter((item) => item.status !== 'done').length;
+  say(`${TODO.length - remaining} of ${TODO.length} done — ${remaining} to go. \`plainui next --all\` shows finished items.`);
+  return 0;
+}
+
 function help(): void {
   say(`plainui ${COMPILER_VERSION} — a small language for describing Flutter interfaces
 
@@ -498,6 +588,7 @@ Commands:
   tokens     print the token stream of a file
   explain    describe a diagnostic code (or list them all)
   widgets    list every built-in element
+  next       print the roadmap: what is done, what is next   [--all] [--phase id] [--json]
 
 Global options:
   --help, --version, --json, --quiet, --verbose, --no-color
@@ -508,6 +599,8 @@ Examples:
   plainui check .                     # validate the whole project
   plainui format --check              # verify formatting without writing
   plainui explain PUI2001
+  plainui next                        # what to work on, and how to know it is finished
+  plainui next --json                 # the same, for a script
 
 Exit codes: 0 ok · 1 diagnostics · 2 usage/configuration · 3 out of date (check modes)`);
 }
@@ -556,6 +649,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return commandExplain(args);
       case 'widgets':
         return commandWidgets();
+      case 'next':
+        return commandNext(args);
       default:
         warn(`plainui: unknown command "${args.command}"`);
         help();
