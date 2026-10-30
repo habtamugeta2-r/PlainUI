@@ -6,7 +6,8 @@
  * See docs/04-cli.md for the full reference and exit codes.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from '../analysis/diagnostics.ts';
 import { formatText } from './format.ts';
@@ -557,10 +558,24 @@ process.stdout.on('error', (error: NodeJS.ErrnoException) => {
   if (error.code === 'EPIPE') process.exit(0);
 });
 
-// Run when executed directly (not when imported by tests).
-const invokedDirectly =
-  process.argv[1] !== undefined && /(?:^|[/\\])(?:cli\.m?js|cli\.ts)$/.test(process.argv[1]);
-if (invokedDirectly) {
+/**
+ * Run when executed directly (not when imported by tests).
+ *
+ * Comparing the resolved entry point with this module covers the cases a name check got wrong:
+ * `node_modules/.bin/plainui` is a symlink whose name is `plainui`, not `cli.js`, so a regex on the
+ * file name made the installed CLI print nothing and exit 0.
+ */
+function invokedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   main(process.argv.slice(2)).then((code) => {
     process.exitCode = code;
   });

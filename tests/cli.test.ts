@@ -4,7 +4,8 @@
  */
 
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { after, test } from 'node:test';
@@ -296,4 +297,25 @@ test('an invalid configuration is reported', async () => {
 
 test('the relative path helper used by the CLI is stable', () => {
   assert.equal(relative('/a/b', '/a/b/c/d.pui'), 'c/d.pui');
+});
+
+test('the CLI runs when invoked through a bin symlink', () => {
+  // `node_modules/.bin/plainui` is a symlink whose name is not `cli.js`. An earlier guard compared
+  // the file name, so the installed CLI printed nothing and exited 0 — invisible to every test
+  // that called main() directly.
+  const dir = mkdtempSync(join(tmpdir(), 'plainui-bin-'));
+  try {
+    const link = join(dir, 'plainui');
+    symlinkSync(join(process.cwd(), 'src/tooling/cli.ts'), link);
+    const env = { ...process.env };
+    delete env['NODE_TEST_CONTEXT'];
+    const result = spawnSync(process.execPath, ['--experimental-strip-types', link, '--version'], {
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), COMPILER_VERSION);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
