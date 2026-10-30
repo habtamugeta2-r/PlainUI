@@ -26,9 +26,10 @@ import type {
   TaskDecl,
   TokenDecl,
 } from '../frontend/ast.ts';
-import type { Analysis } from '../analysis/check.ts';
+import { navigationName, type Analysis } from '../analysis/check.ts';
 import { describeExpr } from '../tooling/debug.ts';
 import { widgetSpec } from '../analysis/widgets/registry.ts';
+import { walkActions } from '../frontend/ast.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Values
@@ -280,6 +281,17 @@ class HtmlEmitter {
 
   private readonly analysis: Analysis;
   private readonly options: HtmlOptions;
+  /** The screen a preview opens on; `back()` in the preview returns to it. */
+  private initialScreen = '';
+  /** Depth of the navigation wrapper, so wrapping an element does not wrap it twice. */
+  private navDepth = 0;
+  /** Whether the document holds more than one screen and therefore needs the stack rules. */
+  private multiScreen = false;
+  /**
+   * Values that belong to the file rather than to a screen — design tokens, which are compile-time
+   * constants and in scope everywhere. Each screen's environment starts from these.
+   */
+  private baseValues = new Map<string, Value>();
 
   constructor(analysis: Analysis, options: HtmlOptions = {}) {
     this.analysis = analysis;
@@ -315,16 +327,92 @@ class HtmlEmitter {
     }).filter((line) => line.length > 0);
   }
 
+  /**
+   * Render the file's screen.
+   *
+   * A file that navigates renders *every* screen it declares, each as a `<section>` addressed by
+   * `navigate`, and `back()` returns to the screen the preview opened on. There is no JavaScript in
+   * the preview and no running app, so the stack is the document's own `:target` state: clicking a
+   * navigation element is a link. That is enough to show the flow, and it stays honest about what
+   * a preview is — a picture of the layout, not a run of the program.
+   */
   render(): HtmlResult {
-    const screen = this.analysis.program.decls.find((decl: Decl): decl is ScreenDecl => decl.kind === 'Screen');
-    if (screen === undefined) {
+    const screens = this.analysis.program.decls.filter((decl: Decl): decl is ScreenDecl => decl.kind === 'Screen');
+    const first = screens[0];
+    if (first === undefined) {
       return { code: this.document(['<p class="pui-empty">This file has no screen to preview.</p>'], 'PlainUI preview') };
     }
+    this.initialScreen = screenId(first.name);
+    const title = this.options.title ?? first.name;
+
+    // One screen and no navigation: the document is that screen, exactly as before.
+    if (screens.length === 1 && !screens.some((screen) => this.navigates(screen))) {
+      this.bindScreen(screens[0]!);
+      const body = this.renderNodes(screens[0]!.body, 'pui-screen');
+      return { code: this.document(body, title), screen: first.name };
+    }
+
+    this.multiScreen = true;
+    const sections: string[] = [];
+    for (const screen of screens) {
+      this.bindScreen(screen);
+      const body = this.renderNodes(screen.body);
+      sections.push(
+        `<section class="pui-page" id="pui-screen-${screenId(screen.name)}" data-screen="${escapeHtml(screen.name)}">`,
+        ...body.map((line) => `  ${line}`),
+        '</section>',
+      );
+    }
+    return { code: this.document(sections, title), screen: first.name };
+  }
+
+  /** State, tasks and parameters of one screen, in the preview's environment. */
+  private bindScreen(screen: ScreenDecl): void {
+    if (this.baseValues.size === 0) this.baseValues = new Map(this.env.values);
+    this.env.values = new Map(this.baseValues);
+    this.env.tasks.clear();
+    // A screen opened by name gets its arguments from the caller, which the preview does not have:
+    // `{id}` stands where the value will appear, so the layout shows the slot without pretending to
+    // know what fills it.
+    for (const param of screen.params) this.env.values.set(param.name, { kind: 'string', value: `{${param.name}}` });
     for (const state of screen.state) this.bindState(state);
     this.bindTasks(screen);
-    const body = this.renderNodes(screen.body, 'pui-screen');
-    const title = this.options.title ?? screen.name;
-    return { code: this.document(body, title), screen: screen.name };
+  }
+
+  private navigates(screen: ScreenDecl): boolean {
+    let found = false;
+    for (const node of screen.body) {
+      if (node.kind !== 'Element') continue;
+      if (this.navigationHref(node) !== undefined) found = true;
+    }
+    return found;
+  }
+
+  /**
+   * The `href` an element with a navigation handler points at, if it has one.
+   *
+   * A preview shows the first navigation in the element's handlers, which is what a reader needs to
+   * follow the flow; the generated Flutter runs every action in order.
+   */
+  private navigationHref(element: { readonly events: readonly import('../frontend/ast.ts').EventHandler[] }): string | undefined {
+    for (const event of element.events) {
+      let href: string | undefined;
+      walkActions(event.actions, (action) => {
+        if (href !== undefined || action.kind !== 'Call') return;
+        const kind = navigationName(action.expr);
+        if (kind === 'back') {
+          href = `#pui-screen-${this.initialScreen}`;
+          return;
+        }
+        if (kind !== 'navigate' || action.expr.kind !== 'Call') return;
+        const target = action.expr.args.find((arg) => arg.name === undefined);
+        if (target !== undefined && target.value.kind === 'Ident') {
+          href = `#pui-screen-${screenId(target.value.name)}`;
+        }
+      });
+      if (href !== undefined) return href;
+    }
+    return undefined;
   }
 
   // ---- output helpers ----------------------------------------------------------------------
@@ -385,6 +473,19 @@ class HtmlEmitter {
     this.line(escapeHtml(text));
   }
 
+  /** The stack rules: one screen visible unless the URL targets another one. */
+  private screenCss(): string {
+    if (!this.multiScreen) return '';
+    return [
+      '',
+      '/* every screen is here; :target decides which one is shown */',
+      '.pui-page { display: none; }',
+      '.pui-page:first-of-type, .pui-page:target { display: block; }',
+      'main.pui-root:has(.pui-page:target) .pui-page:first-of-type:not(:target) { display: none; }',
+      '.pui-nav { color: inherit; text-decoration: none; display: block; }',
+    ].join('\n');
+  }
+
   private document(body: string[], title: string): string {
     return [
       '<!doctype html>',
@@ -395,6 +496,7 @@ class HtmlEmitter {
       `<title>${escapeHtml(title)}</title>`,
       '<style>',
       this.tokenVariables().length === 0 ? CSS : `${CSS}\n/* design tokens from this file's theme */\n:root {\n${this.tokenVariables().join('\n')}\n}`,
+      ...(this.multiScreen ? [this.screenCss()] : []),
       '</style>',
       '</head>',
       '<body>',
@@ -656,6 +758,23 @@ class HtmlEmitter {
       return;
     }
 
+    // `on tap: navigate Detail(...)` makes the whole element a link. A button renders as an anchor
+    // in its own branch below (it already looks like one); anything else is wrapped here.
+    if (this.navDepth === 0 && element.tag !== 'button') {
+      const href = this.navigationHref(element);
+      if (href !== undefined) {
+        this.navDepth += 1;
+        const inner = this.renderNodes([element]);
+        this.navDepth -= 1;
+        this.line(`<a class="pui-nav" href="${href}">`);
+        this.depth += 1;
+        for (const line of inner) this.line(line);
+        this.depth -= 1;
+        this.line('</a>');
+        return;
+      }
+    }
+
     switch (element.tag) {
       case 'text':
         this.inline(
@@ -840,8 +959,15 @@ class HtmlEmitter {
 
       case 'button': {
         const variant = this.name(element, 'variant');
-        this.open('button', [['class', 'pui-button'], ['type', 'button'], ['data-event', this.eventNames(element)]], [
+        const href = this.navigationHref(element);
+        const tag = href === undefined ? 'button' : 'a';
+        const attributes: [string, string | undefined][] =
+          href === undefined
+            ? [['class', 'pui-button'], ['type', 'button'], ['data-event', this.eventNames(element)]]
+            : [['class', 'pui-button'], ['href', href], ['data-event', this.eventNames(element)]];
+        this.open(tag, attributes, [
           'font: inherit',
+          ...(href === undefined ? [] : ['display: inline-block', 'text-decoration: none', 'text-align: center']),
           'border-radius: 10px',
           'padding: 10px 18px',
           'font-weight: 600',
@@ -850,7 +976,7 @@ class HtmlEmitter {
           ...this.universalStyles(element),
         ]);
         this.line(escapeHtml(this.argumentText(element) || 'Button'));
-        this.close('button');
+        this.close(tag);
         return;
       }
 
@@ -1041,6 +1167,11 @@ class HtmlEmitter {
 
     this.env.values = new Map(saved);
   }
+}
+
+/** A screen name as a URL fragment: `#pui-screen-Detail`. */
+function screenId(name: string): string {
+  return name.replace(/[^A-Za-z0-9_-]+/g, '-');
 }
 
 function labelFor(tag: string): string {
