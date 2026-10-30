@@ -1,0 +1,41 @@
+// Two forms, every validator, and the gate.
+
+screen Signup:
+
+    state email: String = ""
+    state handle: String = ""
+    state password: String = ""
+    state note: String = ""
+    state feedback: String = ""
+
+    column padding=20 gap=12:
+
+        form:
+
+            column gap=8:
+
+                text "Create an account"
+                input bind=email label="Email" keyboard=email validate=[required, email]
+                input bind=handle label="Username" validate=[required, min(3), max(16), pattern("^[a-z0-9_]+$")]
+                input bind=password label="Password" secret validate=[required, min(8)]
+
+                button "Create account":
+                    on tap: submit()
+
+            on submit:
+                set feedback = "Welcome, ${handle}"
+
+        form:
+
+            column gap=8:
+
+                text "Anything else?"
+                input bind=note label="Note" multiline maxLines=3 validate=max(80)
+
+                button "Send":
+                    on tap: submit()
+
+            on submit:
+                set feedback = note
+
+        text feedback style=caption
