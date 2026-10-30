@@ -447,6 +447,61 @@ export const CODES = {
     description: 'submit() runs the form it is written in; there is nothing to pass it.',
     fix: 'Write submit() on its own.',
   },
+  PUI2340: {
+    severity: 'error',
+    title: 'Host surface has no such name',
+    description:
+      'An import with a surface declares exactly the names the file may call through it, so a name that is not in the block is not in the module.',
+    fix: 'Declare it under the import, or call one of the names that is declared there.',
+  },
+  PUI2341: {
+    severity: 'error',
+    title: 'Wrong arguments for a host declaration',
+    description:
+      'A declared host function or widget takes the parameters it declares: no more, no fewer, and each one once.',
+    fix: 'Match the declaration, or change the declaration to match the host.',
+  },
+  PUI2342: {
+    severity: 'error',
+    title: 'Unknown argument name',
+    description: 'The argument name is not one of the declared parameters, so the generated call would be a Dart error.',
+    fix: 'Rename the argument to a declared parameter.',
+  },
+  PUI2343: {
+    severity: 'error',
+    title: 'Type mismatch at the host boundary',
+    description:
+      'The value passed to a declared host call — or the value a host call produces — does not have the declared type.',
+    fix: 'Pass the declared type, or correct the declaration.',
+  },
+  PUI2344: {
+    severity: 'error',
+    title: 'Asynchronous host call used directly',
+    description:
+      'A host function declared as returning Future<T> produces its value later. Using it as a value without await would pass a future where a value is expected.',
+    fix: 'Call it with await inside a handler, or give it a task.',
+  },
+  PUI2345: {
+    severity: 'error',
+    title: 'Host name declared by two modules',
+    description:
+      'Two imports declare the same host name, so an unqualified call does not say which one it means.',
+    fix: 'Qualify the call with the module name.',
+  },
+  PUI2346: {
+    severity: 'error',
+    title: 'Malformed host surface',
+    description:
+      'A surface needs an import to belong to, a name to be called by, unique declaration names, and a type on every parameter.',
+    fix: 'Fix the import line or the declaration the diagnostic points at.',
+  },
+  PUI2347: {
+    severity: 'error',
+    title: 'Qualified call on an import without a surface',
+    description:
+      '`data.loadTasks(…)` names a module, but the import has no name and no block, so the generated Dart would reference an undefined prefix.',
+    fix: 'Write import "…" as data: with a block, or call the function without the prefix.',
+  },
   PUI2320: {
     severity: 'error',
     title: 'Unknown screen in navigate',
@@ -499,6 +554,13 @@ export const CODES = {
     title: 'Unused state',
     description: 'This state variable is declared but never read or written.',
     fix: 'Remove it, or use it.',
+  },
+  PUI2410: {
+    severity: 'warning',
+    title: 'Call to an undeclared host function',
+    description:
+      'The name is not declared in any host surface, but a declared one is spelled almost the same. Undeclared calls are passed through to the host, so the mistake only surfaces when Dart compiles the output.',
+    fix: 'Fix the spelling, or declare the function under its import.',
   },
   PUI2408: {
     severity: 'warning',

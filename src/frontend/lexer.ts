@@ -89,6 +89,7 @@ const OPERATORS: readonly string[] = [
   '*=',
   '/=',
   '=>',
+  '->',
   '..',
   '=',
   '<',

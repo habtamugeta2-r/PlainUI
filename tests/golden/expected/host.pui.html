@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host</title>
+<style>
+:root {
+  color-scheme: light;
+  --pui-bg: #f8fafc;
+  --pui-fg: #0f172a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  padding: 24px;
+  background: var(--pui-bg);
+  color: var(--pui-fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.pui-root { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.pui-screen { display: flex; flex-direction: column; gap: 12px; }
+.pui-conditional, .pui-repeat { display: contents; }
+.pui-conditional { outline: 1px dashed rgba(37, 99, 235, 0.35); outline-offset: 4px; border-radius: 8px; }
+.pui-repeat { outline: 1px dashed rgba(100, 116, 139, 0.35); outline-offset: 4px; border-radius: 8px; }
+.pui-host, .pui-unknown, .pui-component {
+  border: 1px dashed rgba(100, 116, 139, 0.5);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #475569;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pui-component { border-color: rgba(37, 99, 235, 0.4); }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.pui-empty { color: #64748b; font-style: italic; }
+
+</style>
+</head>
+<body>
+<main class="pui-root" data-screen="Host">
+  <div class="pui-screen">
+    <div class="pui-column" style="display: flex; flex-direction: column; gap: 12px; padding: 20px">
+      <div class="pui-host" title="AppLogo — host Dart widget">
+        AppLogo
+      </div>
+      <span class="pui-text" style="white-space: pre-wrap; font-size: 24px; font-weight: 400; line-height: 1.33">Tasks</span>
+      <span class="pui-text" style="white-space: pre-wrap; font-size: 12px; line-height: 1.33"></span>
+      <label class="pui-field" style="display: flex; flex-direction: column; gap: 4px">
+        <input type="text" placeholder="Filter" style="font: inherit; padding: 10px 12px; border: 1px solid rgba(15, 23, 42, 0.16); border-radius: 10px; background: #ffffff">
+      </label>
+      <button class="pui-button" type="button" data-event="tap" style="font: inherit; border-radius: 10px; padding: 10px 18px; font-weight: 600; border: 0; background: #2563eb; color: #ffffff">
+        Load
+      </button>
+      <button class="pui-button" type="button" data-event="tap" style="font: inherit; border-radius: 10px; padding: 10px 18px; font-weight: 600; border: 0; background: #2563eb; color: #ffffff">
+        Label
+      </button>
+      <button class="pui-button" type="button" data-event="tap" style="font: inherit; border-radius: 10px; padding: 10px 18px; font-weight: 600; border: 0; background: #2563eb; color: #ffffff">
+        Reload
+      </button>
+    </div>
+  </div>
+</main>
+</body>
+</html>

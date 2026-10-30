@@ -247,7 +247,7 @@ implementation.
 | D6 | Lowercase tag = built-in widget (from a registry); Capitalised tag = component or host widget constructor | One rule that makes interop free and keeps the built-in vocabulary closed and checkable | Explicit `widget`/`native` keywords for every case |
 | D7 | Properties are `name=value` on the element line; `=` is tight | Reads as a declaration, not an assignment; KV/XAML precedent | `name: value` (collides with block colon) |
 | D8 | Expressions are a checked Dart-flavoured subset | Full Dart parser is out of scope; but *some* parsing is needed for validation, formatting and future targets | Opaque expression strings (no validation possible) |
-| D9 | Unknown *value* identifiers are errors; unknown *called* identifiers are assumed host functions | Preserves "logic lives in Dart" without demanding declarations | Require `extern` declarations for every host function |
+| D9 | Unknown *value* identifiers are errors; unknown *called* identifiers are assumed host functions — unless a host surface declares them (D29) | Preserves "logic lives in Dart" without demanding declarations, while letting a file opt into checking the calls it cares about | Require `extern` declarations for every host function |
 | D10 | `state name: Type = init`; only at screen/component top level | Keeps state model trivial and explicable | Nested/derived state, reactive graphs |
 | D11 | `set x = e`, `set x += e` are the only mutations | Explicit and greppable; maps to `setState` | Implicit assignment |
 | D12 | Event bodies auto-`async` when they contain `await` | Forget-proof; otherwise every async button needs a modifier | Explicit `on tap async:` everywhere |
@@ -273,6 +273,34 @@ shape of the product rather than the language:
 | D26 | Calls that mutate state run inside `setState`; other calls do not | `tasks.add(x)` without a rebuild is a silent bug, while wrapping host calls hides their side effects | Wrap every call / wrap nothing |
 | D27 | The playground imports the compiler rather than calling a server | Same code path as the CLI, nothing uploaded, no cold starts; a test drives it through jsdom | Server-side compile endpoint |
 | D28 | Examples are compiled on every commit and their `main.dart` is checked in | Documentation that cannot rot; the generated Dart stays out of git | Screenshots and prose |
+| D29 | Host surfaces are written *in the `.pui` file*, on the import, and are opt-in per module | Declaring a module is a deliberate act with a payoff (call sites are checked, qualified calls name their module); files that do not need it are unchanged, which is what keeps D9 true | Require `extern` for the whole project / parse the imported Dart for signatures |
+| D30 | The case of a declared name decides whether it is a function or a constructor | One rule, already true of elements (D6), so a surface needs no extra keywords and reads like the rest of the language | `fn`/`widget` keywords inside the block |
+| D31 | `-> Future<T>` in a surface means "asynchronous, yields `T`" | The distinction that matters at a call site is awaitability, not the wrapper type; `Result` and friends are a v2 type-system question | A full `Future<T>` in the type model, unwrapped by every generator |
+
+**On D29 — the prior art, and why not the alternatives.** Three ecosystems solve this problem
+differently, and each one shows what the trade is:
+
+* **ReScript `external`** (v11 manual, "External — Bind to Any JS Library"): every host binding is
+  declared with a *mandatory* type, attributed with the module it comes from
+  (`@module("path") external dirname: string => string = "dirname"`), and inlined at the call site
+  with no runtime. That is the design adopted here, minus the mandatory part: PlainUI cannot make
+  declarations mandatory without breaking D9 and every file that calls `log(…)`, but where a
+  module *is* declared, the check is the same one ReScript performs.
+* **Slint `callback`/`function`**: the `.slint` language declares `callback hello(int, string) -> int`
+  and the host must install a handler; the DSL's surface is closed and typed, and the host side is
+  generated from it (`on_hello`, `invoke_hello`). Closedness is right for Slint because the DSL is
+  the whole program. PlainUI is embedded in an existing Dart app, so closing the boundary would mean
+  declaring the host's entire API — which is why the closure here is per *module* and opt-in.
+* **TypeScript `.d.ts` / `dart ffigen`**: declarations are *generated from* the host. This is the
+  most faithful option and the most expensive one: it needs a Dart parser in the toolchain, and the
+  generated file becomes a second source of truth to review. It is recorded on the roadmap rather
+  than rejected — a `plainui bind` that writes a surface from an imported `.dart` file is the
+  natural follow-up, and the surface syntax above is exactly what it would emit.
+
+What the three share, and what PlainUI copies: **the declaration lives next to the call site's
+module, is written in the language that makes the calls, and is verified against the host by the
+host's own compiler.** The last part is free here — generated Dart is analysed in CI — and it is
+what makes an opt-in surface safe: a surface that lies fails the build one step later.
 
 **On D20.** The original sketch suggests `dart run tool/plainui.dart build`. Hosting the
 compiler in Dart is a fine choice and is *the* right long-term choice for a Dart-first
@@ -309,3 +337,6 @@ roadmap item rather than a silent deviation: see [`06-roadmap.md`](06-roadmap.md
 10. Redirecting build outputs into `lib/generated/`: https://www.simonbinder.eu/posts/build_directory_moves/
 11. Why Elm/Rust error messages work (context, tone, hints, carets): https://mccue.dev/pages/8-13-23-java-compiler-error-messages
 12. Survey of compiler error quality across languages: https://www.amazingcto.com/developer-productivity-compiler-errors/
+13. ReScript manual — `external`, binding typed host values and modules: https://rescript-lang.org/docs/manual/latest/external
+14. Slint language reference — `callback` and `function` declarations, host side generated from them: https://releases.slint.dev/0.2.5/docs/cpp/markdown/langref.html
+15. `ffigen` — generating Dart bindings *from* the host's headers, the alternative recorded in D29: https://pub.dev/packages/ffigen

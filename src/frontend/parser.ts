@@ -23,6 +23,7 @@ import type {
   EventHandler,
   Expr,
   ForNode,
+  HostDecl,
   IfBranch,
   IfNode,
   ImportDecl,
@@ -238,8 +239,81 @@ class Parser {
     const pathToken = this.advance();
     const pathSpan = span(pathToken.span.start + 1, pathToken.span.end - 1);
     const path = this.file.text.slice(pathSpan.start, pathSpan.end);
-    this.expectNewline('after import path');
-    return { kind: 'Import', span: span(keyword.span.start, pathToken.span.end), path, pathSpan };
+
+    // `import "../data.dart" as data:` — a name, and optionally a surface. `as` is contextual, like
+    // `style` and `theme`: only this position gives it meaning.
+    let alias: string | undefined;
+    let aliasSpan: Span | undefined;
+    if (this.at('ident') && this.peek().value === 'as' && !this.atOp(':')) {
+      this.advance();
+      const aliasToken = this.expectIdent('after "as"');
+      alias = aliasToken.value;
+      aliasSpan = aliasToken.span;
+    }
+
+    if (!this.atOp(':')) {
+      this.expectNewline('after import path');
+      return {
+        kind: 'Import',
+        span: span(keyword.span.start, this.tokens[this.pos - 1]!.span.end),
+        path,
+        pathSpan,
+        ...(alias === undefined ? {} : { alias }),
+        ...(aliasSpan === undefined ? {} : { aliasSpan }),
+      };
+    }
+
+    this.advance(); // ':'
+    const surfaceStart = this.peek().span;
+    const surface = this.parseIndentedBody<HostDecl>(() => this.parseHostDecl());
+    return {
+      kind: 'Import',
+      span: span(keyword.span.start, this.tokens[this.pos - 1]?.span.end ?? pathToken.span.end),
+      path,
+      pathSpan,
+      ...(alias === undefined ? {} : { alias }),
+      ...(aliasSpan === undefined ? {} : { aliasSpan }),
+      surface,
+      surfaceSpan: span(surfaceStart.start, surfaceStart.end),
+    };
+  }
+
+  /** One line of a host surface: `name(param: Type = default, …) -> ReturnType`. */
+  private parseHostDecl(): HostDecl | undefined {
+    const token = this.peek();
+    if (token.kind !== 'ident') {
+      this.error('PUI1014', `expected a host declaration, found ${describeToken(token)}`, token.span, 'for example: loadTasks(filter: String) -> List<String>');
+      this.skipLine();
+      return undefined;
+    }
+    this.advance();
+    const params = this.atOp('(') ? this.parseParams() : [];
+    let typeText: string | undefined;
+    let typeSpan: Span | undefined;
+    if (this.atOp('->')) {
+      this.advance();
+      const collected = this.collectTypeText(new Set());
+      typeText = collected.text;
+      typeSpan = collected.span;
+      if (typeText.length === 0) {
+        this.error('PUI1023', 'expected a type after "->"', token.span, 'for example: loadTasks(filter: String) -> List<String>');
+      }
+    }
+    this.expectNewline('after a host declaration');
+    const end = typeSpan?.end ?? this.tokens[Math.max(0, this.pos - 1)]!.span.end;
+    const base = {
+      span: span(token.span.start, end),
+      name: token.value,
+      nameSpan: token.span,
+      params,
+    };
+    // The name's case decides what it is, exactly as it does for elements: a capitalised name is a
+    // constructor, a lowercase name is a function. A capitalised name that also wrote a return type
+    // is parsed as a function so the checker can say what is wrong with it, rather than losing the
+    // type and reporting the call site instead.
+    const capitalised = /^[A-Z]/.test(token.value);
+    if (capitalised && typeText === undefined) return { kind: 'HostWidget', ...base };
+    return { kind: 'HostFn', ...base, ...(typeText === undefined ? {} : { typeText }), ...(typeSpan === undefined ? {} : { typeSpan }) };
   }
 
   // ------------------------------------------------------------------------------------------

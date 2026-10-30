@@ -136,7 +136,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Typed interop',
     size: 'M',
-    status: 'next',
+    status: 'done',
     acceptance:
       'Host components and imports are declared with signatures, and calls to them are type-checked ' +
       'rather than passed through.',
@@ -147,7 +147,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: '`derived` values',
     size: 'M',
-    status: 'todo',
+    status: 'next',
     acceptance:
       '`derived total = count * 2` recomputes when its inputs change and never stores state; a widget ' +
       'test shows the derived value updating while an unrelated state change leaves it alone.',

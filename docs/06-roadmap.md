@@ -49,7 +49,9 @@ Feature work on the one target we can verify end to end, in this order:
 - ~~**forms** — typed validation on `input`, gated by a `form` scope; `submit()` cannot reach the
   handler without validating~~ — done (`docs/01-language-spec.md` §3.7,
   `docs/03-flutter-codegen.md` §Forms, `examples/forms`, tapped through in `flutter-verify.yml`),
-- **typed interop** — host components declared with signatures so calls are still checked,
+- ~~**typed interop** — a host surface on the import, so the calls a file makes are checked against
+  declared signatures~~ — done (`docs/01-language-spec.md` §2.5, `docs/03-flutter-codegen.md`
+  §Host interop, `examples/async`, verified by `dart analyze` in `flutter-verify.yml`),
 - **`derived`** and **`effect on <state>`** — the rest of the state model, per
   [`10-decisions.md`](10-decisions.md) B1 and B2.
 

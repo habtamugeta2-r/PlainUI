@@ -159,7 +159,8 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | Library API (`@plainui/compiler`) | ✅ compile, format, inspect, with type declarations |
 | Screen parameters, `navigate` / `back()`, generated route table | ✅ |
 | Forms: `form`, typed validators on `input`, `submit()` behind the validation gate | ✅ |
-| Typed interop, `derived`, `effect on <state>` | 🧭 next — `plainui next` prints the current item |
+| Host surfaces: declared signatures on an import, calls checked against them | ✅ |
+| `derived`, `effect on <state>` | 🧭 next — `plainui next` prints the current item |
 | Compose / React generators | 🧭 roadmap — [`docs/09-vision.md`](docs/09-vision.md) names Compose as the second target |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`

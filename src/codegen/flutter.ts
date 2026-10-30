@@ -26,6 +26,7 @@ import {
   type IfNode,
   type Node,
   type Param,
+  type Program,
   type Prop,
   type ScreenDecl,
   type SetAction,
@@ -266,7 +267,8 @@ class FlutterGenerator {
     if (styleSection.length > 0) sections.push(styleSection);
     sections.push(...declSections);
 
-    const imports = this.computeImports();
+    const entries = this.importEntries();
+    const imports = [...new Set(entries.map((entry) => entry.spec))];
     const banner = [
       '// GENERATED FILE - DO NOT EDIT.',
       '//',
@@ -277,7 +279,7 @@ class FlutterGenerator {
       '//',
       '// ignore_for_file: type=lint, unused_import',
       '',
-      ...imports.map((spec) => `import '${spec}';`),
+      ...entries.map((entry) => `import '${entry.spec}'${entry.alias === undefined ? '' : ` as ${entry.alias}`};`),
       '',
     ].join('\n');
 
@@ -1864,26 +1866,80 @@ class FlutterGenerator {
     return out;
   }
 
-  private computeImports(): string[] {
-    const imports = new Set<string>(['package:flutter/material.dart']);
+  /**
+   * The import directives this file needs, in the order they are written.
+   *
+   * A host surface does not change the imports by itself: a file that writes `loadTasks("")` keeps a
+   * plain import, and only a file that writes `data.loadTasks("")` gets the prefixed one as well.
+   * Both forms of the same URI are legal in Dart, and emitting a prefix nothing uses would hide the
+   * module's other names from the generated file.
+   */
+  private importEntries(): { readonly spec: string; readonly alias?: string }[] {
+    const entries = new Map<string, { spec: string; alias?: string }>();
+    const add = (spec: string, alias?: string): void => {
+      const key = alias === undefined ? spec : `${spec} as ${alias}`;
+      if (!entries.has(key)) entries.set(key, alias === undefined ? { spec } : { spec, alias });
+    };
+
+    add('package:flutter/material.dart');
+    const aliases = usedHostAliases(this.analysis.program);
     for (const imp of this.analysis.program.imports) {
       if (imp.path.startsWith('package:') || imp.path.startsWith('dart:')) {
-        imports.add(imp.path);
+        add(imp.path);
       } else if (imp.path.endsWith('.pui')) {
-        imports.add(this.options.resolvePlainuiImport?.(imp.path) ?? imp.path);
+        add(this.options.resolvePlainuiImport?.(imp.path) ?? imp.path);
       } else {
-        imports.add(this.options.rebaseImport?.(imp.path) ?? imp.path);
+        const spec = this.options.rebaseImport?.(imp.path) ?? imp.path;
+        add(spec);
+        if (imp.alias !== undefined && aliases.has(imp.alias)) add(spec, imp.alias);
       }
     }
-    const all = [...imports];
+
     const rank = (spec: string): number => (spec.startsWith('dart:') ? 0 : spec.startsWith('package:flutter/') ? 1 : spec.startsWith('package:') ? 2 : 3);
-    return all.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    return [...entries.values()].sort(
+      (a, b) => rank(a.spec) - rank(b.spec) || a.spec.localeCompare(b.spec) || (a.alias ?? '').localeCompare(b.alias ?? ''),
+    );
   }
 }
 
 // ---------------------------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * The import names this file actually qualifies a call with.
+ *
+ * Declaring a surface does not by itself change the generated imports: a file that writes
+ * `loadTasks("")` keeps a plain import, and only a file that writes `data.loadTasks("")` gets the
+ * prefixed one. Emitting a prefix that nothing uses would hide the module's other names from Dart.
+ */
+function usedHostAliases(program: Program): Set<string> {
+  const aliases = new Set<string>();
+  for (const imp of program.imports) {
+    if (imp.alias !== undefined) aliases.add(imp.alias);
+  }
+  const used = new Set<string>();
+  if (aliases.size === 0) return used;
+
+  const visit = (expr: Expr): void => {
+    walkExpr(expr, (inner) => {
+      if (inner.kind === 'Member' && inner.object.kind === 'Ident' && aliases.has(inner.object.name)) {
+        used.add(inner.object.name);
+      }
+    });
+  };
+
+  for (const decl of program.decls) {
+    if (decl.kind === 'Style' || decl.kind === 'Theme') continue;
+    for (const state of decl.state) visit(state.init);
+    for (const task of decl.tasks) visit(task.init);
+    for (const param of decl.params) {
+      if (param.defaultValue !== undefined) visit(param.defaultValue);
+    }
+    walkExpressions(decl.body, visit);
+  }
+  return used;
+}
 
 /** Whether a loop variable is referenced anywhere in a loop body. */
 /**
