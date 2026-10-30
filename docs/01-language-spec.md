@@ -94,6 +94,8 @@ import "./components/profile_card.pui"            // another PlainUI file
   generator so they remain correct from the generated file's location.
 * A `.pui` import makes that file's components **and its design tokens** available; importing a
   `.pui` that does not exist is an error (`PUI2102`).
+* A host import may carry a name and a **surface** — typed declarations for what this file may call
+  (§2.5). Without one, host calls are passed through to Dart unchanged.
 
 ### 2.1 Screens
 
@@ -191,6 +193,45 @@ the same source. The Flutter target additionally emits the palette as data — `
 a `ThemeData` (`AppTheme.light`) built from it, so Flutter's own widgets use the design; the HTML
 target publishes the same values as CSS custom properties (`--pui-brand`). Runtime theming, such as
 switching to a dark token set, is a separate feature and is not part of this one.
+
+### 2.5 Host surfaces
+
+```
+import "../data.dart" as data:
+
+    loadTasks(filter: String) -> Future<List<String>>
+    save(email: String, password: String)
+    AppLogo(size: double = 24)
+```
+
+```
+import "<path>" as <name>:
+    <name>(<param>: <Type> = <default>, …) -> <Type>
+    <Name>(<param>: <Type> = <default>, …)
+```
+
+* The block declares the host's surface. The **case of the name decides what it is**, exactly as it
+  does for elements: lowercase is a function, capitalised is a widget constructor (`PUI2346`).
+* Every parameter needs a type (`PUI2346`). Types are written in the same vocabulary as `state` and
+  parameters — the host's own type text, today Dart's (`String`, `int`, `double`, `List<String>`,
+  `Todo`). A return type of `Future<T>` says the call is **asynchronous** and yields a `T`.
+* A declared name is checked at every call site: it takes its declared parameters, once each, by
+  name or position (`PUI2341`, `PUI2342`), and each argument has the declared type (`PUI2343`).
+* An asynchronous call needs `await` or a `task` (`PUI2344`); the value it produces is checked where
+  it lands — in a `task`, in `state`, in `set` (`PUI2343`).
+* `data.loadTasks(…)` is a **qualified** call, and the name is part of the check: a module that does
+  not declare the name says so, with a suggestion (`PUI2340`). A qualified call on an import without
+  a surface is an error (`PUI2347`), because the generated Dart would reference a prefix that does
+  not exist.
+* An *unqualified* call to a declared name works too, as long as one module declares it
+  (`PUI2345` otherwise). A name declared by nobody is still passed through to the host — the
+  language does not require declaring the world, only what it is to check. When such a name is one
+  character away from a declared one, the compiler says so (`PUI2410`).
+
+A surface is a promise about the host, and it is checked twice. PlainUI checks the call sites; the
+target's own compiler then checks the generated call against the real signature. A declaration that
+lies therefore fails the build one step later than the `.pui` error — after the file a person can
+read, which is the right order for the person.
 
 ---
 

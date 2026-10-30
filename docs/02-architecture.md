@@ -90,9 +90,11 @@ which state and parameters are used, and records the types generators need (`Ana
 `paramTypes`, `loopTypes`). It also computes the "did you mean" lists, so every suggestion is
 drawn from names that are legal *at that position*, not from a global list.
 
-Checking deliberately stops at the language boundary: host types and host functions are assumed
-to exist, because only Dart can answer questions about them. The generated file is the place
-where the boundary becomes visible.
+Checking stops at the language boundary, but not before it: host types and host functions are
+assumed to exist, because only Dart can answer questions about them, while a *declared* surface
+(§2.5 of the spec) is checked at every call site. The two are complements rather than alternatives —
+Dart remains the authority on its own signatures, and the surface exists so the mistake is reported
+where a person is looking.
 
 **Generating.** Generators receive `Analysis` and the source, never the tokens. They are pure
 and deterministic: same input, same bytes. When the analysis has errors, no generator runs — a

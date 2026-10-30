@@ -195,6 +195,50 @@ caller supplied it (so opening by name and opening with `navigate` produce the s
 parameter whose default is not a literal is left to the constructor, with a comment saying so,
 rather than being cast from a map that may not contain it.
 
+## Host interop
+
+A host surface changes nothing about *which* Dart is called — it changes what is checked before the
+Dart exists.
+
+```
+import "../data.dart" as data:
+
+    loadTasks(filter: String) -> Future<List<String>>
+    AppLogo(size: double = 24)
+```
+
+`task tasks: List<String> = data.loadTasks(filter)` becomes:
+
+```dart
+import '../data.dart';
+import '../data.dart' as data;
+
+// …
+Future<void> _loadTasks() async {
+  final request = ++_tasksRequest;
+  setState(() { _tasksLoading = true; _tasksError = null; });
+  try {
+    final result = await data.loadTasks(filter);
+    if (!mounted || request != _tasksRequest) return;
+    // …
+  }
+}
+```
+
+Three details:
+
+* **The prefix is a real Dart import.** `data.loadTasks(…)` in the source is `data.loadTasks(…)` in
+  the output, so the qualified call has one meaning in both languages and two modules that declare
+  the same name stay distinguishable. The plain import is emitted alongside it, because an
+  unqualified call to the same module has to keep working and Dart allows both forms of one URI.
+* **A prefix is emitted only when it is used.** A surface that is never qualified produces exactly
+  the imports the file had before — emitting `as data` there would hide the module's other names
+  from the generated file, which is a worse failure than an unused import.
+* **The declaration is checked again, by Dart.** The generated call carries the real arguments, so a
+  surface that disagrees with the host is a `dart analyze` error in `flutter-verify.yml`. PlainUI
+  cannot parse Dart, and does not try: the target compiler already is the authority on its own
+  signatures, and this way the `.pui` error comes first — at the call site a person wrote.
+
 ## State and controllers
 
 ```dart
