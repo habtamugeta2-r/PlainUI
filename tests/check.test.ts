@@ -144,6 +144,14 @@ test('children supplied to a component without a slot are rejected', () => {
   assert.ok(errorsOf(text).includes('PUI2203'));
 });
 
+test('Flutter enum spellings suggest the shorter PlainUI name', () => {
+  const text = ['screen Home:', '    row main=spaceBetween:', '        text "a"', ''].join('\n');
+  const diagnostic = run(text).bag.diagnostics.find((d) => d.code === 'PUI2111');
+  assert.ok(diagnostic, 'expected an invalid enum value');
+  assert.match(diagnostic.message, /"spaceBetween" is not a valid value for "main"/);
+  assert.match(diagnostic.hint ?? '', /use `between`/);
+});
+
 test('a parameter used only through short interpolation counts as used', () => {
   const text = [
     'component Price(label: String):',

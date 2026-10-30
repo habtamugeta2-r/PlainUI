@@ -69,6 +69,27 @@ const CASE_MISTAKES: Record<string, string> = {
   Object: 'Object',
 };
 
+/**
+ * Flutter's own enum names, mapped to the PlainUI spelling. Someone who knows
+ * `MainAxisAlignment.spaceBetween` will type `main=spaceBetween`; the error is right, but the hint
+ * should teach the shorter name instead of just listing six words.
+ */
+const FLUTTER_ENUM_ALIASES: Record<string, string> = {
+  spaceBetween: 'between',
+  spaceAround: 'around',
+  spaceEvenly: 'evenly',
+  flexStart: 'start',
+  flexEnd: 'end',
+  mainAxisAlignment: 'start',
+  crossAxisAlignment: 'start',
+  centerLeft: 'center',
+  centerRight: 'center',
+  topStart: 'topLeft',
+  topEnd: 'topRight',
+  bottomStart: 'bottomLeft',
+  bottomEnd: 'bottomRight',
+};
+
 export type ResolvedTag =
   | { readonly kind: 'builtin'; readonly spec: WidgetSpec }
   | { readonly kind: 'component'; readonly decl: ComponentDecl; readonly external: boolean }
@@ -829,12 +850,14 @@ class Checker {
         }
         if (!values.includes(literal)) {
           const match = suggest(literal, values, { caseSensitive: false });
-          this.error(
-            'PUI2111',
-            `"${literal}" is not a valid value for "${name}"`,
-            value.span,
-            match !== undefined ? `did you mean \`${match}\`?` : `accepted values: ${values.join(', ')}`,
-          );
+          const alias = FLUTTER_ENUM_ALIASES[literal];
+          const hint =
+            match !== undefined
+              ? `did you mean \`${match}\`?`
+              : alias !== undefined && values.includes(alias)
+                ? `use \`${alias}\` — PlainUI writes the shorter name`
+                : `accepted values: ${values.join(', ')}`;
+          this.error('PUI2111', `"${literal}" is not a valid value for "${name}"`, value.span, hint);
         }
         break;
       }
