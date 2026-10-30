@@ -21,13 +21,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 
-import { CODES } from './diagnostics.ts';
+import { CODES } from '../analysis/diagnostics.ts';
 import { formatText } from './format.ts';
-import { compileProject, ProjectCache, type SourceInput } from './project.ts';
-import { positionAt, sourceFile } from './source.ts';
-import { BUILTIN_STYLES } from './targets.ts';
-import { discoverSources, resolveProject, toInputs } from './workspace.ts';
-import { WIDGETS, findProp, propsFor, widgetSpec } from './widgets/registry.ts';
+import { compileProject, ProjectCache, type SourceInput } from '../project/project.ts';
+import { positionAt, sourceFile } from '../frontend/source.ts';
+import { BUILTIN_STYLES } from '../analysis/targets.ts';
+import { discoverSources, resolveProject, toInputs } from '../project/workspace.ts';
+import { WIDGETS, findProp, propsFor, widgetSpec } from '../analysis/widgets/registry.ts';
 
 interface JsonRpcRequest {
   readonly jsonrpc: '2.0';

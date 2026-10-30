@@ -6,14 +6,14 @@
  * language rules — if the playground and the CLI ever disagree, that is a bug in this file.
  */
 
-import { check } from '../src/check.ts';
+import { check } from '../src/analysis/check.ts';
 import { generateHtml } from '../src/codegen/html.ts';
-import type { Diagnostic } from '../src/diagnostics.ts';
-import { formatText } from '../src/format.ts';
-import { tokenize } from '../src/lexer.ts';
-import { parse } from '../src/parser.ts';
-import { compileOne } from '../src/project.ts';
-import { sourceFile, type SourceFile } from '../src/source.ts';
+import type { Diagnostic } from '../src/analysis/diagnostics.ts';
+import { formatText } from '../src/tooling/format.ts';
+import { tokenize } from '../src/frontend/lexer.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { compileOne } from '../src/project/project.ts';
+import { sourceFile, type SourceFile } from '../src/frontend/source.ts';
 import { EXAMPLES } from './examples.ts';
 
 const STORAGE_KEY = 'plainui.playground.source';

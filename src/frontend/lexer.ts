@@ -15,7 +15,7 @@
  *   - indentation is only meaningful when we are not inside brackets (continuation).
  */
 
-import { DiagnosticBag } from './diagnostics.ts';
+import { DiagnosticBag } from '../analysis/diagnostics.ts';
 import { type SourceFile, type Span, indentColumns, positionAt } from './source.ts';
 
 export type TokenKind =

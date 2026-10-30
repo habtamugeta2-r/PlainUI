@@ -10,7 +10,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 mkdirSync('dist', { recursive: true });
 
 const result = await build({
-  entryPoints: ['src/cli.ts'],
+  entryPoints: ['src/tooling/cli.ts'],
   outfile: 'dist/cli.js',
   bundle: true,
   platform: 'node',

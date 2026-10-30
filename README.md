@@ -199,21 +199,20 @@ are built in.
 
 ## Repository layout
 
+The source tree follows the pipeline: each directory is one stage, and the code in it knows only
+about the stages to its left.
+
 ```
 src/
-  lexer.ts        indentation-aware tokenizer
-  parser.ts       recursive-descent parser -> AST
-  ast.ts          framework-neutral AST types
-  check.ts        semantic validation (scope, widgets, properties, events)
-  widgets/        widget registry (the single source of truth for the vocabulary)
-  codegen/        flutter.ts (Dart), html.ts (playground preview)
-  format.ts       canonical formatter
-  project.ts      multi-file compilation, import re-basing
-  compile.ts      single-file pipeline
-  cli.ts          command line interface
-tests/            unit tests, registry/docs checks, golden files (tests/golden)
+  frontend/       source.ts (text, spans) · lexer.ts · ast.ts · parser.ts
+  analysis/       check.ts · diagnostics.ts · suggest.ts · targets.ts · events.ts
+  analysis/widgets/registry.ts      the single source of truth for the vocabulary
+  codegen/        dart.ts (emission helpers) · flutter.ts (Dart target) · html.ts (preview target)
+  project/        paths.ts · workspace.ts · project.ts (multi-file + cache) · compile.ts · hash.ts
+  tooling/        cli.ts · format.ts · watch.ts · lsp.ts · debug.ts
+tests/            unit, registry, docs, golden (tests/golden) and end-to-end tests
 examples/         three runnable projects (counter, todo, gallery) with their Dart host
-web/              browser playground (same compiler, bundled for the browser)
+web/              browser playground (the same compiler, bundled for the browser)
 scripts/          CLI bundle, playground server, docs generator
 docs/             research, specification, architecture, codegen, CLI, diagnostics, roadmap
 ```

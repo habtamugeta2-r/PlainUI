@@ -12,8 +12,8 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CODES } from '../src/diagnostics.ts';
-import { BUILTIN_STYLES, STYLE_PROPS } from '../src/targets.ts';
+import { CODES } from '../src/analysis/diagnostics.ts';
+import { BUILTIN_STYLES, STYLE_PROPS } from '../src/analysis/targets.ts';
 import {
   GENERIC_EVENTS,
   UNIVERSAL_PROPS,
@@ -23,7 +23,7 @@ import {
   widgetsByGroup,
   type PropSpec,
   type WidgetSpec,
-} from '../src/widgets/registry.ts';
+} from '../src/analysis/widgets/registry.ts';
 
 const HEADER = (title: string, command: string): string =>
   [

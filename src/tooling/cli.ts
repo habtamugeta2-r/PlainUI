@@ -8,23 +8,23 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from './diagnostics.ts';
+import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from '../analysis/diagnostics.ts';
 import { formatText } from './format.ts';
-import { describeTokens, tokenize } from './lexer.ts';
-import { ProjectCache, compileProject } from './project.ts';
+import { describeTokens, tokenize } from '../frontend/lexer.ts';
+import { ProjectCache, compileProject } from '../project/project.ts';
 import {
   discoverSources,
   resolveProject as resolveProjectIn,
   toInputs,
   type Config,
   type ResolvedProject,
-} from './workspace.ts';
-import { basename, extensionOf, normalizePath, relativePath } from './paths.ts';
-import { parse } from './parser.ts';
+} from '../project/workspace.ts';
+import { basename, extensionOf, normalizePath, relativePath } from '../project/paths.ts';
+import { parse } from '../frontend/parser.ts';
 import { renderAst } from './debug.ts';
-import { sourceFile } from './source.ts';
-import { WIDGETS, eventsFor, propsFor, widgetsByGroup } from './widgets/registry.ts';
-import { COMPILER_VERSION } from './compile.ts';
+import { sourceFile } from '../frontend/source.ts';
+import { WIDGETS, eventsFor, propsFor, widgetsByGroup } from '../analysis/widgets/registry.ts';
+import { COMPILER_VERSION } from '../project/compile.ts';
 import { watchForChanges } from './watch.ts';
 import { runLanguageServer } from './lsp.ts';
 

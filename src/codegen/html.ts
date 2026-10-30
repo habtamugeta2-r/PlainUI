@@ -23,10 +23,10 @@ import type {
   ScreenDecl,
   ForNode,
   StateDecl,
-} from '../ast.ts';
-import type { Analysis } from '../check.ts';
-import { describeExpr } from '../debug.ts';
-import { widgetSpec } from '../widgets/registry.ts';
+} from '../frontend/ast.ts';
+import type { Analysis } from '../analysis/check.ts';
+import { describeExpr } from '../tooling/debug.ts';
+import { widgetSpec } from '../analysis/widgets/registry.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Values
@@ -585,7 +585,7 @@ class HtmlEmitter {
 
   // ---- elements ----------------------------------------------------------------------------
 
-  private renderElement(element: import('../ast.ts').ElementNode): void {
+  private renderElement(element: import('../frontend/ast.ts').ElementNode): void {
     // Components declared in this file are inlined with their arguments bound.
     if (element.callStyle && this.components.has(element.tag)) {
       this.renderComponentCall(element);
@@ -926,7 +926,7 @@ class HtmlEmitter {
   }
 
   /** The first positional argument, rendered as text. */
-  private argumentText(element: import('../ast.ts').ElementNode): string {
+  private argumentText(element: import('../frontend/ast.ts').ElementNode): string {
     const arg = element.args[0];
     if (arg === undefined) return '';
     const value = evaluate(arg.value, this.env);
@@ -934,7 +934,7 @@ class HtmlEmitter {
   }
 
   /** The current value of the state an input is bound to, when it can be known. */
-  private boundValue(element: import('../ast.ts').ElementNode): Value | undefined {
+  private boundValue(element: import('../frontend/ast.ts').ElementNode): Value | undefined {
     const expr = this.prop(element, 'bind');
     if (expr === undefined) return undefined;
     return evaluate(expr, this.env);
@@ -952,12 +952,12 @@ class HtmlEmitter {
     return value === undefined ? [] : [`align-items: ${value}`];
   }
 
-  private eventNames(element: { events: readonly import('../ast.ts').EventHandler[] }): string | undefined {
+  private eventNames(element: { events: readonly import('../frontend/ast.ts').EventHandler[] }): string | undefined {
     if (element.events.length === 0) return undefined;
     return element.events.map((event) => event.name).join(' ');
   }
 
-  private renderComponentCall(element: import('../ast.ts').ElementNode): void {
+  private renderComponentCall(element: import('../frontend/ast.ts').ElementNode): void {
     const decl = this.components.get(element.tag)!;
     const saved = new Map(this.env.values);
 

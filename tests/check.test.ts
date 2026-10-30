@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { check, type CheckOptions } from '../src/check.ts';
-import { parse } from '../src/parser.ts';
-import { sourceFile } from '../src/source.ts';
+import { check, type CheckOptions } from '../src/analysis/check.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 import { codes } from './helpers.ts';
 
 function run(text: string, options: CheckOptions = {}) {

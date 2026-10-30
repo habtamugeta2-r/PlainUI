@@ -36,10 +36,10 @@ import {
   isStringType,
   typeFromText,
   walkNodes,
-} from './ast.ts';
+} from '../frontend/ast.ts';
 import { DiagnosticBag } from './diagnostics.ts';
 import { VALUE_PARAM_NAME, eventValueType } from './events.ts';
-import { type SourceFile, type Span } from './source.ts';
+import { type SourceFile, type Span } from '../frontend/source.ts';
 import { didYouMean, listOf, suggest } from './suggest.ts';
 import { BUILTIN_STYLES, DART_RESERVED_WORDS, FLUTTER_TYPE_NAMES, STYLE_PROPS } from './targets.ts';
 import {

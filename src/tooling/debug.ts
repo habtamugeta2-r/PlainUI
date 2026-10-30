@@ -3,7 +3,7 @@
  * `plainui tokens` and by tests that want to assert on tree *shape* rather than on spans.
  */
 
-import type { Action, Decl, Expr, Node, Program } from './ast.ts';
+import type { Action, Decl, Expr, Node, Program } from '../frontend/ast.ts';
 
 export function describeExpr(expr: Expr): string {
   switch (expr.kind) {

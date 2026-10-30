@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DiagnosticBag } from '../src/diagnostics.ts';
-import { tokenize } from '../src/lexer.ts';
-import { sourceFile } from '../src/source.ts';
+import { DiagnosticBag } from '../src/analysis/diagnostics.ts';
+import { tokenize } from '../src/frontend/lexer.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 import { codes, hasError } from './helpers.ts';
 
 function lex(text: string) {

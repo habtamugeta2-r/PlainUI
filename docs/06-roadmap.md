@@ -69,7 +69,7 @@ The AST holds no framework nouns, so the work is a registry variant plus an emit
 
 ### 4. ~~Watch mode that watches (not polls)~~ — done
 
-`src/watch.ts` now uses `fs.watch` (recursive → per-directory → polling), debounces saves by 60 ms
+`src/tooling/watch.ts` now uses `fs.watch` (recursive → per-directory → polling), debounces saves by 60 ms
 and queues one rebuild when a save lands mid-build. `ProjectCache` makes the rebuild incremental:
 a fingerprint over the file's text, its imports and the project's declaration table means one save
 recompiles one file (~40 ms instead of ~190 ms on a synthetic 300-screen project).

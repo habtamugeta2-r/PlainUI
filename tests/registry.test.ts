@@ -8,10 +8,10 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { compileSource } from '../src/compile.ts';
-import { CODES } from '../src/diagnostics.ts';
-import { parse } from '../src/parser.ts';
-import { sourceFile } from '../src/source.ts';
+import { compileSource } from '../src/project/compile.ts';
+import { CODES } from '../src/analysis/diagnostics.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 import { renderDiagnostics, renderReference, severitiesInSource } from '../scripts/gen-reference.ts';
 import {
   GENERIC_EVENTS,
@@ -21,7 +21,7 @@ import {
   eventsFor,
   propsFor,
   widgetSpec,
-} from '../src/widgets/registry.ts';
+} from '../src/analysis/widgets/registry.ts';
 
 test('every tag is lowercase, unique and documented', () => {
   const seen = new Set<string>();

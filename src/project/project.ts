@@ -7,14 +7,14 @@
  * contents, so the CLI can read from disk and the playground can read from `localStorage`.
  */
 
-import type { ComponentDecl, Program } from './ast.ts';
-import { check, type CheckOptions } from './check.ts';
-import { generateFlutter } from './codegen/flutter.ts';
-import type { Diagnostic } from './diagnostics.ts';
-import { DiagnosticBag } from './diagnostics.ts';
-import { parse } from './parser.ts';
+import type { ComponentDecl, Program } from '../frontend/ast.ts';
+import { check, type CheckOptions } from '../analysis/check.ts';
+import { generateFlutter } from '../codegen/flutter.ts';
+import type { Diagnostic } from '../analysis/diagnostics.ts';
+import { DiagnosticBag } from '../analysis/diagnostics.ts';
+import { parse } from '../frontend/parser.ts';
 import { basename, camelCase, dartImportSpecifier, dirname, extensionOf, joinPath, normalizePath } from './paths.ts';
-import { sourceFile, type SourceFile } from './source.ts';
+import { sourceFile, type SourceFile } from '../frontend/source.ts';
 import { hashText } from './hash.ts';
 import { COMPILER_VERSION } from './compile.ts';
 

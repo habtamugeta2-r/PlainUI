@@ -23,37 +23,49 @@ How a `.pui` file becomes Dart, and where to change things.
       Dart                  HTML
 ```
 
-Nothing above the generators knows what Flutter is. `src/ast.ts` has `ElementNode` with a `tag`
+Nothing above the generators knows what Flutter is. `src/frontend/ast.ts` has `ElementNode` with a `tag`
 string; the registry decides which tags exist and what they take; the generator decides what
 they become. That separation is what makes a second target a weekend rather than a rewrite —
 `src/codegen/html.ts` is the proof.
 
 ## Modules
 
+The tree mirrors the pipeline, so a file's folder says which stage it belongs to — and whether it
+is allowed to know about Flutter.
+
+| Stage | Directory | Contains |
+| --- | --- | --- |
+| Front end | `src/frontend/` | text → tokens → AST. No Flutter, no file system, no options. |
+| Analysis | `src/analysis/` | Scopes, the widget catalogue, diagnostics, suggestions. Framework-neutral. |
+| Code generation | `src/codegen/` | Dart emission helpers, the Flutter target, the HTML preview. |
+| Project | `src/project/` | Paths, config discovery, multi-file compilation, the incremental cache. |
+| Tooling | `src/tooling/` | CLI, formatter, watcher, language server, AST debug printer. |
+
 | File | Lines | Responsibility |
 | --- | ---: | --- |
-| `src/source.ts` | 117 | A file's text plus line/column mapping. Every span is an offset pair. |
-| `src/diagnostics.ts` | 659 | `Diagnostic`, `DiagnosticBag`, the `CODES` catalogue, rendering, JSON form. |
-| `src/lexer.ts` | 444 | Indentation stack, strings with interpolation, numbers, colours, operators, comments. |
-| `src/ast.ts` | 528 | AST types, `UiType`, type helpers, tree walkers. |
-| `src/parser.ts` | 1159 | Recursive descent over the token stream, including recovery and the action grammar. |
-| `src/check.ts` | 1207 | Scopes, property/argument validation, event rules, `Analysis` for generators. |
-| `src/widgets/registry.ts` | 486 | The element catalogue: arguments, properties, children policy, events, example. |
-| `src/targets.ts` | 46 | Target-wide constants: style properties, built-in style names, Flutter type names. |
-| `src/suggest.ts` | 70 | Edit-distance suggestions used by every "did you mean". |
-| `src/events.ts` | 22 | Event metadata (which events carry a value, and its type). |
+| `src/frontend/ast.ts` | 528 | AST types, `UiType`, type helpers, tree walkers. |
+| `src/frontend/lexer.ts` | 444 | Indentation stack, strings with interpolation, numbers, colours, operators, comments. |
+| `src/frontend/parser.ts` | 1169 | Recursive descent over the token stream, including recovery and the action grammar. |
+| `src/frontend/source.ts` | 117 | A file's text plus line/column mapping. Every span is an offset pair. |
+| `src/analysis/check.ts` | 1241 | Scopes, property/argument validation, event rules, `Analysis` for generators. |
+| `src/analysis/diagnostics.ts` | 659 | `Diagnostic`, `DiagnosticBag`, the `CODES` catalogue, rendering, JSON form. |
+| `src/analysis/events.ts` | 22 | Event metadata (which events carry a value, and its type). |
+| `src/analysis/suggest.ts` | 70 | Edit-distance suggestions used by every "did you mean". |
+| `src/analysis/targets.ts` | 46 | Target-wide constants: style properties, built-in style names, Flutter type names. |
+| `src/analysis/widgets/registry.ts` | 486 | The element catalogue: arguments, properties, children policy, events, example. |
 | `src/codegen/dart.ts` | 84 | Emission helpers: `dartCall`, `listArgument`, `indentAll`, Dart string escaping. |
-| `src/codegen/flutter.ts` | 1531 | The Flutter generator. |
+| `src/codegen/flutter.ts` | 1532 | The Flutter generator. |
 | `src/codegen/html.ts` | 1127 | The HTML preview generator. |
-| `src/project.ts` | 297 | Multi-file compilation, import resolution/re-basing, the incremental `ProjectCache`. |
-| `src/format.ts` | 245 | Token-driven formatter. |
-| `src/compile.ts` | 73 | Single-file pipeline used by the playground and tests. |
-| `src/paths.ts` | 83 | POSIX path helpers; no `node:path`, so the browser can use them. |
-| `src/workspace.ts` | 157 | Where the project is: config discovery, source discovery, path re-basing. |
-| `src/watch.ts` | 234 | File watching: recursive → per-directory → polling, debounced. |
-| `src/hash.ts` | 35 | FNV-1a + djb2 cache keys, with no Node builtins so the browser can use it. |
-| `src/lsp.ts` | 399 | Language server: JSON-RPC framing, diagnostics, formatting, hover. |
-| `src/cli.ts` | 567 | Commands and output; no grammar, no Flutter. |
+| `src/project/compile.ts` | 73 | Single-file pipeline used by the playground and tests. |
+| `src/project/hash.ts` | 35 | FNV-1a + djb2 cache keys, with no Node builtins so the browser can use it. |
+| `src/project/paths.ts` | 83 | POSIX path helpers; no `node:path`, so the browser can use them. |
+| `src/project/project.ts` | 297 | Multi-file compilation, import resolution/re-basing, the incremental `ProjectCache`. |
+| `src/project/workspace.ts` | 157 | Where the project is: config discovery, source discovery, path re-basing. |
+| `src/tooling/cli.ts` | 567 | Commands and output; no grammar, no Flutter. |
+| `src/tooling/debug.ts` | 132 | AST and expression printers behind `plainui ast`. |
+| `src/tooling/format.ts` | 245 | Token-driven formatter. |
+| `src/tooling/lsp.ts` | 399 | Language server: JSON-RPC framing, diagnostics, formatting, hover. |
+| `src/tooling/watch.ts` | 234 | File watching: recursive → per-directory → polling, debounced. |
 
 ## The pipeline, step by step
 
@@ -141,7 +153,7 @@ synthetic 300-screen project a cold build takes ~190 ms and a one-file edit ~40 
 14% of a cold build, so the cache skips the part that costs the most (checking and generation).
 Errors are cached too — while a file is broken, a save elsewhere must not re-analyse it.
 
-The hash is `src/hash.ts`, FNV-1a and djb2 over the text, not `node:crypto`: the same module is
+The hash is `src/project/hash.ts`, FNV-1a and djb2 over the text, not `node:crypto`: the same module is
 bundled into the browser playground, where a Node builtin would break the build. Two independent
 32-bit lanes make an accidental collision between two versions of one file negligible, and a
 collision there would only mean a stale result for a keystroke or two.

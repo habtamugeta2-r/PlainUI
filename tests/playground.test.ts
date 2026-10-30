@@ -15,11 +15,11 @@ import { test } from 'node:test';
 
 import { build } from 'esbuild';
 
-import { check } from '../src/check.ts';
-import { formatText } from '../src/format.ts';
-import { parse } from '../src/parser.ts';
-import { compileOne } from '../src/project.ts';
-import { sourceFile } from '../src/source.ts';
+import { check } from '../src/analysis/check.ts';
+import { formatText } from '../src/tooling/format.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { compileOne } from '../src/project/project.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 import { generateHtml } from '../src/codegen/html.ts';
 import { EXAMPLES } from '../web/examples.ts';
 

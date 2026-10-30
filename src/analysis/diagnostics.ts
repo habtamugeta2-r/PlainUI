@@ -9,7 +9,7 @@
  *     read the same objects.
  */
 
-import { type Position, type SourceFile, type Span, lineText, positionAt } from './source.ts';
+import { type Position, type SourceFile, type Span, lineText, positionAt } from '../frontend/source.ts';
 
 export type Severity = 'error' | 'warning' | 'info';
 

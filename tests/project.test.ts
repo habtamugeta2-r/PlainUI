@@ -6,8 +6,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ProjectCache, compileOne, compileProject, outputPathFor } from '../src/project.ts';
-import type { Diagnostic } from '../src/diagnostics.ts';
+import { ProjectCache, compileOne, compileProject, outputPathFor } from '../src/project/project.ts';
+import type { Diagnostic } from '../src/analysis/diagnostics.ts';
 
 const codes = (diagnostics: readonly Diagnostic[]): string[] => diagnostics.map((d) => d.code);
 

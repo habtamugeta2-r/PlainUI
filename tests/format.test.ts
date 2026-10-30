@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { renderAst } from '../src/debug.ts';
-import { formatText } from '../src/format.ts';
-import { parse } from '../src/parser.ts';
-import { sourceFile } from '../src/source.ts';
+import { renderAst } from '../src/tooling/debug.ts';
+import { formatText } from '../src/tooling/format.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 
 function format(text: string): string {
   return formatText('test.pui', text).text;

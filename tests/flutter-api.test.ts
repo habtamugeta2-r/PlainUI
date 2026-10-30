@@ -13,8 +13,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { compileSource } from '../src/compile.ts';
-import { compileProject } from '../src/project.ts';
+import { compileSource } from '../src/project/compile.ts';
+import { compileProject } from '../src/project/project.ts';
 
 /** APIs removed or deprecated in Flutter 3.x, with what to write instead. */
 const DEPRECATED: readonly (readonly [RegExp, string])[] = [

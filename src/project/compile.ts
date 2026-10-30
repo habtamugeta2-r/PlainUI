@@ -8,14 +8,14 @@
  * produces misleading Dart.
  */
 
-import type { Analysis } from './check.ts';
-import { check, type CheckOptions } from './check.ts';
-import { generateFlutter, type FlutterGenOptions } from './codegen/flutter.ts';
-import type { Diagnostic } from './diagnostics.ts';
-import { DiagnosticBag } from './diagnostics.ts';
-import { parse } from './parser.ts';
-import { type Program } from './ast.ts';
-import { type SourceFile, sourceFile } from './source.ts';
+import type { Analysis } from '../analysis/check.ts';
+import { check, type CheckOptions } from '../analysis/check.ts';
+import { generateFlutter, type FlutterGenOptions } from '../codegen/flutter.ts';
+import type { Diagnostic } from '../analysis/diagnostics.ts';
+import { DiagnosticBag } from '../analysis/diagnostics.ts';
+import { parse } from '../frontend/parser.ts';
+import { type Program } from '../frontend/ast.ts';
+import { type SourceFile, sourceFile } from '../frontend/source.ts';
 
 export const COMPILER_VERSION = '1.0.0';
 

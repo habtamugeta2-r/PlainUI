@@ -10,9 +10,9 @@
  *   2. meaning-preserving: parsing the formatted source yields the same tree as the original.
  */
 
-import { DiagnosticBag } from './diagnostics.ts';
-import { type Comment, type Token, tokenize } from './lexer.ts';
-import { type SourceFile, lineCount, sourceFile } from './source.ts';
+import { DiagnosticBag } from '../analysis/diagnostics.ts';
+import { type Comment, type Token, tokenize } from '../frontend/lexer.ts';
+import { type SourceFile, lineCount, sourceFile } from '../frontend/source.ts';
 
 export interface FormatResult {
   readonly text: string;

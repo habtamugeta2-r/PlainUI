@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 
-import { watchForChanges } from '../src/watch.ts';
+import { watchForChanges } from '../src/tooling/watch.ts';
 
 const root = mkdtempSync(join(tmpdir(), 'plainui-watch-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -39,7 +39,7 @@ test('watch rebuilds when a source file changes', { timeout: 30_000 }, async () 
 
   const child = spawn(
     process.execPath,
-    ['--experimental-strip-types', 'src/cli.ts', 'watch', root],
+    ['--experimental-strip-types', 'src/tooling/cli.ts', 'watch', root],
     { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] },
   );
 
@@ -112,7 +112,7 @@ test('watch sees a file created in a new directory', { timeout: 30_000 }, async 
     mkdirSync(join(dir, 'lib/ui'), { recursive: true });
     writeFileSync(join(dir, 'lib/ui/home.pui'), HOME, 'utf8');
 
-    const child = spawn(process.execPath, ['--experimental-strip-types', 'src/cli.ts', 'watch', dir], {
+    const child = spawn(process.execPath, ['--experimental-strip-types', 'src/tooling/cli.ts', 'watch', dir], {
       cwd: process.cwd(),
       stdio: ['ignore', 'pipe', 'pipe'],
       env: spawnEnv,

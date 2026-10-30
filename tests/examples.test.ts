@@ -9,8 +9,8 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { compileProject } from '../src/project.ts';
-import { basename, extensionOf } from '../src/paths.ts';
+import { compileProject } from '../src/project/project.ts';
+import { basename, extensionOf } from '../src/project/paths.ts';
 import { checkDartStructure } from './dart-syntax.ts';
 
 const EXAMPLES = 'examples';

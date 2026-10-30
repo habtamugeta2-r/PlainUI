@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { ComponentDecl, ElementNode, ForNode, IfNode, ScreenDecl, StyleDecl } from '../src/ast.ts';
-import { describeExpr, renderAst } from '../src/debug.ts';
-import { parse } from '../src/parser.ts';
-import { sourceFile } from '../src/source.ts';
+import type { ComponentDecl, ElementNode, ForNode, IfNode, ScreenDecl, StyleDecl } from '../src/frontend/ast.ts';
+import { describeExpr, renderAst } from '../src/tooling/debug.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 import { assertNoErrors, hasError } from './helpers.ts';
 
 function parseText(text: string) {

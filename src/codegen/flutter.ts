@@ -37,12 +37,12 @@ import {
   rootIdentifiers,
   typeToText,
   walkExpressions,
-} from '../ast.ts';
-import type { Analysis } from '../check.ts';
-import { VALUE_PARAM_NAME, eventValueType } from '../events.ts';
-import { type SourceFile, positionAt } from '../source.ts';
-import { BUILTIN_STYLES } from '../targets.ts';
-import type { WidgetSpec } from '../widgets/registry.ts';
+} from '../frontend/ast.ts';
+import type { Analysis } from '../analysis/check.ts';
+import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
+import { type SourceFile, positionAt } from '../frontend/source.ts';
+import { BUILTIN_STYLES } from '../analysis/targets.ts';
+import type { WidgetSpec } from '../analysis/widgets/registry.ts';
 import {
   arg,
   capitalize,

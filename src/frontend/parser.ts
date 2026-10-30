@@ -36,9 +36,9 @@ import type {
   StateDecl,
   StyleDecl,
 } from './ast.ts';
-import { DiagnosticBag } from './diagnostics.ts';
+import { DiagnosticBag } from '../analysis/diagnostics.ts';
 import { type Token, tokenize } from './lexer.ts';
-import { booleanPropNames } from './widgets/registry.ts';
+import { booleanPropNames } from '../analysis/widgets/registry.ts';
 import { type SourceFile, type Span, span, textOf } from './source.ts';
 
 export interface ParseResult {

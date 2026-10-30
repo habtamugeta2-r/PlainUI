@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compileSource } from '../src/compile.ts';
+import { compileSource } from '../src/project/compile.ts';
 import { checkDartStructure } from './dart-syntax.ts';
 
 function generate(source: string, path = 'lib/ui/test.pui'): string {

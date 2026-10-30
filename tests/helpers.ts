@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { DiagnosticBag, type Diagnostic } from '../src/diagnostics.ts';
-import { type SourceFile, sourceFile } from '../src/source.ts';
+import { DiagnosticBag, type Diagnostic } from '../src/analysis/diagnostics.ts';
+import { type SourceFile, sourceFile } from '../src/frontend/source.ts';
 
 export function parseSource(text: string, path = 'test.pui'): SourceFile {
   return sourceFile(path, text);

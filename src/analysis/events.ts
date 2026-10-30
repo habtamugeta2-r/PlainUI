@@ -6,7 +6,7 @@
  * it in scope) and the generator (which declares the closure parameter) read this table.
  */
 
-import { BOOL, DOUBLE, STRING, type UiType } from './ast.ts';
+import { BOOL, DOUBLE, STRING, type UiType } from '../frontend/ast.ts';
 
 export const EVENT_VALUE_TYPES: Readonly<Record<string, Readonly<Record<string, UiType>>>> = {
   input: { change: STRING, submit: STRING },

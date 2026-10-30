@@ -42,7 +42,7 @@ class Client {
     // speaks the runner's private protocol instead of ours.
     const env = { ...process.env };
     delete env['NODE_TEST_CONTEXT'];
-    this.child = spawn(process.execPath, ['--experimental-strip-types', 'src/cli.ts', 'lsp'], {
+    this.child = spawn(process.execPath, ['--experimental-strip-types', 'src/tooling/cli.ts', 'lsp'], {
       cwd: process.cwd(),
       stdio: ['pipe', 'pipe', 'pipe'],
       env,

@@ -7,9 +7,9 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { generateHtml } from '../src/codegen/html.ts';
-import { check } from '../src/check.ts';
-import { parse } from '../src/parser.ts';
-import { sourceFile } from '../src/source.ts';
+import { check } from '../src/analysis/check.ts';
+import { parse } from '../src/frontend/parser.ts';
+import { sourceFile } from '../src/frontend/source.ts';
 
 function render(source: string): string {
   const file = sourceFile('preview.pui', source);

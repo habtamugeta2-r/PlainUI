@@ -9,8 +9,8 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { after, test } from 'node:test';
 
-import { main } from '../src/cli.ts';
-import { COMPILER_VERSION } from '../src/compile.ts';
+import { main } from '../src/tooling/cli.ts';
+import { COMPILER_VERSION } from '../src/project/compile.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'plainui-cli-'));
 after(() => rmSync(scratch, { recursive: true, force: true }));
