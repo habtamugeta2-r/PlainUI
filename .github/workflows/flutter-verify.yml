@@ -66,6 +66,7 @@ jobs:
           import 'package:flutter/material.dart';
 
           import 'async/async.pui.dart';
+          import 'async/race.pui.dart';
           import 'counter/counter.pui.dart';
           import 'todo/todo.pui.dart';
           import 'gallery/gallery.pui.dart';
@@ -79,6 +80,7 @@ jobs:
                 const Todo(),
                 const Gallery(),
                 const Async(),
+                const Race(),
                 const navigation_home.Home(),
                 // A screen with parameters: the constructor is generated from the parameter list.
                 const navigation_detail.Detail(id: '1'),
@@ -133,6 +135,7 @@ jobs:
           import 'package:verify_app/todo/todo.pui.dart' as todo;
           import 'package:verify_app/navigation/home.pui.dart' as navigation_home;
           import 'package:verify_app/navigation/plainui_routes.dart';
+          import 'package:verify_app/async/race.pui.dart' as race_example;
 
           void main() {
             testWidgets('the counter renders and reacts to a tap', (tester) async {
@@ -166,6 +169,23 @@ jobs:
               await tester.pumpWidget(const MaterialApp(home: Scaffold(body: todo.Todo())));
               expect(find.text('Today'), findsOneWidget);
               expect(find.text('Write the spec'), findsOneWidget);
+            });
+
+            testWidgets('a retry wins over the older load it superseded', (tester) async {
+              // The host function is slow on its first call and fast afterwards, so tapping Retry
+              // immediately means the second load finishes first and the first finishes last.
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: race_example.Race())));
+              expect(find.text('Loading…'), findsOneWidget);
+
+              await tester.tap(find.text('Retry'));
+              await tester.pump(const Duration(milliseconds: 40));
+              expect(find.text('fresh result'), findsOneWidget);
+
+              // 500ms later the first, slower load completes. Without the sequence number it would
+              // overwrite the fresh result and the screen would show stale data for good.
+              await tester.pump(const Duration(milliseconds: 500));
+              expect(find.text('fresh result'), findsOneWidget);
+              expect(find.text('stale result'), findsNothing);
             });
 
             testWidgets('navigate opens a screen with arguments, back() returns', (tester) async {
