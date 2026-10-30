@@ -249,6 +249,10 @@ class Parser {
   private parseScreen(): ScreenDecl {
     const keyword = this.advance();
     const nameToken = this.expectIdent('for the screen');
+    const params: Param[] = [];
+    if (this.atOp('(')) {
+      params.push(...this.parseParams());
+    }
     this.expectOp(':', 'to open the screen body');
     const body = this.parseNodeBody();
     const { state, tasks, rest } = splitState(body);
@@ -257,6 +261,7 @@ class Parser {
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
       name: nameToken.value,
       nameSpan: nameToken.span,
+      params,
       state,
       tasks,
       body: rest,
@@ -1141,6 +1146,27 @@ class Parser {
     if (token.kind === 'keyword' && token.value === 'null') {
       this.advance();
       return { kind: 'Null', span: token.span };
+    }
+    // `navigate Detail(id: x)` — the target screen is written as the first argument, the way it
+    // reads, and the AST records it as one: a call to `navigate` whose first argument names the
+    // screen. That keeps the checker and both generators looking at one shape.
+    if (token.kind === 'ident' && token.value === 'navigate' && this.peek(1).kind === 'ident') {
+      const keyword = this.advance();
+      const targetToken = this.advance();
+      const callee: Expr = { kind: 'Ident', span: keyword.span, name: keyword.value };
+      const target: Expr = { kind: 'Ident', span: targetToken.span, name: targetToken.value };
+      if (!this.atOp('(')) {
+        this.error(
+          'PUI2320',
+          'navigate needs an argument list',
+          this.peek().span,
+          `write navigate ${targetToken.value}(${'{'}name: value${'}'}...), or navigate ${targetToken.value}() when the screen takes none`,
+        );
+        return { kind: 'Call', span: span(keyword.span.start, targetToken.span.end), callee, args: [{ value: target, span: target.span }] };
+      }
+      const args = this.parseCallArgs();
+      const end = this.tokens[this.pos - 1]?.span.end ?? targetToken.span.end;
+      return { kind: 'Call', span: span(keyword.span.start, end), callee, args: [{ value: target, span: target.span }, ...args] };
     }
     if (token.kind === 'ident') {
       this.advance();

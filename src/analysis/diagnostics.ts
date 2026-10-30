@@ -401,6 +401,33 @@ export const CODES = {
     description: 'A task exposes loading, error, value and retry, and nothing else.',
     fix: 'Use one of loading, error, value or retry.',
   },
+  PUI2320: {
+    severity: 'error',
+    title: 'Unknown screen in navigate',
+    description:
+      'The name after navigate is not a screen this file declares or imports. Navigation follows imports, because the generated screen needs an import of its own.',
+    fix: 'Import the file that declares the screen, or navigate to a screen declared in this one.',
+  },
+  PUI2321: {
+    severity: 'error',
+    title: 'Navigation outside an event handler',
+    description:
+      'navigate and back run when something happens, not while a tree is being built, so they are only allowed inside an event handler.',
+    fix: 'Move the navigation into the "on <event>:" body that triggers it.',
+  },
+  PUI2322: {
+    severity: 'error',
+    title: 'Wrong arguments for the target screen',
+    description:
+      'Every parameter a screen requires must be passed by name, and every name passed must be one the screen declares.',
+    fix: 'Pass the parameters the screen declares, by name: navigate Detail(id: x).',
+  },
+  PUI2323: {
+    severity: 'error',
+    title: 'back() takes no arguments',
+    description: 'back() closes the current screen; it needs no screen name and no arguments.',
+    fix: 'Write back() on its own.',
+  },
   PUI2309: {
     severity: 'error',
     title: 'State shadowing a token',
