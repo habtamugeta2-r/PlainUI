@@ -378,6 +378,70 @@ screen whose state is literal therefore previews correctly — `derived doubled 
 `count = 2` renders `4`. Values the preview cannot know (a task's rows before a load, a host call)
 degrade to the expression text rather than to a wrong number.
 
+## Effects
+
+`effect on query:` becomes three things: a nullable snapshot per watched state, a method holding the
+actions, and a comparison at the top of `build` that schedules the method for after the frame.
+
+```dart
+class _SearchState extends State<Search> {
+  String query = "";
+  bool busy = false;
+
+  /// `query` as effect 0 last saw it; null means it has not run yet.
+  String? _puiEffect0Query;
+
+  /// `effect on query` — runs on mount and whenever query changes, never otherwise.
+  void _puiEffect0() {
+    setState(() {
+      busy = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final puiEffect0Due = _puiEffect0Query != query;
+    _puiEffect0Query = query;
+    if (puiEffect0Due) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _puiEffect0();
+      });
+    }
+    return Column(...);
+  }
+}
+```
+
+Three decisions are visible in that shape.
+
+**The comparison is in `build`, not in the setter.** State can change from a handler, a bound
+`TextEditingController`, a task that finished, or a form submit; a snapshot compared at build time
+covers all of them without threading every write through one funnel.
+
+**The body runs in a post-frame callback.** An effect assigns state, and Dart throws if a build
+mutates state during the build it is part of. The callback runs after the frame is painted, so the
+assignment starts a new build instead of interfering with the current one. `mounted` is checked
+because the screen may be gone by then.
+
+**The snapshot starts `null`.** A nullable field is unequal to every value, including the state's own
+initial value, so the first build always schedules the effect: it runs on mount *and* on change,
+which is what `useEffect` does and what `LaunchedEffect` does on entering composition. The alternative
+— `didUpdateWidget`, which the decision record originally named — only fires when the *widget* is
+replaced by a new one, so a `setState` inside the same screen would never reach it. The comparison is
+the same one `useEffect` and `LaunchedEffect` are given, just made explicitly.
+
+Two consequences worth stating:
+
+* effects run in declaration order when they are due in the same frame, because post-frame callbacks
+  run in the order they were registered;
+* an effect that writes a state it watches is refused by the checker (`PUI2363`) rather than
+  discovered as a frozen app, because the snapshot comparison would keep seeing a change forever.
+
+**The preview does not run effects.** They are side effects, and a static render has no frame to
+schedule them after; what the preview shows is the state before the first run. That is a limitation
+worth knowing rather than papering over: a preview that guessed would be showing a value the app
+does not have yet.
+
 ## Forms
 
 `form` compiles to `Form` with one generated key per form, and every `input` inside it becomes a

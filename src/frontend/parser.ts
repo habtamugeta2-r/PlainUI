@@ -20,6 +20,7 @@ import type {
   ComponentDecl,
   Decl,
   DerivedDecl,
+  EffectDecl,
   ElementNode,
   EventHandler,
   Expr,
@@ -41,6 +42,7 @@ import type {
   ThemeDecl,
   TokenCategory,
   TokenDecl,
+  WatchedState,
 } from './ast.ts';
 import { DiagnosticBag } from '../analysis/diagnostics.ts';
 
@@ -330,7 +332,7 @@ class Parser {
     }
     this.expectOp(':', 'to open the screen body');
     const body = this.parseNodeBody();
-    const { state, tasks, derived, rest } = splitState(body);
+    const { state, tasks, derived, effects, rest } = splitState(body);
     return {
       kind: 'Screen',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
@@ -340,6 +342,7 @@ class Parser {
       state,
       tasks,
       derived,
+      effects,
       body: rest,
     };
   }
@@ -353,7 +356,7 @@ class Parser {
     }
     this.expectOp(':', 'to open the component body');
     const body = this.parseNodeBody();
-    const { state, tasks, derived, rest } = splitState(body);
+    const { state, tasks, derived, effects, rest } = splitState(body);
     return {
       kind: 'Component',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
@@ -363,6 +366,7 @@ class Parser {
       state,
       tasks,
       derived,
+      effects,
       body: rest,
     };
   }
@@ -617,6 +621,16 @@ class Parser {
     // `derived total = price * count` — the same argument, and the same shape: a name follows.
     if (token.kind === 'ident' && token.value === 'derived' && this.peek(1).kind === 'ident') {
       return this.parseDerived();
+    }
+
+    // `effect on query:` — contextual for the same reason, and the shape is unambiguous: `effect`
+    // followed by the keyword `on`, which cannot begin an element or a call.
+    if (
+      token.kind === 'ident' &&
+      token.value === 'effect' &&
+      (this.peek(1).kind === 'ident' || (this.peek(1).kind === 'keyword' && this.peek(1).value === 'on'))
+    ) {
+      return this.parseEffect();
     }
 
     if (token.kind === 'keyword') {
@@ -1042,6 +1056,58 @@ class Parser {
       ...(typeSpan === undefined ? {} : { typeSpan }),
       init,
     };
+  }
+
+  /**
+   * `effect on query:` / `effect on count, name: set x = 1`
+   *
+   * The header is a comma-separated list of the states the effect reads, and the body is actions —
+   * the same actions an event handler takes, because an effect *is* a handler; what differs is what
+   * triggers it.
+   */
+  private parseEffect(): EffectDecl {
+    const keyword = this.advance();
+    const watches: WatchedState[] = [];
+    if (this.at('keyword', 'on')) {
+      this.advance();
+    } else {
+      const token = this.peek();
+      this.error('PUI1022', `expected "on" after "effect", found ${describeToken(token)}`, token.span, 'for example: effect on query:');
+    }
+
+    while (this.at('ident')) {
+      const nameToken = this.advance();
+      if (!watches.some((watch) => watch.name === nameToken.value)) {
+        watches.push({ name: nameToken.value, span: nameToken.span });
+      }
+      if (this.atOp(',')) {
+        this.advance();
+        continue;
+      }
+      break;
+    }
+    if (watches.length === 0) {
+      const token = this.peek();
+      this.error(
+        'PUI1022',
+        'expected the state an effect watches',
+        token.span,
+        'name at least one state: effect on query:',
+      );
+    }
+
+    this.expectOp(':', 'to open the effect body');
+
+    let body: Action[];
+    if (this.at('newline')) {
+      body = this.parseActionBody();
+    } else {
+      const action = this.parseAction();
+      body = action === undefined ? [] : [action];
+    }
+
+    const end = body[body.length - 1]?.span.end ?? watches[watches.length - 1]?.span.end ?? keyword.span.end;
+    return { kind: 'Effect', span: span(keyword.span.start, end), watches, body };
   }
 
   private parseEvent(): EventHandler {
@@ -1478,18 +1544,26 @@ function endOfBody(items: readonly { span: Span }[], fallback: number): number {
   return items.length === 0 ? fallback : items[items.length - 1]!.span.end;
 }
 
-function splitState(body: readonly Node[]): { state: StateDecl[]; tasks: TaskDecl[]; derived: DerivedDecl[]; rest: Node[] } {
+function splitState(body: readonly Node[]): {
+  state: StateDecl[];
+  tasks: TaskDecl[];
+  derived: DerivedDecl[];
+  effects: EffectDecl[];
+  rest: Node[];
+} {
   const state: StateDecl[] = [];
   const tasks: TaskDecl[] = [];
   const derived: DerivedDecl[] = [];
+  const effects: EffectDecl[] = [];
   const rest: Node[] = [];
   for (const node of body) {
     if (node.kind === 'State') state.push(node);
     else if (node.kind === 'Task') tasks.push(node);
     else if (node.kind === 'Derived') derived.push(node);
+    else if (node.kind === 'Effect') effects.push(node);
     else rest.push(node);
   }
-  return { state, tasks, derived, rest };
+  return { state, tasks, derived, effects, rest };
 }
 
 function propAsNode(prop: Prop): { span: Span } {

@@ -420,7 +420,44 @@ screen Counter:
 * The preview (`plainui preview`) evaluates derived values once, in declaration order, so a screen
   built only from literals renders correctly without Dart.
 
-### 3.7 Events
+### 3.7 Effects
+
+Some work is neither a value nor a response to a click: it has to happen when the screen appears, or
+when one particular piece of state moves. That is what `effect` is for.
+
+```
+screen Search:
+
+    state query: String = ""
+    state busy: bool = false
+    state results: List<String> = []
+
+    effect on query:
+        set busy = true
+```
+
+* `effect on <state>[, <state>]*:` is only valid at the **top level** of a screen or component
+  (`PUI2362`), and the body is a block of actions — the same actions an event handler takes.
+* **The header is the whole dependency list.** The effect runs once after the screen is mounted, and
+  again whenever one of the named states changes. It does not run for an unrelated change, for a
+  rebuild caused by a parent, or on every frame. Nothing is inferred: there is no "watch everything"
+  and no automatic tracking.
+* Every name in the header must be `state`, declared in the same screen or component (`PUI2364`,
+  `PUI2360`). A `task` changes when a load finishes, a parameter changes when the parent rebuilds and
+  a `derived` value has no storage at all — none of them has a moment this construct can name, so a
+  task's result is copied into state and that state is watched.
+* An effect may read anything; it may write any state except the states it watches (`PUI2363`).
+  Writing a watched one is a loop by construction: the run that changes the value is the run that
+  reacts to it.
+* The body runs **after the frame** whose build noticed the change, never during it. That is why an
+  effect can assign state without recursing into the build it was scheduled from.
+* Several effects run in declaration order when they are due in the same frame.
+* An effect may `await`; it is emitted as an async method, and the frame it was scheduled from is not
+  blocked.
+* There is no cleanup function. The language has no subscription to tear down, and the lifetimes that
+  would need one (a task's request) are already handled by tasks and their cancellation.
+
+### 3.8 Events
 
 ```
 button "Sign In":
@@ -443,7 +480,7 @@ button "Retry":
 
 * The event name must be one the widget supports (`PUI2101`), either natively or through the
   generic event set: `tap`, `longTap`, `doubleTap`, `hover` on every element; `change`,
-  `focus`, `blur` on input-like widgets; `submit` on `form` (§3.8).
+  `focus`, `blur` on input-like widgets; `submit` on `form` (§3.9).
 * At most one handler per event per element (`PUI2103`).
 * A handler containing `await` is emitted as an `async` closure automatically.
 
@@ -486,7 +523,7 @@ screen Detail(id: String, title: String = "Task"):
 * A project that navigates also gets `plainui_routes.dart`: a map from screen name to widget, for
   host code that has a name (a deep link, a notification) and no import.
 
-### 3.8 Forms and validation
+### 3.9 Forms and validation
 
 ```
 form:

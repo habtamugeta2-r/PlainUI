@@ -80,6 +80,11 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2351`](#pui2351) | error | Derived value depends on itself |
 | [`PUI2352`](#pui2352) | error | Derived value in the wrong place |
 | [`PUI2353`](#pui2353) | error | Derived type mismatch |
+| [`PUI2360`](#pui2360) | error | Effect watches something that is not state |
+| [`PUI2361`](#pui2361) | error | Effect has no actions |
+| [`PUI2362`](#pui2362) | error | Effect in the wrong place |
+| [`PUI2363`](#pui2363) | error | Effect writes the state it watches |
+| [`PUI2364`](#pui2364) | error | Effect watches an undeclared name |
 | [`PUI2340`](#pui2340) | error | Host surface has no such name |
 | [`PUI2341`](#pui2341) | error | Wrong arguments for a host declaration |
 | [`PUI2342`](#pui2342) | error | Unknown argument name |
@@ -110,6 +115,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI4001`](#pui4001) | error | No sources found |
 | [`PUI4002`](#pui4002) | error | Invalid configuration |
 | [`PUI4003`](#pui4003) | error | Formatting required |
+| [`PUI4004`](#pui4004) | error | Generated output out of date |
 
 ## Lexical and structural
 
@@ -673,6 +679,46 @@ The declared type of a derived value does not match the type of its expression.
 
 *Fix:* Correct the type, or the expression.
 
+### PUI2360
+
+**Effect watches something that is not state** — error
+
+An effect runs when one of the states it names changes. A task, a parameter or a derived value is not state, so its change is either invisible to the target or arrives at a moment the effect cannot name.
+
+*Fix:* Watch the state the value is computed from, or the state the task writes into.
+
+### PUI2361
+
+**Effect has no actions** — error
+
+An effect with an empty body runs and does nothing, which is a declaration in progress rather than a behaviour.
+
+*Fix:* Add the action it should run, or remove the effect.
+
+### PUI2362
+
+**Effect in the wrong place** — error
+
+An effect belongs to the whole screen or component, so it is declared at the top level next to the state it watches.
+
+*Fix:* Move it up to the top level, or put the action in an event handler.
+
+### PUI2363
+
+**Effect writes the state it watches** — error
+
+The effect names a state and assigns it, so every run schedules the next one: the run that changes the value is also the run that reacts to it.
+
+*Fix:* Watch a different state, or assign a state the effect does not name.
+
+### PUI2364
+
+**Effect watches an undeclared name** — error
+
+The header of an effect names the states it watches, and every one of them has to exist in this screen or component.
+
+*Fix:* Declare it with state, or correct the name.
+
 ### PUI2340
 
 **Host surface has no such name** — error
@@ -920,3 +966,11 @@ plainui.config.json could not be parsed or has an invalid setting.
 --check was passed and at least one file is not formatted.
 
 *Fix:* Run plainui format.
+
+### PUI4004
+
+**Generated output out of date** — error
+
+--check was passed and the Dart in the output directory no longer matches what the source compiles to.
+
+*Fix:* Run plainui build, and commit the result.

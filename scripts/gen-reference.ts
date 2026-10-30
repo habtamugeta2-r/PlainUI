@@ -211,7 +211,9 @@ export function severitiesInSource(): Map<string, Set<string>> {
         set.add(match[1]!);
         map.set(match[2]!, set);
       }
-      for (const match of text.matchAll(/code:\s*'(PUI\d{4})'/g)) {
+      // `code: 'PUI4001'` in a failure object, and `fail('PUI4001', …)` in the CLI: both are places a
+      // catalogue entry is raised without going through the diagnostic bag.
+      for (const match of text.matchAll(/(?:code:\s*'|fail\(\s*')(PUI\d{4})'/g)) {
         const set = map.get(match[1]!) ?? new Set<string>();
         set.add('error');
         map.set(match[1]!, set);

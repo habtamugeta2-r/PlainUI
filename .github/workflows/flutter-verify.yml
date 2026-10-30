@@ -179,6 +179,26 @@ jobs:
               expect(find.text('x2 = 2'), findsOneWidget);
             });
 
+            testWidgets('an effect runs on mount and when the state it names changes',
+                (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: counter.Counter())));
+              await tester.pumpAndSettle();
+
+              // `effect on count:` — the first run is scheduled after the first frame, which is what
+              // `useEffect` and `LaunchedEffect` do too.
+              expect(find.text('last: count is 0'), findsOneWidget);
+
+              await tester.tap(find.text('One more'));
+              await tester.pumpAndSettle();
+              expect(find.text('last: count is 1'), findsOneWidget);
+
+              // Typing changes state the effect does not name.
+              await tester.enterText(find.byType(TextField), 'Ada');
+              await tester.pumpAndSettle();
+              expect(find.text('Hello, Ada'), findsOneWidget);
+              expect(find.text('last: count is 1'), findsOneWidget);
+            });
+
             testWidgets('a task loads its value and shows it', (tester) async {
               await tester.pumpWidget(const MaterialApp(home: Scaffold(body: async_example.Async())));
 

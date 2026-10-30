@@ -98,7 +98,7 @@ function warn(message: string): void {
 }
 
 /** Report a failure that has a catalogue entry, in the same shape as a diagnostic. */
-function fail(code: 'PUI3003' | 'PUI4001' | 'PUI4002' | 'PUI4003', message: string): void {
+function fail(code: 'PUI3003' | 'PUI4001' | 'PUI4002' | 'PUI4003' | 'PUI4004', message: string): void {
   const info = CODES[code];
   warn(`${paint('error', 31)}${paint(`[${code}]`, 2)}: ${message}`);
   if (info.fix !== undefined) warn(`  = hint: ${info.fix}`);
@@ -208,7 +208,7 @@ async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
 
   if (args.flags.has('--check')) {
     if (stale.length > 0) {
-      fail('PUI4003', `${stale.length} generated file(s) are out of date: ${stale.join(', ')}`);
+      fail('PUI4004', `${stale.length} generated file(s) are out of date: ${stale.join(', ')}`);
       return 3;
     }
     const checkedCount = result.files.length + projectFiles.length;

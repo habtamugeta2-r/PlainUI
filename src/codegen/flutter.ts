@@ -557,6 +557,7 @@ class FlutterGenerator {
     for (const state of decl.state) {
       lines.push(`  ${this.stateField(state)}`);
     }
+    for (const field of this.effectFields(decl)) lines.push(field);
     for (const field of this.taskFields(decl)) lines.push(field);
     for (const [stateName, controllerName] of controllers) {
       lines.push(`  late final TextEditingController ${controllerName} = TextEditingController(text: ${stateName});`);
@@ -601,9 +602,15 @@ class FlutterGenerator {
       lines.push('');
     }
 
+    for (const effect of this.effectMethods(decl)) {
+      lines.push(...effect);
+      lines.push('');
+    }
+
     lines.push('  @override');
     lines.push('  Widget build(BuildContext context) {');
     if (controllers.length > 0) lines.push('    _syncControllers();');
+    lines.push(...this.effectScheduling(decl));
     lines.push(`    return ${indentCode(body, 4)};`);
     lines.push('  }');
     lines.push('}');
@@ -626,6 +633,93 @@ class FlutterGenerator {
       lines.push('');
       lines.push(`  /// \`derived ${item.name}\` — computed on every read, never stored.`);
       lines.push(`  ${type} get ${item.name} => ${this.expr(item.init)};`);
+    }
+    return lines;
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Effects
+  // ------------------------------------------------------------------------------------------
+
+  /** `_puiEffect0` — the method name for the nth effect of a declaration. */
+  private effectMethod(index: number): string {
+    return `_puiEffect${index}`;
+  }
+
+  /** `_puiEffect0Count` — the value `count` had the last time effect 0 ran. */
+  private effectSnapshot(index: number, stateName: string): string {
+    return `_puiEffect${index}${stateName.charAt(0).toUpperCase()}${sanitizeName(stateName).slice(1)}`;
+  }
+
+  /**
+   * One nullable field per watched state, holding the value the effect saw last time.
+   *
+   * Nullable so the first build counts as a change: `useEffect` and `LaunchedEffect` both run on
+   * mount, and an effect that only ran on *later* changes would be a different construct. The
+   * comparison happens in `build`, because a `setState` on local state never reaches
+   * `didUpdateWidget` — that is the hook for a new *widget*, not for new state.
+   */
+  private effectFields(decl: ScreenDecl | ComponentDecl): string[] {
+    const lines: string[] = decl.effects.length === 0 ? [] : [''];
+    for (const [index, effect] of decl.effects.entries()) {
+      for (const watch of effect.watches) {
+        const type = this.stateTypeText(decl, watch.name);
+        if (lines.length > 1) lines.push('');
+        lines.push(`  /// \`${watch.name}\` as effect ${index} last saw it; null means it has not run yet.`);
+        lines.push(`  ${type}? ${this.effectSnapshot(index, watch.name)};`);
+      }
+    }
+    return lines;
+  }
+
+  /** The declared or inferred type of a state, as Dart text. */
+  private stateTypeText(decl: ScreenDecl | ComponentDecl, name: string): string {
+    const state = decl.state.find((item) => item.name === name);
+    if (state?.typeText !== undefined) return state.typeText;
+    const inferred = this.analysis.stateTypes.get(decl.name)?.get(name);
+    return inferred === undefined ? 'dynamic' : typeToText(inferred);
+  }
+
+  private effectMethods(decl: ScreenDecl | ComponentDecl): string[][] {
+    const methods: string[][] = [];
+    for (const [index, effect] of decl.effects.entries()) {
+      const names = effect.watches.map((watch) => watch.name).join(', ');
+      const isAsync = actionsContainAwait(effect.body);
+      const lines: string[] = [];
+      lines.push(`  /// \`effect on ${names}\` — runs on mount and whenever ${names} changes, never otherwise.`);
+      lines.push(`  void ${this.effectMethod(index)}()${isAsync ? ' async' : ''} {`);
+      for (const line of this.emitActions(effect.body)) lines.push(indentAll(line, 4));
+      lines.push('  }');
+      methods.push(lines);
+    }
+    return methods;
+  }
+
+  /**
+   * The statements that decide whether an effect is due, written at the top of `build`.
+   *
+   * The check is a comparison against the snapshot, not a flag set by the setter: state can change
+   * from a handler, a controller, a task that finished or a form submit, and a comparison covers
+   * all of them. The body runs in a post-frame callback, so it never mutates state while the tree is
+   * being built, and `mounted` guards the case where the screen is gone by then.
+   */
+  private effectScheduling(decl: ScreenDecl | ComponentDecl): string[] {
+    const lines: string[] = [];
+    for (const [index, effect] of decl.effects.entries()) {
+      const conditions = effect.watches.map(
+        (watch) => `${this.effectSnapshot(index, watch.name)} != ${this.expr({ kind: 'Ident', name: watch.name, span: watch.span })}`,
+      );
+      const due = conditions.length === 0 ? 'false' : conditions.join(' || ');
+      lines.push(`    final puiEffect${index}Due = ${due};`);
+      for (const watch of effect.watches) {
+        const field = this.effectSnapshot(index, watch.name);
+        lines.push(`    ${field} = ${this.expr({ kind: 'Ident', name: watch.name, span: watch.span })};`);
+      }
+      lines.push(`    if (puiEffect${index}Due) {`);
+      lines.push('      WidgetsBinding.instance.addPostFrameCallback((_) {');
+      lines.push(`        if (mounted) ${this.effectMethod(index)}();`);
+      lines.push('      });');
+      lines.push('    }');
     }
     return lines;
   }
