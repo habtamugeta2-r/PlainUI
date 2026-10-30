@@ -30,6 +30,9 @@ import {
   type ScreenDecl,
   type StateDecl,
   type StyleDecl,
+  type ThemeDecl,
+  type TokenCategory,
+  type TokenDecl,
   type UiType,
   isBoolType,
   isNumericType,
@@ -98,7 +101,7 @@ export type ResolvedTag =
 export interface VarInfo {
   readonly name: string;
   readonly type: UiType;
-  readonly kind: 'state' | 'param' | 'loop';
+  readonly kind: 'state' | 'param' | 'loop' | 'token';
   readonly nameSpan: Span;
   used: boolean;
 }
@@ -117,6 +120,10 @@ export interface Analysis {
   readonly componentHasSlot: ReadonlyMap<string, boolean>;
   /** Loop variable types, per `for` node (used by the generator for text conversion). */
   readonly loopTypes: ReadonlyMap<ForNode, ReadonlyMap<string, UiType>>;
+  /** Design tokens in scope in this file: its own `theme`, plus those of imported files. */
+  readonly tokens: ReadonlyMap<string, TokenDecl>;
+  /** This file's own `theme` declaration, when it has one. */
+  readonly theme?: ThemeDecl;
 }
 
 export interface CheckOptions {
@@ -128,6 +135,8 @@ export interface CheckOptions {
   readonly hostRoots?: ReadonlySet<string>;
   /** Names declared in other files of the project, to detect collisions. */
   readonly externalNames?: ReadonlyMap<string, string>;
+  /** Design tokens from the `.pui` files this one imports. */
+  readonly externalTokens?: ReadonlyMap<string, TokenDecl>;
 }
 
 interface Scope {
@@ -192,6 +201,8 @@ class Checker {
   readonly paramTypes = new Map<string, Map<string, UiType>>();
   readonly componentHasSlot = new Map<string, boolean>();
   readonly loopTypes = new Map<ForNode, Map<string, UiType>>();
+  readonly tokens = new Map<string, TokenDecl>();
+  theme: ThemeDecl | undefined;
 
   constructor(file: SourceFile, program: Program, options: CheckOptions, bag: DiagnosticBag) {
     this.file = file;
@@ -205,6 +216,7 @@ class Checker {
   // ------------------------------------------------------------------------------------------
 
   run(): Analysis {
+    this.indexThemes();
     this.indexDeclarations();
     this.validateStyles();
 
@@ -224,6 +236,8 @@ class Checker {
       paramTypes: this.paramTypes,
       componentHasSlot: this.componentHasSlot,
       loopTypes: this.loopTypes,
+      tokens: this.tokens,
+      ...(this.theme === undefined ? {} : { theme: this.theme }),
     };
   }
 
@@ -255,8 +269,131 @@ class Checker {
     }
   }
 
+  /**
+   * Design tokens. Indexed before everything else because a token is in scope for the whole file —
+   * including the `style` declarations and screens that may be written above the `theme` block.
+   * Tokens from imported files come in through `externalTokens`; the local file wins on a clash,
+   * and the clash is reported rather than silently resolved.
+   */
+  private indexThemes(): void {
+    for (const decl of this.program.decls) {
+      if (decl.kind !== 'Theme') continue;
+      if (this.theme !== undefined) {
+        this.error(
+          'PUI2307',
+          `"${this.theme.name}" is already this file’s theme`,
+          decl.nameSpan,
+          'a file has one theme; move the other one into its own file and import it',
+        );
+        continue;
+      }
+      this.theme = decl;
+
+      for (const token of decl.tokens) {
+        const externalFile = this.options.externalTokens?.has(token.name) === true;
+        if (this.tokens.has(token.name) || externalFile) {
+          this.error(
+            'PUI2305',
+            `token "${token.name}" is declared twice`,
+            token.nameSpan,
+            this.tokens.has(token.name)
+              ? 'rename one of them'
+              : 'it is also declared in an imported file — rename one of them',
+          );
+          continue;
+        }
+        this.checkTokenValue(token);
+        this.tokens.set(token.name, token);
+      }
+    }
+
+    for (const [name, token] of this.options.externalTokens ?? []) {
+      if (!this.tokens.has(name)) this.tokens.set(name, token);
+    }
+  }
+
+  /** A token's value has one shape per category, and catching it here keeps the output honest. */
+  private checkTokenValue(token: TokenDecl): void {
+    const label = `${token.categoryText} token "${token.name}"`;
+    if (token.category === 'color') {
+      if (token.value.kind !== 'Color') {
+        this.error('PUI2306', `${label} needs a colour`, token.value.span, 'write it as #RRGGBB, for example: color brand = #2563eb');
+      }
+    } else if (token.value.kind !== 'Number') {
+      this.error(
+        'PUI2306',
+        `${label} needs a number`,
+        token.value.span,
+        token.category === 'space' ? 'for example: space md = 16' : 'for example: radius card = 12',
+      );
+    }
+    if (DART_RESERVED_WORDS.has(token.name)) {
+      this.error('PUI2012', `"${token.name}" is a reserved word in Dart`, token.nameSpan, 'choose a different name');
+    }
+  }
+
+  /** A token is a value, not a variable: it cannot be assigned, and it is visible everywhere. */
+  private tokenScope(): Scope {
+    const vars = new Map<string, VarInfo>();
+    for (const token of this.tokens.values()) {
+      vars.set(token.name, {
+        name: token.name,
+        type: token.category === 'color' ? { kind: 'named', name: 'Color' } : INT,
+        kind: 'token',
+        nameSpan: token.nameSpan,
+        used: false,
+      });
+    }
+    return { vars };
+  }
+
+  /** The category a property accepts, so a mismatched token is an error rather than odd output. */
+  private static tokenCategoriesFor(kind: string): readonly TokenCategory[] | undefined {
+    switch (kind) {
+      case 'color':
+        return ['color'];
+      case 'number':
+      case 'edge':
+      case 'size':
+        return ['space', 'radius'];
+      default:
+        return undefined;
+    }
+  }
+
+  /**
+   * Any token satisfies a numeric shape check: a category mismatch is reported once, by
+   * `checkTokenUses`, rather than twice with a shape error that says the wrong thing.
+   */
+  private isSizeToken(expr: Expr): boolean {
+    return expr.kind === 'Ident' && this.tokens.has(expr.name);
+  }
+
+  /**
+   * Token references are only meaningful where a value is expected, so they are checked against the
+   * property's kind: `color=md` is a spacing token in a colour slot and must not reach the target.
+   */
+  private checkTokenUses(spec: PropSpec | ArgSpec, value: Expr, label: string): void {
+    const accepted = Checker.tokenCategoriesFor(spec.kind);
+    if (accepted === undefined || this.tokens.size === 0) return;
+    const items = value.kind === 'List' ? value.items : [value];
+    for (const item of items) {
+      if (item.kind !== 'Ident') continue;
+      const token = this.tokens.get(item.name);
+      if (token === undefined || accepted.includes(token.category)) continue;
+      const wanted = accepted.map((category) => `${category} token`).join(' or ');
+      this.error(
+        'PUI2304',
+        `"${item.name}" is a ${token.category} token, but "${label}" takes a ${wanted}`,
+        item.span,
+        `use a ${wanted} here, or the literal value`,
+      );
+    }
+  }
+
   private indexDeclarations(): void {
     for (const decl of this.program.decls) {
+      if (decl.kind === 'Theme') continue;
       if (decl.kind === 'Style') {
         const existing = this.styles.get(decl.name);
         if (existing !== undefined) {
@@ -318,6 +455,9 @@ class Checker {
         if (state.typeText !== undefined) this.checkTypeSpelling(state.typeText, state.typeSpan ?? state.nameSpan);
         const type = state.typeText === undefined ? inferType(state.init) : typeFromText(state.typeText);
         stateMap.set(state.name, type);
+        if (this.tokens.has(state.name)) {
+          this.error('PUI2309', `state "${state.name}" collides with the token of the same name`, state.nameSpan, 'rename one of them');
+        }
         if (DART_RESERVED_WORDS.has(state.name)) {
           this.error('PUI2012', `"${state.name}" is a reserved word in Dart`, state.nameSpan, 'choose a different name');
         }
@@ -367,7 +507,7 @@ class Checker {
     }
     // Style references from any prop named `style`.
     walkNodes(
-      this.program.decls.flatMap((decl) => (decl.kind === 'Style' ? [] : decl.body)),
+      this.program.decls.flatMap((decl) => (decl.kind === 'Style' || decl.kind === 'Theme' ? [] : decl.body)),
       (node) => {
         if (node.kind !== 'Element') return;
         for (const prop of node.props) {
@@ -392,7 +532,8 @@ class Checker {
   // ------------------------------------------------------------------------------------------
 
   private checkScreenOrComponent(decl: ScreenDecl | ComponentDecl): void {
-    const scope: Scope = { vars: new Map() };
+    // Tokens sit in the parent scope: visible everywhere in the file, assignable nowhere.
+    const scope: Scope = { vars: new Map(), parent: this.tokenScope() };
     for (const state of decl.state) {
       const type = this.stateTypes.get(decl.name)?.get(state.name) ?? DYNAMIC;
       const varInfo: VarInfo = { name: state.name, type, kind: 'state', nameSpan: state.nameSpan, used: false };
@@ -779,6 +920,7 @@ class Checker {
         );
       } else {
         this.checkValueShape(spec, prop.value, prop.name);
+        this.checkTokenUses(spec, prop.value, prop.name);
         // `style=heading`, enum values and `bind=email` name things, they do not reference them.
         const namesSomething = spec.kind === 'enum' || spec.kind === 'styleName' || prop.name === 'bind';
         if (namesSomething) return;
@@ -789,6 +931,7 @@ class Checker {
       const universal = UNIVERSAL_PROPS.find((p) => p.name === prop.name);
       if (universal !== undefined) {
         this.checkValueShape(universal, prop.value, prop.name);
+        this.checkTokenUses(universal, prop.value, prop.name);
       } else {
         this.error(
           'PUI2102',
@@ -838,15 +981,18 @@ class Checker {
               value.span,
               'use 24, [vertical, horizontal], or [top, right, bottom, left]',
             );
-          } else if (!value.items.every(isNumericLiteral)) {
+          } else if (!value.items.every((item) => isNumericLiteral(item) || item.kind === 'Ident')) {
             this.error('PUI2110', `"${name}" values must be numbers`, value.span);
           }
-        } else if (!isNumericLiteral(value)) {
+        } else if (!isNumericLiteral(value) && value.kind !== 'Ident') {
           this.error('PUI2110', `"${name}" expects a number`, value.span, 'for example padding=16');
         }
         break;
       }
       case 'size': {
+        if (value.kind === 'List' && !value.items.every((item) => isNumericLiteral(item) || item.kind === 'Ident')) {
+          this.error('PUI2110', `"${name}" values must be numbers`, value.span, 'or design tokens such as md');
+        }
         if (value.kind === 'List' && value.items.length !== 2) {
           this.error('PUI2110', `"${name}" takes a number or [width, height]`, value.span);
         }
@@ -992,6 +1138,13 @@ class Checker {
               action.target.span,
               'copy it into state first: state local: <Type> = ' + action.target.name,
             );
+          } else if (varInfo.kind === 'token') {
+            this.error(
+              'PUI2114',
+              `"${action.target.name}" is a design token and cannot be assigned`,
+              action.target.span,
+              'tokens are compile-time values; keep mutable values in "state"',
+            );
           } else if (varInfo.kind === 'loop') {
             this.error('PUI2105', `"${action.target.name}" is a loop variable and cannot be assigned`, action.target.span, 'assign to state instead');
           } else {
@@ -1061,7 +1214,9 @@ class Checker {
           `unknown identifier "${expr.name}"`,
           expr.span,
           didYouMean(expr.name, this.visibleNames(scope)) ??
-            'declare it with "state", pass it as a parameter, or call a host function',
+            (this.tokens.size > 0
+              ? `declare it with "state", pass it as a parameter, or use a design token such as ${[...this.tokens.keys()].slice(0, 3).join(', ')}`
+              : 'declare it with "state", pass it as a parameter, or call a host function'),
         );
         return;
       }

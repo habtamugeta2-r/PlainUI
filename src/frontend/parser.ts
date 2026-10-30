@@ -35,8 +35,22 @@ import type {
   SetAction,
   StateDecl,
   StyleDecl,
+  ThemeDecl,
+  TokenCategory,
+  TokenDecl,
 } from './ast.ts';
 import { DiagnosticBag } from '../analysis/diagnostics.ts';
+
+/**
+ * The category words a theme accepts, and the token kind each one declares. `spacing` is an alias
+ * for `space` because both spellings read naturally in a design system.
+ */
+export const THEME_CATEGORIES: Readonly<Record<string, TokenCategory>> = {
+  color: 'color',
+  space: 'space',
+  spacing: 'space',
+  radius: 'radius',
+};
 import { type Token, tokenize } from './lexer.ts';
 import { booleanPropNames } from '../analysis/widgets/registry.ts';
 import { type SourceFile, type Span, span, textOf } from './source.ts';
@@ -189,6 +203,9 @@ class Parser {
       } else if (this.atKeyword('component')) {
         sawDecl = true;
         decls.push(this.parseComponent());
+      } else if (this.at('ident') && this.peek().value === 'theme') {
+        sawDecl = true;
+        decls.push(this.parseTheme());
       } else if (this.at('ident') && this.peek().value === 'style') {
         sawDecl = true;
         decls.push(this.parseStyle());
@@ -198,7 +215,7 @@ class Parser {
           'PUI1015',
           `unexpected ${describeToken(token)} at the top level`,
           token.span,
-          'only import, screen, component and style may appear here',
+          'only import, screen, component, theme and style may appear here',
         );
         this.skipLine();
       }
@@ -353,6 +370,97 @@ class Parser {
       name: nameToken.value,
       nameSpan: nameToken.span,
       props,
+    };
+  }
+
+  /**
+   * `theme App:` followed by one token per line:
+   *
+   *     theme App:
+   *         color brand = #2563eb
+   *         space md = 16
+   *         radius card = 12
+   *
+   * The category word decides both the value's shape and where the token may be used, so a
+   * malformed line is a parse error rather than a checker surprise.
+   */
+  private parseTheme(): ThemeDecl {
+    const keyword = this.advance(); // the contextual `theme` name
+    const nameToken = this.expectIdent('for the theme');
+    const tokens: TokenDecl[] = [];
+
+    if (!this.atOp(':')) {
+      this.error('PUI1007', 'expected ":" to open the theme body', this.peek().span, 'for example: theme App:');
+      this.skipLine();
+      return { kind: 'Theme', span: span(keyword.span.start, nameToken.span.end), name: nameToken.value, nameSpan: nameToken.span, tokens };
+    }
+    const colon = this.advance();
+    if (this.at('newline')) this.advance();
+    if (!this.at('indent')) {
+      this.error('PUI1008', 'empty theme block', colon.span, 'indent one token per line under this ":"');
+      return { kind: 'Theme', span: span(keyword.span.start, nameToken.span.end), name: nameToken.value, nameSpan: nameToken.span, tokens };
+    }
+
+    this.advance(); // indent
+    while (!this.at('dedent') && !this.atEnd()) {
+      if (this.at('newline')) {
+        this.advance();
+        continue;
+      }
+      const before = this.pos;
+      const token = this.parseTokenDecl();
+      if (token !== undefined) tokens.push(token);
+      this.expectNewline('after a theme token');
+      if (this.pos === before) this.advance();
+    }
+    if (this.at('dedent')) this.advance();
+
+    const end = tokens.length > 0 ? tokens[tokens.length - 1]!.span.end : nameToken.span.end;
+    return { kind: 'Theme', span: span(keyword.span.start, end), name: nameToken.value, nameSpan: nameToken.span, tokens };
+  }
+
+  /** One `category name = value` line inside a theme. */
+  private parseTokenDecl(): TokenDecl | undefined {
+    const categoryToken = this.peek();
+    const category = THEME_CATEGORIES[categoryToken.value];
+    if (category === undefined) {
+      this.error(
+        'PUI1007',
+        `expected a token category, found ${describeToken(categoryToken)}`,
+        categoryToken.span,
+        'a token line reads: color brand = #2563eb, space md = 16, or radius card = 12',
+      );
+      this.skipLine();
+      return undefined;
+    }
+    this.advance();
+    const nameToken = this.expectIdent('for the token');
+
+    if (!this.atOp('=')) {
+      this.error('PUI1007', `token "${nameToken.value}" needs a value`, this.peek().span, 'for example: space md = 16');
+      this.skipLine();
+      return {
+        kind: 'Token',
+        span: span(categoryToken.span.start, nameToken.span.end),
+        category,
+        categoryText: categoryToken.value,
+        categorySpan: categoryToken.span,
+        name: nameToken.value,
+        nameSpan: nameToken.span,
+        value: { kind: 'Null', span: nameToken.span },
+      };
+    }
+    this.advance();
+    const value = this.parseExpression();
+    return {
+      kind: 'Token',
+      span: span(categoryToken.span.start, value.span.end),
+      category,
+      categoryText: categoryToken.value,
+      categorySpan: categoryToken.span,
+      name: nameToken.value,
+      nameSpan: nameToken.span,
+      value,
     };
   }
 

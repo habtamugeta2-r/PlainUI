@@ -302,7 +302,41 @@ export interface StyleDecl {
   readonly props: readonly Prop[];
 }
 
-export type Decl = ScreenDecl | ComponentDecl | StyleDecl;
+/**
+ * The three kinds of value a design token can hold. The category is what decides where the token
+ * may be referenced: `color` where a colour is expected, `space` and `radius` where a number is.
+ */
+export type TokenCategory = 'color' | 'space' | 'radius';
+
+export interface TokenDecl {
+  readonly kind: 'Token';
+  readonly span: Span;
+  readonly category: TokenCategory;
+  /** The word the source used (`space` and `spacing` are both accepted). */
+  readonly categoryText: string;
+  readonly categorySpan: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly value: Expr;
+}
+
+/**
+ * `theme App:` — design tokens, declared once per file.
+ *
+ * Tokens are resolved by the compiler rather than at run time: a source-to-source compiler that
+ * inlines `padding=md` to `16` keeps generated code const, keeps every target identical, and makes
+ * a token impossible to misspell at run time. Runtime theming (dark mode) is a separate, later
+ * step, and it arrives as a second token set rather than as a change to what a token is.
+ */
+export interface ThemeDecl {
+  readonly kind: 'Theme';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly tokens: readonly TokenDecl[];
+}
+
+export type Decl = ScreenDecl | ComponentDecl | StyleDecl | ThemeDecl;
 
 export interface Program {
   readonly kind: 'Program';
