@@ -7,6 +7,8 @@ Each directory is a complete Flutter project skeleton that uses PlainUI for its 
 | [`counter`](counter) | State, events, `bind=` on a text field, text styles, button variants |
 | [`todo`](todo) | A component from another file with a `slot`, loops, method calls on state |
 | [`gallery`](gallery) | Every built-in element and property in one scrollable screen |
+| [`async`](async) | A `task`: loading, error and retry states the compiler owns |
+| [`navigation`](navigation) | Two screens in two files: parameters, `navigate`, `back()`, and the generated route table |
 
 They are compiled by `tests/examples.test.ts`, so they cannot drift.
 

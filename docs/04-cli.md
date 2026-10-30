@@ -23,6 +23,10 @@ plainui build --check              # compare instead of writing
 
 - Writes only files whose content changed, and reports
   `N compiled, M written, K unchanged`.
+- A project that navigates also generates `plainui_routes.dart` in the output directory: every
+  screen, by name, for host code that opens one from a deep link or a notification. It is counted,
+  written and compared by `--check` like any other generated file, and it is not generated at all
+  when nothing navigates.
 - Prints diagnostics to **stderr**, summaries to **stdout**.
 - With `--check` it compares the generated content with what is on disk, writes nothing, and
   exits `3` if anything is out of date — useful in CI and pre-commit hooks.

@@ -1,0 +1,23 @@
+import "detail.pui"
+
+// Two screens in two files: a list that opens a detail screen, and a detail screen that closes.
+// The import is what makes `Detail` a screen this file can navigate to — and what makes the
+// generated Dart able to import the file that declares it.
+
+screen Home:
+
+    state items: List<String> = ["Write the spec", "Ship it", "Celebrate"]
+
+    column padding=20 gap=12:
+
+        text "Tasks" style=heading
+        text "${items.length} open" style=caption
+
+        column gap=8:
+            for index, item in items key=item:
+                card padding=14:
+                    on tap: navigate Detail(id: "${index}", title=item)
+                    text item
+
+        button "Open the first one":
+            on tap: navigate Detail(id: "0")

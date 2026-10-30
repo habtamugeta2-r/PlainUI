@@ -18,6 +18,7 @@ import {
   INT,
   STRING,
   type Action,
+  type CallExpr,
   type ComponentDecl,
   type ElementNode,
   type EventHandler,
@@ -38,6 +39,7 @@ import {
   isNumericType,
   isStringType,
   typeFromText,
+  walkExpr,
   walkNodes,
 } from '../frontend/ast.ts';
 import { DiagnosticBag } from './diagnostics.ts';
@@ -131,6 +133,14 @@ export interface Analysis {
 export interface CheckOptions {
   /** Components declared in other `.pui` files that this file imports. */
   readonly externalComponents?: ReadonlyMap<string, ComponentDecl>;
+  /**
+   * Screens declared in other `.pui` files that this file imports.
+   *
+   * Navigation follows imports for the same reason components do: to emit `Detail(...)` the
+   * generated Dart must import `detail.pui.dart`, so a screen you cannot import is a screen you
+   * cannot reach.
+   */
+  readonly externalScreens?: ReadonlyMap<string, ScreenDecl>;
   /** Which file each external component came from, for "declared here" notes. */
   readonly externalComponentFiles?: ReadonlyMap<string, SourceFile>;
   /** Roots that are imported host values, e.g. `appState` from `app_state.dart`. */
@@ -499,19 +509,18 @@ class Checker {
       }
       this.taskTypes.set(decl.name, taskMap);
 
-      if (decl.kind === 'Component') {
-        const params = new Map<string, UiType>();
-        for (const param of decl.params) {
-          if (params.has(param.name)) {
-            this.error('PUI2003', `duplicate parameter "${param.name}"`, param.nameSpan, 'rename one of them');
-            continue;
-          }
-          if (param.typeText !== undefined) this.checkTypeSpelling(param.typeText, param.typeSpan ?? param.nameSpan);
-          params.set(param.name, param.typeText === undefined ? DYNAMIC : typeFromText(param.typeText));
+      // Screens and components both take parameters; a screen parameter is what `navigate` passes.
+      const params = new Map<string, UiType>();
+      for (const param of decl.params) {
+        if (params.has(param.name)) {
+          this.error('PUI2003', `duplicate parameter "${param.name}"`, param.nameSpan, 'rename one of them');
+          continue;
         }
-        this.paramTypes.set(decl.name, params);
-        this.componentHasSlot.set(decl.name, componentUsesSlot(decl));
+        if (param.typeText !== undefined) this.checkTypeSpelling(param.typeText, param.typeSpan ?? param.nameSpan);
+        params.set(param.name, param.typeText === undefined ? DYNAMIC : typeFromText(param.typeText));
       }
+      this.paramTypes.set(decl.name, params);
+      if (decl.kind === 'Component') this.componentHasSlot.set(decl.name, componentUsesSlot(decl));
 
       if (decl.body.length === 0) {
         this.error('PUI2010', `${decl.kind.toLowerCase()} "${decl.name}" renders nothing`, decl.span, 'add at least one element');
@@ -576,7 +585,7 @@ class Checker {
       const type: UiType = { kind: 'task', value };
       scope.vars.set(task.name, { name: task.name, type, kind: 'task', nameSpan: task.nameSpan, used: false });
     }
-    for (const param of decl.kind === 'Component' ? decl.params : []) {
+    for (const param of decl.params) {
       const type = this.paramTypes.get(decl.name)?.get(param.name) ?? DYNAMIC;
       scope.vars.set(param.name, { name: param.name, type, kind: 'param', nameSpan: param.nameSpan, used: false });
     }
@@ -1195,6 +1204,14 @@ class Checker {
           } else {
             varInfo.used = true;
           }
+          if (containsNavigation(action.value)) {
+            this.error(
+              'PUI2321',
+              'navigate has no value to assign',
+              action.value.span,
+              'write it as its own statement inside the handler: navigate Detail(id: x)',
+            );
+          }
           this.checkExpr(action.value, scope, 'value', true);
           break;
         }
@@ -1212,6 +1229,98 @@ class Checker {
           if (action.elseBody !== undefined) this.checkActions(action.elseBody, scope);
           break;
       }
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Navigation
+  // ------------------------------------------------------------------------------------------
+
+  /**
+   * `navigate Detail(id: item.id)` — the only way to open a screen.
+   *
+   * It is checked rather than passed through: the target must be a screen the file can import, its
+   * required parameters must be supplied, and the arguments must be expressions the handler can
+   * evaluate. Everything that would otherwise become a Dart compile error after generation is
+   * reported here, in `.pui` terms.
+   */
+  private checkNavigate(call: CallExpr, scope: Scope, allowAwait: boolean): void {
+    if (!allowAwait) {
+      this.error(
+        'PUI2321',
+        '"navigate" is only allowed inside an event handler',
+        call.span,
+        'a widget tree is built synchronously; move the navigation into the handler that triggers it',
+      );
+    }
+
+    const target = call.args.find((arg) => arg.name === undefined);
+    const named = call.args.filter((arg) => arg.name !== undefined);
+    for (const arg of named) this.checkExpr(arg.value, scope, 'value', allowAwait);
+
+    if (target === undefined) {
+      this.error('PUI2320', '"navigate" needs a screen to open', call.span, 'for example: navigate Detail(id: "42")');
+      return;
+    }
+    if (target.value.kind !== 'Ident') {
+      this.error('PUI2320', '"navigate" needs the name of a screen', target.value.span, 'for example: navigate Detail(id: item.id)');
+      this.checkExpr(target.value, scope, 'value', allowAwait);
+      return;
+    }
+
+    const name = target.value.name;
+    const screen = this.screens.get(name) ?? this.options.externalScreens?.get(name);
+    if (screen === undefined) {
+      const component = this.components.get(name) ?? this.options.externalComponents?.get(name);
+      const screens = [...this.screens.keys(), ...(this.options.externalScreens?.keys() ?? [])];
+      this.error(
+        'PUI2320',
+        `unknown screen "${name}"`,
+        target.value.span,
+        component !== undefined
+          ? `"${name}" is a component; navigate takes a screen`
+          : didYouMean(name, screens) ?? (screens.length > 0 ? `screens in scope: ${listOf(screens, 10)}` : 'declare one with "screen ' + name + ':"'),
+      );
+      return;
+    }
+    // Positional arguments beyond the target are rejected: the order of screen parameters is an
+    // implementation detail, and a named argument cannot silently land in the wrong slot.
+    for (const arg of named) {
+      const param = screen.params.find((candidate) => candidate.name === arg.name);
+      if (param === undefined) {
+        this.error(
+          'PUI2322',
+          `screen "${screen.name}" has no parameter "${arg.name}"`,
+          arg.span,
+          didYouMean(arg.name ?? '', screen.params.map((candidate) => candidate.name)) ??
+            (screen.params.length === 0
+              ? `"${screen.name}" takes no arguments`
+              : `accepted parameters: ${listOf(screen.params.map((candidate) => candidate.name))}`),
+        );
+        continue;
+      }
+      this.checkParamType(param, arg.value);
+    }
+
+    const supplied = new Set(named.map((arg) => arg.name));
+    for (const param of screen.params) {
+      if (param.defaultValue !== undefined || param.name === 'children' || supplied.has(param.name)) continue;
+      this.error(
+        'PUI2322',
+        `screen "${screen.name}" needs parameter "${param.name}"`,
+        call.span,
+        `${screen.name}(${screen.params.map((candidate) => candidate.name).join(', ')})`,
+      );
+    }
+  }
+
+  /** `back()` — one keyword, no arguments, no screen name. */
+  private checkBack(call: CallExpr, allowAwait: boolean): void {
+    if (!allowAwait) {
+      this.error('PUI2321', '"back" is only allowed inside an event handler', call.span, 'move it into the handler that triggers it');
+    }
+    for (const arg of call.args) {
+      this.error('PUI2323', 'back() takes no arguments', arg.span, 'write back() on its own');
     }
   }
 
@@ -1280,10 +1389,20 @@ class Checker {
         }
         return;
       }
-      case 'Call':
+      case 'Call': {
+        const navigation = navigationName(expr);
+        if (navigation === 'navigate') {
+          this.checkNavigate(expr, scope, allowAwait);
+          return;
+        }
+        if (navigation === 'back') {
+          this.checkBack(expr, allowAwait);
+          return;
+        }
         this.checkExpr(expr.callee, scope, 'callee', allowAwait);
         for (const arg of expr.args) this.checkExpr(arg.value, scope, 'value', allowAwait);
         return;
+      }
       case 'Index':
         this.checkExpr(expr.object, scope, 'value', allowAwait);
         this.checkExpr(expr.index, scope, 'value', allowAwait);
@@ -1360,6 +1479,24 @@ class Checker {
 // --------------------------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------------------------
+
+/** `navigate` and `back` are language constructs, not host functions. */
+export function navigationName(expr: Expr): 'navigate' | 'back' | undefined {
+  if (expr.kind !== 'Call') return undefined;
+  const callee = expr.callee.kind === 'Paren' ? expr.callee.inner : expr.callee;
+  if (callee.kind !== 'Ident') return undefined;
+  if (callee.name === 'navigate' || callee.name === 'back') return callee.name;
+  return undefined;
+}
+
+/** Whether an expression contains a `navigate`/`back` call anywhere inside it. */
+export function containsNavigation(expr: Expr): boolean {
+  let found = false;
+  walkExpr(expr, (inner) => {
+    if (!found && navigationName(inner) !== undefined) found = true;
+  });
+  return found;
+}
 
 /** The parts of a task a `.pui` file may read. */
 const TASK_MEMBERS: readonly string[] = ['loading', 'error', 'value', 'retry'];

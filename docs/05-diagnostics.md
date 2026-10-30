@@ -69,6 +69,10 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2310`](#pui2310) | error | Task does not await a call |
 | [`PUI2311`](#pui2311) | error | Assignment to a task |
 | [`PUI2312`](#pui2312) | error | Unknown task member |
+| [`PUI2320`](#pui2320) | error | Unknown screen in navigate |
+| [`PUI2321`](#pui2321) | error | Navigation outside an event handler |
+| [`PUI2322`](#pui2322) | error | Wrong arguments for the target screen |
+| [`PUI2323`](#pui2323) | error | back() takes no arguments |
 | [`PUI2309`](#pui2309) | error | State shadowing a token |
 | [`PUI2402`](#pui2402) | error | Loop over a non-iterable |
 | [`PUI2403`](#pui2403) | warning | Multiple children in a single-child element |
@@ -557,6 +561,38 @@ A task is driven by the compiler: it loads on creation and reloads through retry
 A task exposes loading, error, value and retry, and nothing else.
 
 *Fix:* Use one of loading, error, value or retry.
+
+### PUI2320
+
+**Unknown screen in navigate** — error
+
+The name after navigate is not a screen this file declares or imports. Navigation follows imports, because the generated screen needs an import of its own.
+
+*Fix:* Import the file that declares the screen, or navigate to a screen declared in this one.
+
+### PUI2321
+
+**Navigation outside an event handler** — error
+
+navigate and back run when something happens, not while a tree is being built, so they are only allowed inside an event handler.
+
+*Fix:* Move the navigation into the "on <event>:" body that triggers it.
+
+### PUI2322
+
+**Wrong arguments for the target screen** — error
+
+Every parameter a screen requires must be passed by name, and every name passed must be one the screen declares.
+
+*Fix:* Pass the parameters the screen declares, by name: navigate Detail(id: x).
+
+### PUI2323
+
+**back() takes no arguments** — error
+
+back() closes the current screen; it needs no screen name and no arguments.
+
+*Fix:* Write back() on its own.
 
 ### PUI2309
 

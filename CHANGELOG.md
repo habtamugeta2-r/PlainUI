@@ -8,6 +8,33 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **Navigation is a construct, not a route name.** `screen Detail(id: String, title: String = "Task")`
+  takes parameters; `navigate Detail(id: item.id)` opens it and `back()` closes it. The checker
+  resolves the target through the file's imports (`PUI2320`), checks the arguments against the
+  target's parameter list (`PUI2322`, `PUI2110`) and refuses navigation in a value position
+  (`PUI2321`); `back()` takes no arguments (`PUI2323`). The Flutter target emits a real
+  `Navigator.push` with the screen's own constructor — so Dart type-checks the same arguments the
+  `.pui` file did — and `Navigator.maybePop`, which is safe on the first screen. A project that
+  navigates also gets `lib/generated/plainui_routes.dart`, a name-to-widget map for deep links and
+  notifications; a project that does not navigate gets no extra file. The HTML preview renders every
+  screen as a `:target`-addressed section, so a preview of a multi-screen file is clickable without
+  JavaScript. `examples/navigation` taps through and back in `flutter-verify.yml`.
+
+- **`plainui next`.** The roadmap is data (`src/tooling/todo.ts`): the current item, its acceptance
+  criterion, and per-phase progress, printable with `plainui next [--all] [--phase id] [--json]` and
+  rendered into `docs/11-todo.md` by `npm run docs:ref`.
+
+- **`docs/10-decisions.md`** — the decisions behind the language (type system, nullability, the
+  expression language, `derived`/`effect`/`task` semantics, target discipline, release tooling), each
+  with the condition that would reopen it.
+
+### Fixed
+
+- **A loop variable used only inside a nested string interpolation** was treated as unused, so the
+  generator emitted `_` for `for index, item in items` and the row then referenced `index` inside
+  `navigate Detail(id: "${index}")` — Dart that does not compile. Usage is now found through the
+  whole expression tree (`walkExpr`).
+
 - **Design tokens.** A file may declare one `theme` with `color`, `space` and `radius` tokens, and
   refer to them by name wherever a value is expected: `padding=md`, `color=brand`,
   `radius=card`, `padding=[md, sm]`. Tokens are compile-time values shared by importing the file

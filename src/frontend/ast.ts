@@ -301,11 +301,19 @@ export type Action = SetAction | CallAction | ActionIf;
 // Files
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * `screen Detail(id: String):` — a screen that takes arguments.
+ *
+ * A parameter is what makes a screen a destination: `navigate Detail(id: x)` has something to pass,
+ * and the compiler has something to check. Screens without parameters stay parameterless, so the
+ * common case is written the common way.
+ */
 export interface ScreenDecl {
   readonly kind: 'Screen';
   readonly span: Span;
   readonly name: string;
   readonly nameSpan: Span;
+  readonly params: readonly Param[];
   readonly state: readonly StateDecl[];
   readonly tasks: readonly TaskDecl[];
   readonly body: readonly Node[];
@@ -545,6 +553,44 @@ export function walkExpressionsInActions(actions: readonly Action[], visit: (exp
         break;
     }
   });
+}
+
+/** Every expression inside an expression, the argument included, in source order. */
+export function walkExpr(expr: Expr, visit: (expr: Expr) => void): void {
+  visit(expr);
+  switch (expr.kind) {
+    case 'Member':
+      walkExpr(expr.object, visit);
+      return;
+    case 'Call':
+      walkExpr(expr.callee, visit);
+      for (const arg of expr.args) walkExpr(arg.value, visit);
+      return;
+    case 'Index':
+      walkExpr(expr.object, visit);
+      walkExpr(expr.index, visit);
+      return;
+    case 'Unary':
+      walkExpr(expr.operand, visit);
+      return;
+    case 'Binary':
+      walkExpr(expr.left, visit);
+      walkExpr(expr.right, visit);
+      return;
+    case 'Ternary':
+      walkExpr(expr.cond, visit);
+      walkExpr(expr.then, visit);
+      walkExpr(expr.otherwise, visit);
+      return;
+    case 'List':
+      for (const item of expr.items) walkExpr(item, visit);
+      return;
+    case 'Paren':
+      walkExpr(expr.inner, visit);
+      return;
+    default:
+      return;
+  }
 }
 
 /** Root identifiers used inside an expression (for scope checking). */

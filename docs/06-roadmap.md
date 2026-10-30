@@ -36,14 +36,21 @@ behind it. Ticked items are the ones already on `main`.)*
 
 Feature work on the one target we can verify end to end, in this order:
 
-- **design tokens** — a `theme` block: colours, spacing, radii, referenced by name (`padding=md`,
-  `color=brand`), resolved by the compiler and lowered per target,
+- ~~**design tokens** — a `theme` block: colours, spacing, radii, referenced by name (`padding=md`,
+  `color=brand`)~~ — done (`docs/03-flutter-codegen.md` §Design tokens),
 - ~~**`task`** — async as a language construct with `loading` / `error` / `value`~~ — done
   (`docs/01-language-spec.md` §3.5, `examples/async`, verified by `flutter-verify.yml`),
-- **navigation** — `navigate` / `back` with screen parameters checked at compile time,
-- **list identity** — `for … key=item.id`,
+- ~~**list identity** — `for … key=item.id`~~ — done,
+- ~~**navigation** — `navigate` / `back` with screen parameters checked at compile time~~ — done
+  (`docs/01-language-spec.md` §3.6 and §7, `examples/navigation`, tapped through in
+  `flutter-verify.yml`),
+- **latest-wins task cancellation** — a retry during an in-flight load cannot lose to the older
+  result,
 - **forms** — typed validation on `input`, gated by a `form` scope,
-- **typed interop** — host components declared with signatures so calls are still checked.
+- **typed interop** — host components declared with signatures so calls are still checked,
+- **`derived`** and **`effect on <state>`** — the rest of the state model, per
+  [`10-decisions.md`](10-decisions.md) B1 and B2.
+
 
 The gate for leaving this phase is named in the vision document: a non-trivial app (navigation +
 tokens + async + forms + lists) written without dropping into Dart for anything routine.

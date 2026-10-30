@@ -35,6 +35,7 @@ import {
   isNumericType,
   isStringType,
   rootIdentifiers,
+  walkExpr,
   typeToText,
   walkExpressions,
 } from '../frontend/ast.ts';
@@ -420,7 +421,9 @@ class FlutterGenerator {
     const stateClassName = `_${decl.name}State`;
 
     // Parameters are fields on the widget; inside a State they are reached through `widget.`.
-    for (const param of isComponent ? decl.params : []) {
+    // A screen with parameters is a destination: `navigate Detail(id: x)` constructs it with named
+    // arguments, so the constructor is the same shape a component's is.
+    for (const param of decl.params) {
       const type = this.analysis.paramTypes.get(decl.name)?.get(param.name) ?? DYNAMIC;
       this.scope.set(param.name, { emittedName: hasState ? `widget.${param.name}` : param.name, type });
     }
@@ -442,11 +445,11 @@ class FlutterGenerator {
 
     const classLines: string[] = [marker];
     if (hasState) {
-      classLines.push(...this.widgetClassWithState(decl, stateClassName, isComponent));
+      classLines.push(...this.widgetClassWithState(decl, stateClassName));
       classLines.push('');
       classLines.push(...this.stateClass(decl, stateClassName, controllers, body));
     } else {
-      classLines.push(...this.statelessClass(decl, body, isComponent));
+      classLines.push(...this.statelessClass(decl, body));
     }
 
     this.scope = savedScope;
@@ -454,7 +457,7 @@ class FlutterGenerator {
     return classLines.join('\n');
   }
 
-  private constructorParams(decl: ComponentDecl): string[] {
+  private constructorParams(decl: ScreenDecl | ComponentDecl): string[] {
     const params: string[] = ['super.key'];
     for (const param of decl.params) {
       const hasDefault = param.defaultValue !== undefined;
@@ -465,12 +468,12 @@ class FlutterGenerator {
     return params;
   }
 
-  /** A component constructor can be const when no default value needs to be computed. */
-  private componentCanBeConst(decl: ComponentDecl): boolean {
+  /** A constructor can be const when no default value needs to be computed. */
+  private canBeConst(decl: ScreenDecl | ComponentDecl): boolean {
     return decl.params.every((param) => param.defaultValue === undefined || isConstExpr(param.defaultValue));
   }
 
-  private fields(decl: ComponentDecl): string[] {
+  private fields(decl: ScreenDecl | ComponentDecl): string[] {
     return decl.params.map((param) => {
       const type = param.typeText ?? 'dynamic';
       const needsInitializer = param.defaultValue !== undefined && !isConstExpr(param.defaultValue);
@@ -480,15 +483,15 @@ class FlutterGenerator {
     });
   }
 
-  private statelessClass(decl: ScreenDecl | ComponentDecl, body: string, isComponent: boolean): string[] {
+  private statelessClass(decl: ScreenDecl | ComponentDecl, body: string): string[] {
     const lines: string[] = [];
-    const params = isComponent ? this.constructorParams(decl as ComponentDecl) : ['super.key'];
-    const constKw = !isComponent || this.componentCanBeConst(decl as ComponentDecl) ? 'const ' : '';
+    const params = this.constructorParams(decl);
+    const constKw = this.canBeConst(decl) ? 'const ' : '';
     lines.push(`class ${decl.name} extends StatelessWidget {`);
     lines.push(`  ${constKw}${decl.name}({${params.join(', ')}});`);
-    if (isComponent) {
+    if (decl.params.length > 0) {
       lines.push('');
-      for (const field of this.fields(decl as ComponentDecl)) lines.push(`  ${field}`);
+      for (const field of this.fields(decl)) lines.push(`  ${field}`);
     }
     lines.push('');
     lines.push('  @override');
@@ -499,15 +502,15 @@ class FlutterGenerator {
     return lines;
   }
 
-  private widgetClassWithState(decl: ScreenDecl | ComponentDecl, stateClassName: string, isComponent: boolean): string[] {
+  private widgetClassWithState(decl: ScreenDecl | ComponentDecl, stateClassName: string): string[] {
     const lines: string[] = [];
-    const params = isComponent ? this.constructorParams(decl as ComponentDecl) : ['super.key'];
-    const constKw = !isComponent || this.componentCanBeConst(decl as ComponentDecl) ? 'const ' : '';
+    const params = this.constructorParams(decl);
+    const constKw = this.canBeConst(decl) ? 'const ' : '';
     lines.push(`class ${decl.name} extends StatefulWidget {`);
     lines.push(`  ${constKw}${decl.name}({${params.join(', ')}});`);
-    if (isComponent) {
+    if (decl.params.length > 0) {
       lines.push('');
-      for (const field of this.fields(decl as ComponentDecl)) lines.push(`  ${field}`);
+      for (const field of this.fields(decl)) lines.push(`  ${field}`);
     }
     lines.push('');
     lines.push('  @override');
@@ -1335,6 +1338,12 @@ class FlutterGenerator {
       }
 
       if (action.kind === 'Call') {
+        const navigation = this.navigationStatement(action.expr);
+        if (navigation !== undefined) {
+          lines.push(navigation);
+          index += 1;
+          continue;
+        }
         // Calls on anything but state (host services, parameters) are plain statements: wrapping
         // them in setState would be wrong and would hide their side effects.
         lines.push(`${this.expr(action.expr)};`);
@@ -1357,6 +1366,36 @@ class FlutterGenerator {
     if (receiver.kind !== 'Ident') return false;
     const states = this.analysis.stateTypes.get(this.currentDeclName());
     return states !== undefined && states.has(receiver.name);
+  }
+
+  /**
+   * `navigate Detail(id: x)` becomes a real push, and `back()` a pop that tolerates being on the
+   * first screen. The route is a `MaterialPageRoute` built from the screen's own constructor, so
+   * the arguments are type-checked by Dart exactly as the `.pui` checker checked them.
+   *
+   * Returns undefined for anything that is not navigation, so ordinary host calls keep their
+   * existing path through the generator.
+   */
+  private navigationStatement(expr: Expr): string | undefined {
+    if (expr.kind !== 'Call') return undefined;
+    const callee = expr.callee.kind === 'Paren' ? expr.callee.inner : expr.callee;
+    if (callee.kind !== 'Ident') return undefined;
+
+    if (callee.name === 'back') return 'Navigator.maybePop(context);';
+    if (callee.name !== 'navigate') return undefined;
+
+    const target = expr.args.find((arg) => arg.name === undefined);
+    if (target === undefined || target.value.kind !== 'Ident') return undefined;
+    const screen = this.screenName(target.value.name);
+    const args = expr.args
+      .filter((arg) => arg.name !== undefined)
+      .map((arg) => `${arg.name}: ${this.expr(arg.value)}`);
+    return `Navigator.push(\n  context,\n  MaterialPageRoute<void>(\n    builder: (_) => ${screen}(${args.join(', ')}),\n  ),\n);`;
+  }
+
+  /** The Dart class a navigation target resolves to, sanitised like every other declaration. */
+  private screenName(name: string): string {
+    return sanitizeName(name);
   }
 
   private emitActionIf(action: Extract<Action, { kind: 'ActionIf' }>): string {
@@ -1708,19 +1747,26 @@ class FlutterGenerator {
 // ---------------------------------------------------------------------------------------------
 
 /** Whether a loop variable is referenced anywhere in a loop body. */
+/**
+ * Whether a loop variable is read anywhere in the body — including inside a nested string
+ * interpolation such as `navigate Detail(id: "${index}")`. Missing that case emitted `_` for a
+ * variable the body used, and the generated Dart then referenced a name that did not exist.
+ */
 function nameUsedInBody(name: string, nodes: readonly Node[]): boolean {
   let used = false;
+  const pattern = new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`);
   const checkExpr = (expr: Expr): void => {
     if (used) return;
+    walkExpr(expr, (inner) => {
+      if (used || inner.kind !== 'String') return;
+      for (const interpolation of inner.interpolations) {
+        if (pattern.test(interpolation.text)) used = true;
+      }
+    });
     for (const ident of rootIdentifiers(expr)) {
       if (ident.name === name) {
         used = true;
         return;
-      }
-    }
-    if (expr.kind === 'String') {
-      for (const interpolation of expr.interpolations) {
-        if (new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`).test(interpolation.text)) used = true;
       }
     }
   };

@@ -131,6 +131,69 @@ Focus(
 | `await save()` | the closure becomes `() async { … }` |
 | `set x = await load()` | `final puiValueN = await load();` then `setState` — Dart forbids `await` in `setState` |
 | `if cond:` inside a handler | `if (… ) { … } else { … }` |
+| `navigate Detail(id: x)` | `Navigator.push(context, MaterialPageRoute<void>(builder: (_) => Detail(id: x)))` |
+| `back()` | `Navigator.maybePop(context)` |
+
+## Navigation
+
+`navigate` is lowered to a real push of the target screen's own constructor. There is no route
+name, no string lookup and no registry to keep in sync, so the arguments are checked by the Dart
+compiler exactly as the `.pui` checker checked them:
+
+```dart
+ElevatedButton(
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => Detail(id: "${index}", title: item),
+      ),
+    );
+  },
+  child: Text("Open"),
+);
+```
+
+`back()` becomes `Navigator.maybePop(context)`: a pop that is safe on the first screen, so a screen
+that is also the app's entry point needs no `canPop()` guard of its own.
+
+A screen with parameters gets them as constructor arguments and fields, and its `State` reads them
+through `widget.` — the same rule components follow:
+
+```dart
+class Detail extends StatelessWidget {
+  const Detail({super.key, required this.id, this.title = "Task"});
+
+  final String id;
+  final String title;
+  …
+}
+```
+
+`context` is in scope wherever a handler is emitted (a `build` method's parameter, or a `State`'s
+own `context`), which is why navigation is a statement and not an expression: there is no handler
+in a value position to give it a `Navigator`.
+
+### The route table
+
+When a project navigates, one more file is generated beside the per-file output:
+
+```dart
+final Map<String, Widget Function(Map<String, Object?>)> puiRoutes = <String, Widget Function(Map<String, Object?>)>{
+  'Detail': (args) => Detail(id: args['id']! as String, title: args['title'] as String? ?? "Task"),
+  'Home': (args) => const Home(),
+};
+```
+
+It exists for names that arrive from outside the source — a deep link, a push notification, a menu
+built in Dart — where there is no import to the screen being opened. A project that declares no
+parameters and never navigates gets no such file, which keeps generated directories as small as the
+features they use.
+
+Two rules keep the factories honest: a parameter with a **literal** default is passed only when the
+caller supplied it (so opening by name and opening with `navigate` produce the same widget), and a
+parameter whose default is not a literal is left to the constructor, with a comment saying so,
+rather than being cast from a map that may not contain it.
 
 ## State and controllers
 
@@ -209,6 +272,36 @@ Two details are deliberate rather than incidental:
   `setState` on a disposed `State` throws;
 * the flag and the error are reset *before* the await, so a retry shows a spinner rather than the
   previous failure.
+
+## Design tokens
+
+A `theme` block compiles to data, and every use site is inlined:
+
+```dart
+theme App:
+    color brand = #2563eb
+    space md = 16
+```
+
+```dart
+abstract final class AppTokens {
+  /// `color brand`
+  static const Color brand = Color(0xFF2563EB);
+  /// `space md`
+  static const double md = 16;
+}
+```
+
+* `padding=md` becomes `const EdgeInsets.all(16)`, not `AppTokens.md`. Inlining is what keeps the
+  generated trees `const` and makes the same `.pui` source produce the same numbers in every
+  target; the tokens class exists so host Dart can reach the palette without copying hex strings.
+* A theme that declares colour tokens also emits `AppTheme.light`: a `ThemeData` that fills the
+  `ColorScheme` roles it can recognise by token name — `brand`/`primary`, `surface`/`background`,
+  `ink`/`text`, `danger`/`error`, and otherwise a `seedColor` from the first colour — so Flutter's
+  own widgets (buttons, text fields, the app bar) follow the design instead of Material's defaults.
+* Tokens are compile-time values: assigning to one is `PUI2114`, using a colour token where a number
+  belongs is `PUI2304`, and the checker (`PUI2305`–`PUI2309`) catches duplicate and shadowed names
+  before Dart sees them.
 
 ## Text styles
 
