@@ -84,10 +84,20 @@ jobs:
           status=$?
           cat /tmp/analyze.log
           if [ "$status" -ne 0 ]; then
-            grep -E '^[[:space:]]+(error|warning)[[:space:]]+•' /tmp/analyze.log | head -40 \
-              | while IFS= read -r line; do
-                  echo "::error title=dart analyze::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
-                done
+            # Annotations are reachable through the API when job logs are not. Emit the findings
+            # themselves when the output has the usual shape, and the first lines of the log
+            # otherwise, so a failure is never just "exit code 3".
+            findings=$(grep -cE '^[[:space:]]+(error|warning)[[:space:]]+•' /tmp/analyze.log || true)
+            if [ "$findings" -gt 0 ]; then
+              grep -E '^[[:space:]]+(error|warning)[[:space:]]+•' /tmp/analyze.log | head -30 \
+                | while IFS= read -r line; do
+                    echo "::error title=dart analyze::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
+                  done
+            else
+              head -30 /tmp/analyze.log | while IFS= read -r line; do
+                echo "::error title=dart analyze log::${line}"
+              done
+            fi
             exit "$status"
           fi
 

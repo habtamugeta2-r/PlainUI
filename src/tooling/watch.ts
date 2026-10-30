@@ -95,6 +95,20 @@ export function watchForChanges(options: WatchOptions): Watcher {
     if (timer === undefined) timer = setTimeout(flush, debounceMs);
   };
 
+  /**
+   * A directory appeared (or vanished). Its contents were never watched, so a file written into it
+   * in the same millisecond — `mkdir parts && echo … > parts/a.pui` — produces no event of its own.
+   * Rebuilding is the cheap, correct answer: the cache makes an unchanged project nearly free.
+   */
+  const recordDirectory = (path: string): void => {
+    if (closed) return;
+    pending.add(path);
+    if (timer === undefined) timer = setTimeout(flush, debounceMs);
+  };
+
+  /** `/a/b/parts` is a directory; `/a/b/parts.pui` is not. */
+  const looksLikeDirectory = (path: string): boolean => !/[^/\\]\.[^/\\]*$/.test(path);
+
   const stopTimer = (): void => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
@@ -113,7 +127,14 @@ export function watchForChanges(options: WatchOptions): Watcher {
       }
       if (!stats.isDirectory()) continue;
       recursive.push(watchFs(root, { recursive: true, persistent: true }, (_event, file) => {
-        if (file !== null) record(join(root, file.toString()));
+        if (file === null) {
+          // Some platforms report "something changed" without a path; treat it as a rebuild.
+          recordDirectory(root);
+          return;
+        }
+        const full = join(root, file.toString());
+        if (relevant(full)) record(full);
+        else if (looksLikeDirectory(full)) recordDirectory(full);
       }));
     }
     recursiveOk = recursive.length > 0;
@@ -140,9 +161,13 @@ export function watchForChanges(options: WatchOptions): Watcher {
     if (perDirectory.has(dir)) return;
     try {
       const watcher = watchFs(dir, { persistent: true }, (_event, file) => {
-        if (file === null) return;
+        if (file === null) {
+          recordDirectory(dir);
+          return;
+        }
         const full = join(dir, file.toString());
-        record(full);
+        if (relevant(full)) record(full);
+        else if (looksLikeDirectory(full)) recordDirectory(full);
         // A directory may have appeared; rescan so its own files are watched from now on.
         try {
           if (statSync(full).isDirectory()) for (const sub of directories(full)) attach(sub);
