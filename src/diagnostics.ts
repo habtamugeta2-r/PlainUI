@@ -349,9 +349,14 @@ export const CODES = {
     fix: 'Check directory permissions.',
   },
   PUI3101: {
-    title: 'Duplicate screen across the project',
+    title: 'Duplicate declaration across the project',
     description: 'Two .pui files declare a screen or component with the same name, so the generated Dart classes would collide.',
-    fix: 'Rename one of them.',
+    fix: 'Rename one of them, or move the shared piece into a component.',
+  },
+  PUI3102: {
+    title: 'Generated file collision',
+    description: 'Two .pui files would be written to the same generated path, because generated files are named after their source file.',
+    fix: 'Rename one of the source files, or give the project a different outDir.',
   },
 
   // ---------------------------------------------------------------- CLI
@@ -368,7 +373,7 @@ export const CODES = {
   PUI4003: {
     title: 'Formatting required',
     description: '--check was passed and at least one file is not formatted.',
-    fix: 'Run plainui format --write.',
+    fix: 'Run plainui format.',
   },
 } as const satisfies Record<string, CodeInfo>;
 

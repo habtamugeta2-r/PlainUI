@@ -72,8 +72,9 @@ export function relativePath(from: string, to: string): string {
 
 /** Import specifier for a Dart file: always explicit about the local `./` form. */
 export function dartImportSpecifier(fromFile: string, toFile: string): string {
-  const rel = relativePath(dirname(fromFile), toFile);
-  return rel.startsWith('../') ? rel : `./${rel}`;
+  // Dart's own style guide writes sibling imports without a leading "./", so a file generated
+  // next to another one imports it as `import 'shell.pui.dart';`.
+  return relativePath(dirname(fromFile), toFile);
 }
 
 /** camelCase form of a file stem, so `app_state.dart` can be referenced as `appState`. */

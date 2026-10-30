@@ -134,7 +134,7 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     const previous = usedOutputs.get(output);
     if (previous !== undefined) {
       parsed.get(path)!.bag.error({
-        code: 'PUI3101',
+        code: 'PUI3102',
         message: `"${path}" and "${previous}" would both generate ${output}`,
         span: { start: 0, end: 0 },
         hint: 'give the source files different names, or set a different outDir',
