@@ -80,7 +80,9 @@ jobs:
           void main() {
             testWidgets('the counter renders and reacts to a tap', (tester) async {
               await tester.pumpWidget(const MaterialApp(home: counter.Counter()));
-              expect(find.text('PlainUI'), findsWidgets);
+              // The screen renders `text "Hello, ${name}"` with name starting as "PlainUI".
+              expect(find.text('Hello, PlainUI'), findsOneWidget);
+              expect(find.text('Taps so far'), findsOneWidget);
 
               final before = tester.widget<Text>(find.text('0')).data;
               expect(before, isNotNull);
