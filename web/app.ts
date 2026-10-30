@@ -249,10 +249,6 @@ function highlightSource(text: string): string {
       expectingElement = true;
       continue;
     }
-    if (token.kind === 'comment') {
-      marks.push({ start: token.span.start, end: token.span.end, cls: 'tok-comment' });
-      continue;
-    }
     if (token.kind === 'string') {
       marks.push({ start: token.span.start, end: token.span.end, cls: 'tok-string' });
       continue;
@@ -393,7 +389,10 @@ $('copy').addEventListener('click', () => {
   const activeTab = document.querySelector<HTMLButtonElement>('.tab[aria-selected="true"]');
   const text =
     activeTab?.dataset['tab'] === 'html' ? latest?.html ?? '' : activeTab?.dataset['tab'] === 'preview' ? latest?.html ?? '' : latest?.dart ?? '';
-  void navigator.clipboard.writeText(text).then(() => flash('copy', 'Copied'));
+  copyText(text).then(
+    () => flash('copy', 'Copied'),
+    () => flash('copy', 'Select and copy'),
+  );
 });
 
 $('download').addEventListener('click', () => {
@@ -410,11 +409,18 @@ $('share').addEventListener('click', () => {
   const encoded = btoa(encodeURIComponent(editor.value));
   const url = `${location.origin}${location.pathname}#code=${encoded}`;
   history.replaceState(null, '', `#code=${encoded}`);
-  void navigator.clipboard.writeText(url).then(
+  copyText(url).then(
     () => flash('share', 'Link copied'),
     () => flash('share', 'Link is in the address bar'),
   );
 });
+
+/** The clipboard API needs a secure context and a permission; both can be missing. */
+async function copyText(text: string): Promise<void> {
+  const clipboard = navigator.clipboard;
+  if (clipboard === undefined || typeof clipboard.writeText !== 'function') throw new Error('no clipboard');
+  await clipboard.writeText(text);
+}
 
 function flash(id: string, message: string): void {
   const button = $(id);
@@ -429,7 +435,7 @@ function flash(id: string, message: string): void {
 // Tabs
 // ---------------------------------------------------------------------------------------------
 
-const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tab')];
+const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'));
 
 function selectTab(name: string): void {
   for (const tab of tabs) {
