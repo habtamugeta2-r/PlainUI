@@ -79,8 +79,13 @@ test('await is hoisted out of setState', () => {
 });
 
 test('universal layout properties wrap the element in a deterministic order', () => {
-  const code = generate(['screen Home:', '    text "x" padding=8 width=100 expand opacity=0.5 background=#ff0000', ''].join('\n'));
-  const order = ['Expanded', 'Opacity', 'Container', 'SizedBox', 'Padding', 'Text'];
+  const code = generate([
+    'screen Home:',
+    '    text "x" padding=8 width=100 expand opacity=0.5 background=#ff0000 align=center',
+    '',
+  ].join('\n'));
+  // Outside in: Align wraps Expanded, which wraps Opacity, … down to the element itself.
+  const order = ['Align', 'Expanded', 'Opacity', 'Container', 'SizedBox', 'Padding', 'Text'];
   let cursor = -1;
   for (const name of order) {
     const index = code.indexOf(`${name}(`);

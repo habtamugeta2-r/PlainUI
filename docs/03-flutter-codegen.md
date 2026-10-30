@@ -89,15 +89,16 @@ they also work on component call sites:
 | `flex` (without `expand`) | `Flexible` |
 | `align` | `Align` |
 
-The wrappers are applied in a fixed order, from the inside out:
+The wrappers are applied in a fixed order. Read from the element outwards:
 
 ```
-Expanded / Flexible → Align → Opacity → Container → SizedBox → Padding → element → gestures
+element → Padding → SizedBox → Container (background, radius, border, margin)
+        → Opacity → Expanded / Flexible → Align → gestures
 ```
 
-Reading that from the outside in: padding is closest to the element, sizing wraps the padded
-element, decoration wraps the sized box, and layout (align/expand) is outermost. The order is
-asserted in `tests/codegen.test.ts` so it cannot drift silently.
+So padding is closest to the element, sizing wraps the padded element, decoration wraps the
+sized box, and layout is outermost — with the gesture detectors outside everything. The order is
+pinned by `tests/codegen.test.ts` so it cannot drift silently.
 
 `gap` is not a wrapper: it is expanded into `SizedBox` children between siblings, which is what
 `mainAxisAlignment` cannot express.

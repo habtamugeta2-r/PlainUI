@@ -283,8 +283,11 @@ element rather than by being passed to it.
 | `cross` | `start`, `end`, `center`, `stretch`, `baseline` | Cross-axis alignment of children |
 | `gap` | number | Space inserted **between** children of `column`, `row`, `wrap`, `list` |
 
-Wrapping order is deterministic: `expand`/`flex` → `opacity` → `background`/`radius`/`border` →
-size → `padding` → element → `margin` → generic gesture/hover handlers.
+Wrapping order is deterministic. Read from the element outwards: `padding`, then size
+(`width`/`height`/`size`), then `background`/`radius`/`border`/`margin`, then `opacity`, then
+`expand`/`flex`, then `align`, then any generic gesture or hover handler. In generated code that
+reads outside-in as `gestures → Align → Expanded/Flexible → Opacity → Container → SizedBox →
+Padding → element`.
 
 Alignment enums are validated against their closed value sets, so `align=centre` is a compile
 error with the correct spelling offered (`PUI2401`).
