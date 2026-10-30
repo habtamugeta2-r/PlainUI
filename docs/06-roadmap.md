@@ -108,12 +108,21 @@ What is missing is the part that needs research rather than plumbing:
 - **go-to-definition and references.** These need a name index across the project, which is the
   same index a build_runner integration would want.
 
-### 3. A target abstraction, then Compose
+### 3. A target abstraction, then Compose — *contract done*
 
-`src/codegen/html.ts` shows that a target is one file, but "one file" is not yet "one contract": the
-front end still carries Flutter knowledge (`DART_RESERVED_WORDS`, `FLUTTER_TYPE_NAMES`, the keyboard
-and icon tables). That moves behind a `Target` interface — vocabulary, keywords, type names, enum
-maps, capability set — and a generated capability matrix that the tests assert against.
+`src/codegen/html.ts` showed that a target is one file, but "one file" was not yet "one contract":
+the front end still carried Flutter knowledge (`DART_RESERVED_WORDS`, `FLUTTER_TYPE_NAMES`, the enum
+aliases). The contract now exists in `src/targets/`: a `Target` declares its reserved words, shadowed
+types, type spellings, enum aliases and a nine-entry capability record, and `check.ts` asks it for
+every one of those — so the front end names no framework and the same file can be legal for one
+target and not for another. `PUI2501` refuses a construct whose capability is `none`, and the HTML
+preview's capability table is the honest answer to "what does a static page actually do?"
+([`02-architecture.md`](02-architecture.md#targets), [C5](10-decisions.md)).
+
+What is still missing before Compose: the **capability matrix** as a project setting (C2 — a
+`targets` list in `plainui.config.json`, checked per file against the intersection), output paths
+per target, and `plainui build` writing a tree for anything other than Flutter (it refuses
+explicitly today rather than writing Dart into an `html` build).
 
 **Jetpack Compose is the second target**, chosen because it is the closest mapping to Flutter and
 therefore the sharpest test of the state model: if `derived` lowers to `derivedStateOf` and `task`
