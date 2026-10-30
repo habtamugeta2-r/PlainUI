@@ -269,6 +269,11 @@ export const CODES = {
     description: 'A statement in an event handler that is not a call has no effect.',
     fix: 'Call a host function, for example save().',
   },
+  PUI2206: {
+    title: 'Not a Dart type',
+    description: 'A type annotation looks like a Dart type but Dart spells it differently, so the generated file would not compile.',
+    fix: 'Use the lowercase Dart spelling.',
+  },
   PUI2205: {
     title: 'slot outside a component',
     description: '"slot" marks where a component renders the children its caller passes; a screen has no caller.',

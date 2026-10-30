@@ -1,0 +1,34 @@
+// The smallest useful app: one number, two buttons, one text field.
+
+style price:
+    size=20
+    weight=bold
+    color=#1d4ed8
+
+screen Counter:
+
+    state count: int = 0
+    state name: String = "PlainUI"
+    state note: String = ""
+
+    column padding=24 gap=16 main=center:
+
+        text "Hello, ${name}" style=heading
+        text count style=display
+        text "Tickets left" style=caption
+
+        row gap=12 main=center:
+            button "−":
+                on tap:
+                    set count = count - 1
+            button "Reset":
+                on tap:
+                    set count = 0
+            button "+":
+                on tap:
+                    set count = count + 1
+
+        input bind=note placeholder="Say something" padding=8
+
+        text note style=secondary
+        text "0 ETB" style=price

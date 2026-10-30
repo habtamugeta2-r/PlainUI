@@ -110,3 +110,9 @@ test('a file that does not lex is returned untouched', () => {
   assert.equal(result.skipped, true);
   assert.equal(result.text, broken);
 });
+
+test('the space before an equals sign depends on the line, not the value', () => {
+  // `state` lines keep the space even when the value is a list; node properties stay tight.
+  assert.equal(format('screen Home:\n    state items: List<String> =["a"]\n'), 'screen Home:\n    state items: List<String> = ["a"]\n');
+  assert.equal(format('screen Home:\n    column padding=[8,4]:\n        text "x"\n'), 'screen Home:\n    column padding=[8, 4]:\n        text "x"\n');
+});

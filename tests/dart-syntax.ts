@@ -69,8 +69,9 @@ export function checkDartStructure(code: string): string[] {
   let match: RegExpExecArray | null;
   while ((match = setState.exec(clean)) !== null) {
     const start = match.index + match[0].length;
-    const body = sliceBalanced(clean, start - 1);
-    if (body.includes('await')) problems.push('await inside a setState callback');
+    // The callback body is a brace block, not a parenthesised one, so match braces.
+    const body = sliceBraces(clean, start - 1);
+    if (/\bawait\b/.test(body)) problems.push('await inside a setState callback');
   }
 
   // both child: and children: in the same call
@@ -102,6 +103,18 @@ function topLevel(text: string, openIndex: number): string {
     if (depth === 1) out += ch;
   }
   return out;
+}
+
+function sliceBraces(text: string, openIndex: number): string {
+  let depth = 0;
+  for (let i = openIndex; i < text.length; i++) {
+    if (text[i] === '{') depth += 1;
+    else if (text[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(openIndex + 1, i);
+    }
+  }
+  return text.slice(openIndex + 1);
 }
 
 function sliceBalanced(text: string, openIndex: number): string {

@@ -21,6 +21,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "docs:ref": "node --experimental-strip-types scripts/gen-reference.ts",
     "playground": "node --experimental-strip-types scripts/playground.ts",
+    "goldens": "UPDATE_GOLDENS=1 node --experimental-strip-types --test tests/golden.test.ts",
     "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {

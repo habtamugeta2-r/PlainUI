@@ -55,6 +55,20 @@ import {
   widgetSpec,
 } from './widgets/registry.ts';
 
+/** Dart core types that people write in another language's capitalisation by mistake. */
+const CASE_MISTAKES: Record<string, string> = {
+  Int: 'int',
+  Integer: 'int',
+  Double: 'double',
+  Float: 'double',
+  Bool: 'bool',
+  Boolean: 'bool',
+  Num: 'num',
+  Number: 'num',
+  Dynamic: 'dynamic',
+  Object: 'Object',
+};
+
 export type ResolvedTag =
   | { readonly kind: 'builtin'; readonly spec: WidgetSpec }
   | { readonly kind: 'component'; readonly decl: ComponentDecl; readonly external: boolean }
@@ -208,6 +222,18 @@ class Checker {
   // Declarations
   // ------------------------------------------------------------------------------------------
 
+  /**
+   * Dart spells its core types in lower case, so `count: Int` would generate `Int count` and fail
+   * to compile. Catching it here keeps the mistake in the .pui file instead of in the output.
+   */
+  private checkTypeSpelling(typeText: string, span: Span): void {
+    const base = typeText.replace(/<.*$/s, '').trim();
+    const suggestion = CASE_MISTAKES[base];
+    if (suggestion !== undefined && suggestion !== base) {
+      this.error('PUI2206', `"${base}" is not a Dart type`, span, `write "${suggestion}" instead`);
+    }
+  }
+
   private indexDeclarations(): void {
     for (const decl of this.program.decls) {
       if (decl.kind === 'Style') {
@@ -268,6 +294,7 @@ class Checker {
           this.error('PUI2003', `duplicate state "${state.name}"`, state.nameSpan, 'rename one of them');
           continue;
         }
+        if (state.typeText !== undefined) this.checkTypeSpelling(state.typeText, state.typeSpan ?? state.nameSpan);
         const type = state.typeText === undefined ? inferType(state.init) : typeFromText(state.typeText);
         stateMap.set(state.name, type);
         if (DART_RESERVED_WORDS.has(state.name)) {
@@ -286,6 +313,7 @@ class Checker {
             this.error('PUI2003', `duplicate parameter "${param.name}"`, param.nameSpan, 'rename one of them');
             continue;
           }
+          if (param.typeText !== undefined) this.checkTypeSpelling(param.typeText, param.typeSpan ?? param.nameSpan);
           params.set(param.name, param.typeText === undefined ? DYNAMIC : typeFromText(param.typeText));
         }
         this.paramTypes.set(decl.name, params);

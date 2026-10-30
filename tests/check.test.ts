@@ -220,3 +220,11 @@ test('loop variable types are recorded for the generator', () => {
   assert.equal(types.get('item')?.kind, 'string');
   assert.equal(types.get('i')?.kind, 'int');
 });
+
+test('a core type written in the wrong case is reported', () => {
+  assert.deepEqual(errorsOf(['screen Home:', '    state count: Int = 0', '    text count', ''].join('\n')), ['PUI2206']);
+  assert.deepEqual(errorsOf(['screen Home:', '    state flag: Boolean = false', '    text flag', ''].join('\n')), ['PUI2206']);
+  assert.deepEqual(errorsOf(['screen Home:', '    state count: int = 0', '    text count', ''].join('\n')), []);
+  // A capitalised type that is not a core type stays a plain host type.
+  assert.deepEqual(errorsOf(['screen Home:', '    state now: DateTime = 0', '    text "x"', ''].join('\n')), []);
+});

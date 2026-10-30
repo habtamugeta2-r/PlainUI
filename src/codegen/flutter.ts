@@ -10,8 +10,11 @@
  */
 
 import {
+  BOOL,
+  DOUBLE,
   DYNAMIC,
   INT,
+  NUM,
   STRING,
   type Action,
   type ComponentDecl,
@@ -29,6 +32,7 @@ import {
   type StateDecl,
   type StyleDecl,
   type UiType,
+  isNumericType,
   isStringType,
   rootIdentifiers,
   typeToText,
@@ -1247,13 +1251,30 @@ class FlutterGenerator {
     if (expr.kind === 'Number') return expr.raw.includes('.') ? { kind: 'double' } : INT;
     if (expr.kind === 'Bool') return { kind: 'bool' };
     if (expr.kind === 'Binary') {
-      if (['==', '!=', '<', '<=', '>', '>=', '&&', '||'].includes(expr.op)) return { kind: 'bool' };
+      if (['==', '!=', '<', '<=', '>', '>=', '&&', '||'].includes(expr.op)) return BOOL;
       const left = this.typeOf(expr.left);
       const right = this.typeOf(expr.right);
       if (isStringType(left) || isStringType(right)) return STRING;
-      if (left.kind === 'double' || right.kind === 'double') return { kind: 'double' };
+      if (left.kind === 'double' || right.kind === 'double') return DOUBLE;
       if (left.kind === 'int' && right.kind === 'int') return INT;
     }
+    if (expr.kind === 'Ternary') {
+      // A conditional is only as specific as its two branches: `busy ? "a" : "b"` is a String,
+      // so it can be shown in a Text widget without a defensive `.toString()`.
+      const a = this.typeOf(expr.then);
+      const b = this.typeOf(expr.otherwise);
+      if (a.kind === b.kind) return a;
+      if (isStringType(a) || isStringType(b)) return STRING;
+      if (isNumericType(a) && isNumericType(b)) return NUM;
+      return DYNAMIC;
+    }
+    if (expr.kind === 'Unary') {
+      if (expr.op === '!') return BOOL;
+      if (expr.op === 'await') return this.typeOf(expr.operand);
+      return this.typeOf(expr.operand);
+    }
+    if (expr.kind === 'List') return { kind: 'list', element: DYNAMIC };
+    if (expr.kind === 'Null') return { kind: 'nullable', inner: DYNAMIC };
     return DYNAMIC;
   }
 

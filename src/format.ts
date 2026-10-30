@@ -228,8 +228,10 @@ function needsSpace(previous: Token, token: Token, previousMeta: TokenMeta, meta
   if (cur === ':') return meta.ternaryColon;
   if (prev === ':') return true;
 
-  if (cur === '(' || cur === '[') return false;
+  // `=` is decided before brackets, so `state items = [1]` keeps its space while `padding=[8]`
+  // stays tight.
   if (cur === '=' || prev === '=') return spacedEquals;
+  if (cur === '(' || cur === '[') return false;
 
   // Inside a type annotation, generics and nullability stay tight: List<String>, int?
   if (meta.inType && (cur === '<' || prev === '<' || cur === '>' || prev === '>')) return false;
