@@ -8,6 +8,30 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **Typed host interop.** A file can name a host import and declare what it may call from it:
+
+  ```
+  import "../data.dart" as data:
+
+      loadTasks(filter: String) -> Future<List<String>>
+      AppLogo(size: double = 24)
+  ```
+
+  The block is opt-in and per module. It does not close the boundary — an undeclared call is still
+  passed through to Dart, so `log(…)` and host widgets keep working without declarations — but every
+  *declared* name is checked at each call site: argument count (`PUI2341`), argument names
+  (`PUI2342`), types (`PUI2343`), and whether the call is asynchronous (`PUI2344`). A qualified call
+  `data.loadTasks(…)` is checked against the module it names (`PUI2340` with a suggestion), which is
+  where a typo stops being a Dart error in generated output and becomes a `.pui` error with a caret.
+  The value a host call produces is checked where it lands — in a `task`, in `state`, in `set` — and
+  an unqualified call to an undeclared name that is one character away from a declared one is a
+  warning (`PUI2410`) rather than silence.
+
+  The Flutter target emits a real `import '../data.dart' as data;` when a qualified call is used, so
+  the qualified form means the same thing in both languages; `flutter-verify.yml` runs
+  `dart analyze` over the result, which is what keeps a surface honest. The case of a declared name
+  decides whether it is a function or a constructor, exactly as it does for elements.
+
 - **Forms and validation.** A `form` owns a validation key and an `on submit:` body; an `input` inside
   it declares its rules with `validate=[required, email]`, `min(8)`, `max(80)` and `pattern("…")`, and
   `submit()` is the only way into the handler — the Flutter target inlines the actions inside
