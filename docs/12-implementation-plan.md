@@ -20,9 +20,10 @@ workspace (team `HAB`): **"PlainUI Implementation Plan"**, with one issue per it
 `phase-0-foundations` / `phase-1-flutter-depth` / `phase-2-architecture` / `phase-3-adoption` /
 `phase-4-multi-target` / `phase-5-breadth` / `cross-cutting` labels stand in for milestones, and
 the granular sub-tasks (2.1–2.18, 3.1–3.8, etc.) are sub-issues under their parent item
-(`HAB-19`…`HAB-68`). `HAB-34` ("2.1 — Type vocabulary in the AST/parser") is the current
-single next unit of work. Use that project for status/assignment going forward; update both it and
-this file (and `src/tooling/todo.ts`, which remains the real source of truth) as work lands.
+(`HAB-19`…`HAB-68`). `HAB-34` ("2.1 — Type vocabulary in the AST/parser") is done; `HAB-35`
+("2.2 — Checker support, dual-accepting old spellings") is the current single next unit of work.
+Use that project for status/assignment going forward; update both it and this file (and
+`src/tooling/todo.ts`, which remains the real source of truth) as work lands.
 
 **Repository snapshot at time of writing:** branch `arena/0d109071-plainui`, based on `main` @
 `65f91c8` (PR #12, "Capability matrix: targets is a portability promise", merged). 410 tests
@@ -144,10 +145,29 @@ in CI, with a test asserting which files port and which fail with a named code.*
       `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`; each target maps
       them; `plainui migrate` rewrites existing projects. Breaking this `XL` item into shippable
       steps (decisions A1, A2, A3):
-  - [ ] **2.1 — Type vocabulary in the AST/parser.** Add PlainUI-native type names (`Text`, `Int`,
+  - [x] **2.1 — Type vocabulary in the AST/parser.** Add PlainUI-native type names (`Text`, `Int`,
         `Float`, `Bool`, `Color`, `Duration`, `List<T>`, `Optional<T>`) as first-class type syntax
         in `state`/`task`/component parameter declarations (`src/frontend/ast.ts`,
-        `src/frontend/parser.ts`).
+        `src/frontend/parser.ts`). Done: `typeFromText` (`src/frontend/ast.ts`) recognizes
+        `Text`/`Int`/`Float`/`Bool`/`Optional<T>`/bare `Optional` alongside the existing Dart
+        spellings, resolving to the same `UiType`, so every checker rule accepts them for free;
+        `Color`/`Duration` already passed through unchanged via the `named` fallback. A new
+        `toDartTypeText` helper rewrites a raw annotation into legal Dart text (unwrapping nested
+        `Optional<...>` to a trailing `?`, word-boundary-safe primitive renaming, everything else
+        passed through) and every codegen site that used to splice a raw annotation into generated
+        Dart (`src/codegen/flutter.ts` field/derived/task/state declarations,
+        `src/codegen/routes.ts` route-argument casts) now goes through it — without this fix the
+        new spellings would emit invalid Dart. The pre-existing `PUI2206` "wrong type spelling"
+        table in `src/targets/flutter.ts` no longer flags `Int`/`Float`/`Bool` (they're not
+        mistakes anymore); `Integer`/`Double`/`Boolean`/`Num`/`Number`/`Dynamic` are still flagged.
+        Covered by `tests/types.test.ts` (unit tests for `typeFromText`/`toDartTypeText`,
+        including nested `Optional` and word-boundary edge cases), new assertions in
+        `tests/check.test.ts`/`tests/targets.test.ts`, and the new `tests/golden/types.pui`
+        fixture exercising all four primitives plus `Optional<T>` in state/task/derived/component-
+        param position, whose generated `.pui.dart` uses correct Dart spellings throughout. Out of
+        scope here (see below): deprecation diagnostics for the old spellings (2.2), per-target
+        type ownership (2.4), non-null-by-default `Optional<T>` semantics (2.3), `plainui migrate`
+        (2.5), and updating existing docs/examples to the new spellings (2.7).
   - [ ] **2.2 — Checker support, dual-accepting old spellings.** `check.ts` accepts both the new
         PlainUI types and the current Dart spellings (`String`, `int`, `double`, `bool`) as
         deprecated aliases, per A1; a new diagnostic (e.g. `PUI2xxx`, warning severity) flags the

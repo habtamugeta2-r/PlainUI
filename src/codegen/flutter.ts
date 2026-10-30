@@ -39,6 +39,7 @@ import {
   walkExpr,
   walkNodes,
   typeToText,
+  toDartTypeText,
   walkExpressions,
 } from '../frontend/ast.ts';
 import { isSubmitCall, type Analysis } from '../analysis/check.ts';
@@ -499,7 +500,7 @@ class FlutterGenerator {
 
   private fields(decl: ScreenDecl | ComponentDecl): string[] {
     return decl.params.map((param) => {
-      const type = param.typeText ?? 'dynamic';
+      const type = param.typeText === undefined ? 'dynamic' : toDartTypeText(param.typeText);
       const needsInitializer = param.defaultValue !== undefined && !isConstExpr(param.defaultValue);
       return needsInitializer
         ? `final ${type} ${param.name} = ${this.expr(param.defaultValue!)};`
@@ -629,7 +630,10 @@ class FlutterGenerator {
     const lines: string[] = [];
     if (decl.derived.length === 0) return lines;
     for (const item of decl.derived) {
-      const type = item.typeText ?? typeToText(this.analysis.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC);
+      const type =
+        item.typeText === undefined
+          ? typeToText(this.analysis.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC)
+          : toDartTypeText(item.typeText);
       lines.push('');
       lines.push(`  /// \`derived ${item.name}\` — computed on every read, never stored.`);
       lines.push(`  ${type} get ${item.name} => ${this.expr(item.init)};`);
@@ -675,7 +679,7 @@ class FlutterGenerator {
   /** The declared or inferred type of a state, as Dart text. */
   private stateTypeText(decl: ScreenDecl | ComponentDecl, name: string): string {
     const state = decl.state.find((item) => item.name === name);
-    if (state?.typeText !== undefined) return state.typeText;
+    if (state?.typeText !== undefined) return toDartTypeText(state.typeText);
     const inferred = this.analysis.stateTypes.get(decl.name)?.get(name);
     return inferred === undefined ? 'dynamic' : typeToText(inferred);
   }
@@ -749,7 +753,7 @@ class FlutterGenerator {
     const lines: string[] = [];
     for (const task of decl.tasks) {
       const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
-      const valueText = task.typeText ?? typeToText(value);
+      const valueText = task.typeText === undefined ? typeToText(value) : toDartTypeText(task.typeText);
       lines.push(`  ${valueText}? ${this.taskField(task.name, 'value')};`);
       lines.push(`  String? ${this.taskField(task.name, 'error')};`);
       lines.push(`  bool ${this.taskField(task.name, 'loading')} = true;`);
@@ -826,7 +830,7 @@ class FlutterGenerator {
 
   private stateField(state: StateDecl): string {
     const type = this.analysis.stateTypes.get(this.currentDeclName())?.get(state.name) ?? DYNAMIC;
-    const typeText = state.typeText ?? typeToText(type);
+    const typeText = state.typeText === undefined ? typeToText(type) : toDartTypeText(state.typeText);
     return `${typeText} ${state.name} = ${this.expr(state.init)};`;
   }
 

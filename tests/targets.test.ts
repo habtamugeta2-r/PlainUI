@@ -124,7 +124,8 @@ test('a shadowed type is judged by the target library', () => {
 });
 
 test('a type spelling is judged by the target type system', () => {
-  const source = ['screen Count:', '', '    state count: Int = 0', '', '    text "${count}"', ''].join('\n');
+  // `Integer` is nobody's spelling here; `Int` is PlainUI's own (decision A1) and is not an error.
+  const source = ['screen Count:', '', '    state count: Integer = 0', '', '    text "${count}"', ''].join('\n');
   assert.equal(codesOf(source, FLUTTER_TARGET).includes('PUI2206'), true);
   assert.equal(messagesOf(source, FLUTTER_TARGET).includes('not a Dart type'), true);
   // The preview writes no type annotation, so the same file is legal there.

@@ -269,9 +269,32 @@ test('loop variable types are recorded for the generator', () => {
 });
 
 test('a core type written in the wrong case is reported', () => {
-  assert.deepEqual(errorsOf(['screen Home:', '    state count: Int = 0', '    text count', ''].join('\n')), ['PUI2206']);
+  assert.deepEqual(errorsOf(['screen Home:', '    state count: Integer = 0', '    text count', ''].join('\n')), ['PUI2206']);
   assert.deepEqual(errorsOf(['screen Home:', '    state flag: Boolean = false', '    text flag', ''].join('\n')), ['PUI2206']);
   assert.deepEqual(errorsOf(['screen Home:', '    state count: int = 0', '    text count', ''].join('\n')), []);
   // A capitalised type that is not a core type stays a plain host type.
   assert.deepEqual(errorsOf(['screen Home:', '    state now: DateTime = 0', '    text "x"', ''].join('\n')), []);
+});
+
+test('PlainUI\'s own type spellings (decision A1) are accepted, not reported', () => {
+  assert.deepEqual(errorsOf(['screen Home:', '    state count: Int = 0', '    text count', ''].join('\n')), []);
+  assert.deepEqual(errorsOf(['screen Home:', '    state name: Text = "hi"', '    text name', ''].join('\n')), []);
+  assert.deepEqual(errorsOf(['screen Home:', '    state ratio: Float = 1.5', '    text "${ratio}"', ''].join('\n')), []);
+  assert.deepEqual(errorsOf(['screen Home:', '    state flag: Bool = true', '    text "${flag}"', ''].join('\n')), []);
+  assert.deepEqual(errorsOf(['screen Home:', '    state maybe: Optional<Int> = null', '    text "${maybe}"', ''].join('\n')), []);
+});
+
+test('PlainUI type spellings resolve to the same UiType as their Dart aliases', () => {
+  const int = run(['screen Home:', '    state count: Int = 0', '    text count', ''].join('\n'));
+  assert.equal(int.analysis.stateTypes.get('Home')?.get('count')?.kind, 'int');
+  const text = run(['screen Home:', '    state name: Text = "hi"', '    text name', ''].join('\n'));
+  assert.equal(text.analysis.stateTypes.get('Home')?.get('name')?.kind, 'string');
+  const float = run(['screen Home:', '    state ratio: Float = 1.5', '    text "${ratio}"', ''].join('\n'));
+  assert.equal(float.analysis.stateTypes.get('Home')?.get('ratio')?.kind, 'double');
+  const bool = run(['screen Home:', '    state flag: Bool = true', '    text "${flag}"', ''].join('\n'));
+  assert.equal(bool.analysis.stateTypes.get('Home')?.get('flag')?.kind, 'bool');
+  const optional = run(['screen Home:', '    state maybe: Optional<Int> = null', '    text "${maybe}"', ''].join('\n'));
+  const maybeType = optional.analysis.stateTypes.get('Home')?.get('maybe');
+  assert.equal(maybeType?.kind, 'nullable');
+  assert.equal(maybeType?.kind === 'nullable' ? maybeType.inner.kind : undefined, 'int');
 });
