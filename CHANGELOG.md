@@ -245,6 +245,14 @@ All notable changes to PlainUI are recorded here. The format follows
   build cannot trigger the next one. `PLAINUI_WATCH_MODE=recursive|per-directory|polling` forces a
   strategy for network filesystems.
 
+## [2.0.0] — Planned breaking changes
+
+### Removed
+
+- Remove the deprecated Dart type aliases `String`, `int`, `double` and `bool` from `.pui`
+  annotations. They remain accepted, with `PUI2207` warnings, throughout the full 1.x line. Before
+  upgrading, run `plainui migrate` and verify the project uses `Text`, `Int`, `Float` and `Bool`.
+
 ## [1.0.0] — 2026-10-30
 
 The first release. PlainUI 1.0 is a complete path from an indentation-scoped `.pui` file to Dart

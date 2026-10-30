@@ -39,7 +39,7 @@ test('the public API exposes the compiler surface', () => {
 });
 
 test('the public API is enough to compile, format and inspect', () => {
-  const source = ['screen Home:', '', '    state count: int = 0', '    text count', ''].join('\n');
+  const source = ['screen Home:', '', '    state count: Int = 0', '    text count', ''].join('\n');
 
   const result = api.compileOne('lib/ui/home.pui', source);
   assert.equal(result.diagnostics.length, 0);

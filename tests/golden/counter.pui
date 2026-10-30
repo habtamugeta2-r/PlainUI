@@ -7,9 +7,9 @@ style price:
 
 screen Counter:
 
-    state count: int = 0
-    state name: String = "PlainUI"
-    state note: String = ""
+    state count: Int = 0
+    state name: Text = "PlainUI"
+    state note: Text = ""
 
     column padding=24 gap=16 main=center:
 

@@ -6,11 +6,11 @@ import "detail.pui"
 import "new_issue.pui"
 import "../model/data.dart" as data:
 
-    loadIssues(filter: String) -> Future<List<Issue>>
+    loadIssues(filter: Text) -> Future<List<Issue>>
 
 screen Inbox:
 
-    state filter: String = ""
+    state filter: Text = ""
 
     task issues: List<Issue> = data.loadIssues(filter)
 
@@ -45,9 +45,9 @@ screen Inbox:
 
                 progress
 
-            elif issues.error != null:
+            elif issues.error.exists:
 
-                text issues.error color=danger
+                text issues.error.orElse("Unknown error") color=danger
                 button "Try again":
                     on tap: issues.retry()
 

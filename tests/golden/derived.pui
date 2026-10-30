@@ -2,11 +2,11 @@
 
 screen Derived:
 
-    state count: int = 2
-    state step: int = 3
-    state name: String = "PlainUI"
+    state count: Int = 2
+    state step: Int = 3
+    state name: Text = "PlainUI"
 
-    task items: List<String> = loadItems()
+    task items: List<Text> = loadItems()
 
     derived doubled = count * 2
     derived ratio = count / step
@@ -14,7 +14,7 @@ screen Derived:
     derived shout = name + "!"
     derived pair = [count, step]
     derived first = pair[0]
-    derived total: String = "${doubled} computed"
+    derived total: Text = "${doubled} computed"
     derived label = "${shout} (${first})"
     derived loaded = items.value.length
     derived busy = items.loading

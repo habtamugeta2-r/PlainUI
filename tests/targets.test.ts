@@ -20,6 +20,8 @@ import { compileSource } from '../src/project/compile.ts';
 import { compileOne } from '../src/project/project.ts';
 import { parse } from '../src/frontend/parser.ts';
 import { sourceFile } from '../src/frontend/source.ts';
+import { typeTextForTarget, typeToTargetText } from '../src/codegen/types.ts';
+import { DYNAMIC, INT, STRING, typeFromText } from '../src/frontend/ast.ts';
 import {
   CAPABILITIES,
   DEFAULT_TARGET,
@@ -64,6 +66,52 @@ test('every target answers for every capability', () => {
       assert.ok(note.note.trim().endsWith('.'), `${target.id}.${capability} needs a sentence that ends`);
     }
   }
+});
+
+test('every target owns a complete, distinct map for PlainUI types', () => {
+  const requiredNames = ['Text', 'Int', 'Float', 'Bool', 'Color', 'Duration', 'Num', 'Dynamic'];
+  for (const target of TARGETS.values()) {
+    for (const name of requiredNames) {
+      assert.equal(typeof target.types.names[name], 'string', `${target.id} needs a mapping for ${name}`);
+      assert.ok(target.types.names[name]!.length > 0, `${target.id}.${name} cannot map to an empty type`);
+    }
+    for (const constructor of ['List', 'Iterable', 'Set', 'Map', 'Future'] as const) {
+      assert.ok(target.types.generics[constructor], `${target.id} needs a ${constructor} mapping`);
+    }
+    assert.ok(target.types.optional, `${target.id} needs an Optional mapping`);
+  }
+  assert.notEqual(FLUTTER_TARGET.types, HTML_TARGET.types);
+  assert.equal(FLUTTER_TARGET.types.names.Text, 'String');
+  assert.equal(HTML_TARGET.types.names.Text, 'string');
+});
+
+test('semantic and annotated types render through the selected target map', () => {
+  assert.equal(typeToTargetText(STRING, FLUTTER_TARGET.types), 'String');
+  assert.equal(typeToTargetText(INT, FLUTTER_TARGET.types), 'int');
+  assert.equal(typeToTargetText(DYNAMIC, FLUTTER_TARGET.types), 'dynamic');
+  assert.equal(typeToTargetText(typeFromText('Optional<Int>'), FLUTTER_TARGET.types), 'int?');
+  assert.equal(typeToTargetText(typeFromText('Optional<Optional<Int>>'), FLUTTER_TARGET.types), 'int?');
+  assert.equal(typeToTargetText(typeFromText('List<Optional<Text>>'), FLUTTER_TARGET.types), 'List<String?>');
+  assert.equal(typeToTargetText(typeFromText('Optional<List<Text>>'), FLUTTER_TARGET.types), 'List<String>?');
+  assert.equal(typeToTargetText(typeFromText('Color'), FLUTTER_TARGET.types), 'Color');
+  assert.equal(typeToTargetText(typeFromText('Duration'), FLUTTER_TARGET.types), 'Duration');
+
+  assert.equal(typeToTargetText(STRING, HTML_TARGET.types), 'string');
+  assert.equal(typeToTargetText(INT, HTML_TARGET.types), 'number');
+  assert.equal(typeToTargetText(DYNAMIC, HTML_TARGET.types), 'unknown');
+  assert.equal(typeToTargetText(typeFromText('Optional<Int>'), HTML_TARGET.types), 'number | null');
+  assert.equal(typeToTargetText(typeFromText('Optional<Optional<Int>>'), HTML_TARGET.types), 'number | null');
+  assert.equal(typeToTargetText(typeFromText('List<Optional<Text>>'), HTML_TARGET.types), 'Array<string | null>');
+  assert.equal(typeToTargetText(typeFromText('Optional<List<Text>>'), HTML_TARGET.types), 'Array<string> | null');
+  assert.equal(typeToTargetText(typeFromText('Color'), HTML_TARGET.types), 'string');
+  assert.equal(typeToTargetText(typeFromText('Duration'), HTML_TARGET.types), 'number');
+
+  assert.equal(typeTextForTarget('Optional<Optional<Int>>', FLUTTER_TARGET.types), 'int?');
+  assert.equal(typeTextForTarget('Optional<Optional<Int>>', HTML_TARGET.types), 'number | null');
+  assert.equal(typeTextForTarget('Future<Optional<List<Text>>>', FLUTTER_TARGET.types), 'Future<List<String>?>');
+  assert.equal(typeTextForTarget('Future<Optional<List<Text>>>', HTML_TARGET.types), 'Promise<Array<string> | null>');
+  assert.equal(typeTextForTarget('Map<String, Optional<Int>>', HTML_TARGET.types), 'Record<string, number | null>');
+  assert.equal(typeTextForTarget('DateTime', HTML_TARGET.types), 'DateTime');
 });
 
 test('the targets are distinct and addressable by id', () => {

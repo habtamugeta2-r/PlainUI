@@ -114,6 +114,20 @@ plainui format --stdout        # print instead of writing
 
 A file that does not lex is left untouched, with a note on stderr: the formatter never guesses.
 
+### `plainui migrate`
+
+Rewrites deprecated Dart primitive spellings (`String`, `int`, `double`, `bool`) to PlainUI's
+`Text`, `Int`, `Float`, `Bool` vocabulary. It edits only parsed type annotations; identifiers,
+expressions, strings and comments are preserved.
+
+```bash
+plainui migrate                 # rewrite matching .pui files in place
+plainui migrate --check         # dry run; exit 3 when migration is needed
+```
+
+Files that do not parse are left untouched and reported. Run `plainui check` afterwards to validate
+the project and see any remaining diagnostics.
+
 ### `plainui init`
 
 Creates `plainui.config.json` and `lib/ui/home.pui` (a working counter screen) in the current
@@ -218,7 +232,7 @@ screens later. `examples/gallery` is the one example that names two targets and 
 | `0` | Success. |
 | `1` | Compilation errors, or nothing to compile. |
 | `2` | Usage or configuration error. |
-| `3` | Out of date — from `build --check` or `format --check`. |
+| `3` | Out of date — from `build --check`, `format --check` or `migrate --check`. |
 
 ## Editor and CI integration
 

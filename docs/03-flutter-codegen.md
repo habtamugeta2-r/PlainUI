@@ -203,11 +203,11 @@ Dart exists.
 ```
 import "../data.dart" as data:
 
-    loadTasks(filter: String) -> Future<List<String>>
+    loadTasks(filter: Text) -> Future<List<Text>>
     AppLogo(size: double = 24)
 ```
 
-`task tasks: List<String> = data.loadTasks(filter)` becomes:
+`task tasks: List<Text> = data.loadTasks(filter)` becomes:
 
 ```dart
 import '../data.dart';

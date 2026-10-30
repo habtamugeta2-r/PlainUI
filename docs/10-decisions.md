@@ -17,8 +17,10 @@ Status legend: **decided** (act on it), **provisional** (act on it, cheap to rev
 ### A1 — PlainUI owns its type system — *provisional, lands in v2.0*
 
 `.pui` files write `Text`, `Int`, `Float`, `Bool`, `Color`, `Duration`, `List<T>`, `Optional<T>`.
-Each target maps them (`Text → String / String / string`). Dart's spellings (`String`, `int`) remain
-accepted as deprecated aliases during 1.x and are rewritten by `plainui migrate`.
+Each target maps them (`Text → String / String / string`). Dart's spellings (`String`, `int`),
+`double` and `bool` remain accepted with deprecation warnings throughout every 1.x release and are
+rewritten by `plainui migrate`. **Removal is reserved for v2.0.0**; no 1.x release removes or
+changes their meaning. The planned breaking change is recorded in `CHANGELOG.md`.
 
 **Why:** a type error has to read the same in every target, and the mapping *is* what makes a second
 target a compiler rather than a translator. Dual syntax forever is how languages accumulate
@@ -29,8 +31,11 @@ example a Compose `Modifier`, a TS discriminated union). Then the type system is
 
 ### A2 — Nullability is explicit — *provisional, lands with A1*
 
-There is no implicit `null`. Absence is `Optional<T>`; a value is either present or asked-for, and
-`.orElse(...)` / `if x.exists:` are the only ways through. Host interop converts at the boundary.
+There is no implicit `null`. Absence is `Optional<T>`; `null` is accepted only where an Optional is
+expected. Read an Optional with `.orElse(fallback)` or branch on its boolean `.exists` property, as
+in `if name.exists:`; inside that true branch, `name` is narrowed to `T`. An Optional cannot be used
+as its inner `T` without one of those explicit forms. Nullable host inputs and results are described as `Optional<T>` at the PlainUI boundary, so
+the host language's null representation never leaks into `.pui`.
 
 **Why:** null is exactly where cross-target semantics diverge (Kotlin `?`, Swift `Optional`, TS
 `| null`, JS `undefined`). One rule everywhere beats four faithful translations of four different

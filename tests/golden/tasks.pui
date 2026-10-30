@@ -2,9 +2,9 @@
 
 screen Tasks:
 
-    task items: List<String> = loadItems()
+    task items: List<Text> = loadItems()
 
-    state filter: String = ""
+    state filter: Text = ""
 
     column padding=16 gap=8:
 
@@ -14,9 +14,9 @@ screen Tasks:
 
             progress
 
-        elif items.error != null:
+        elif items.error.exists:
 
-            text items.error color=#dc2626
+            text items.error.orElse("Unknown error") color=#dc2626
 
             button "Retry":
                 on tap:

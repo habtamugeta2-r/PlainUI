@@ -4,15 +4,15 @@
 import "theme.pui"
 import "../model/data.dart" as data:
 
-    loadComments(id: String) -> Future<List<String>>
-    addComment(id: String, body: String) -> Future<void>
+    loadComments(id: Text) -> Future<List<Text>>
+    addComment(id: Text, body: Text) -> Future<void>
 
-screen Detail(id: String, title: String = "Issue"):
+screen Detail(id: Text, title: Text = "Issue"):
 
-    state note: String = ""
-    state posted: bool = false
+    state note: Text = ""
+    state posted: Bool = false
 
-    task comments: List<String> = data.loadComments(id)
+    task comments: List<Text> = data.loadComments(id)
 
     // A computed value, not a stored counter: the comment list is the only source of truth, so the
     // count cannot disagree with what is on screen.
@@ -38,9 +38,9 @@ screen Detail(id: String, title: String = "Issue"):
 
                 progress
 
-            elif comments.error != null:
+            elif comments.error.exists:
 
-                text comments.error color=danger
+                text comments.error.orElse("Unknown error") color=danger
 
             else:
 

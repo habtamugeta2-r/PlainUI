@@ -3,12 +3,12 @@
  * decide whether a name is legal or a spelling is wrong.
  */
 
-import { CAPABILITIES, type Capability, type Target, type TargetId, fullySupports, supports } from './contract.ts';
+import { CAPABILITIES, type Capability, type Target, type TargetId, type TargetTypeMap, type TargetTypeNames, type TargetTypeSyntax, fullySupports, supports } from './contract.ts';
 import { FLUTTER_TARGET } from './flutter.ts';
 import { HTML_TARGET } from './html.ts';
 
 export { CAPABILITIES, fullySupports, supports };
-export type { Capability, Target, TargetId };
+export type { Capability, Target, TargetId, TargetTypeMap, TargetTypeNames, TargetTypeSyntax };
 export { FLUTTER_TARGET, HTML_TARGET };
 
 export const TARGETS: ReadonlyMap<TargetId, Target> = new Map<TargetId, Target>([

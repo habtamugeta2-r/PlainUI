@@ -4,7 +4,7 @@
 // an argument of the wrong type, a future used as a value — is a `.pui` error instead of a Dart one.
 import "../data.dart" as data:
 
-    loadTasks(filter: String) -> Future<List<String>>
+    loadTasks(filter: Text) -> Future<List<Text>>
 
 theme Async:
 
@@ -15,9 +15,9 @@ theme Async:
 
 screen Async:
 
-    task tasks: List<String> = data.loadTasks("")
+    task tasks: List<Text> = data.loadTasks("")
 
-    state filter: String = ""
+    state filter: Text = ""
 
     column padding=md gap=sm:
 
@@ -31,10 +31,10 @@ screen Async:
                 progress
                 text "Loading…" style=caption
 
-        elif tasks.error != null:
+        elif tasks.error.exists:
 
             column gap=sm:
-                text tasks.error color=danger
+                text tasks.error.orElse("Unknown error") color=danger
                 button "Try again":
                     on tap:
                         tasks.retry()

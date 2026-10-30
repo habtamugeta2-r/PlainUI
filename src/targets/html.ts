@@ -23,6 +23,26 @@ const RESERVED_WORDS: ReadonlySet<string> = new Set([
   'body', 'class', 'dir', 'head', 'hidden', 'html', 'id', 'lang', 'script', 'style', 'title',
 ]);
 
+const TYPES: Target['types'] = {
+  names: {
+    Text: 'string', String: 'string',
+    Int: 'number', int: 'number',
+    Float: 'number', double: 'number',
+    Bool: 'boolean', bool: 'boolean',
+    Num: 'number', num: 'number',
+    Dynamic: 'unknown', dynamic: 'unknown', Object: 'unknown',
+    Color: 'string', Duration: 'number',
+  },
+  optional: { prefix: '', suffix: ' | null' },
+  generics: {
+    List: { prefix: 'Array<', suffix: '>' },
+    Iterable: { prefix: 'Iterable<', suffix: '>' },
+    Set: { prefix: 'Set<', suffix: '>' },
+    Map: { prefix: 'Record<', suffix: '>', separator: ', ' },
+    Future: { prefix: 'Promise<', suffix: '>' },
+  },
+};
+
 export const HTML_TARGET: Target = {
   id: 'html',
   label: 'HTML preview',
@@ -35,6 +55,7 @@ export const HTML_TARGET: Target = {
   // A `.pui` type annotation is not written into the preview, so a near-miss spelling is not an
   // error there; the front end still reports it through `typeSpellings` when the target has one.
   typeSpellings: {},
+  types: TYPES,
   enumAliases: {},
   capabilities: {
     state: { level: 'full', note: 'The initial value of every state is rendered.' },

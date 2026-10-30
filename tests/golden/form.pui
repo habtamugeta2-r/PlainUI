@@ -3,7 +3,7 @@
 import "../widgets/app_logo.dart"
 import "package:flutter/services.dart"
 
-component Field(label: String, hint: String):
+component Field(label: Text, hint: Text):
 
     column gap=4:
         text label style=label
@@ -11,10 +11,10 @@ component Field(label: String, hint: String):
 
 screen SignUp:
 
-    state email: String = ""
-    state password: String = ""
-    state busy: bool = false
-    state error: String = ""
+    state email: Text = ""
+    state password: Text = ""
+    state busy: Bool = false
+    state error: Text = ""
 
     column padding=24 gap=16:
 

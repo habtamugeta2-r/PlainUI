@@ -2,11 +2,11 @@
 
 screen Signup:
 
-    state email: String = ""
-    state handle: String = ""
-    state password: String = ""
-    state note: String = ""
-    state feedback: String = ""
+    state email: Text = ""
+    state handle: Text = ""
+    state password: Text = ""
+    state note: Text = ""
+    state feedback: Text = ""
 
     column padding=20 gap=12:
 

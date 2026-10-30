@@ -22,8 +22,8 @@ style price:
 
 screen Counter:
 
-    state count: int = 0
-    state name: String = "PlainUI"
+    state count: Int = 0
+    state name: Text = "PlainUI"
 
     column padding=24 gap=16 main=center:
 
@@ -50,7 +50,7 @@ screen Counter:
     title: 'Profile card',
     source: `// Layout widgets, a component and a slot.
 
-component Stat(label: String, value: String):
+component Stat(label: Text, value: Text):
 
     column gap=2 cross=center:
         text value style=subheading
@@ -58,7 +58,7 @@ component Stat(label: String, value: String):
 
 screen Profile:
 
-    state following: bool = false
+    state following: Bool = false
 
     column padding=24 gap=16:
 
@@ -90,7 +90,7 @@ screen Profile:
     title: 'Todo list',
     source: `// A list, a loop and a conditional in one screen.
 
-component Task(title: String):
+component Task(title: Text):
 
     row gap=8 main=between:
         text title
@@ -98,7 +98,7 @@ component Task(title: String):
 
 screen Todo:
 
-    state items: List<String> = ["Write the spec", "Build the compiler", "Ship it"]
+    state items: List<Text> = ["Write the spec", "Build the compiler", "Ship it"]
 
     column padding=20 gap=12:
 

@@ -2,11 +2,11 @@
 
 screen Effects:
 
-    state query: String = ""
-    state count: int = 0
-    state hits: int = 0
-    state label: String = ""
-    state items: List<String> = []
+    state query: Text = ""
+    state count: Int = 0
+    state hits: Int = 0
+    state label: Text = ""
+    state items: List<Text> = []
 
     effect on query:
         set hits = hits + 1

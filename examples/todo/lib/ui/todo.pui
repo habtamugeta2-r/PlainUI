@@ -4,9 +4,9 @@ import "task_row.pui"
 
 screen Todo:
 
-    state draft: String = ""
-    state tasks: List<String> = ["Write the spec", "Build the compiler"]
-    state done: int = 0
+    state draft: Text = ""
+    state tasks: List<Text> = ["Write the spec", "Build the compiler"]
+    state done: Int = 0
 
     column padding=20 gap=12:
 

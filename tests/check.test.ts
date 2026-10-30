@@ -56,6 +56,32 @@ test('a realistic screen validates cleanly', () => {
   assert.deepEqual(problems.map((d) => `${d.code} ${d.message}`), []);
 });
 
+test('legacy Dart primitive types warn at each exact token while remaining accepted', () => {
+  const text = [
+    'screen Home(title: String):',
+    '    state count: int = 0',
+    '    state enabled: bool = true',
+    '    state values: List<double> = []',
+    '    text title',
+    '',
+  ].join('\n');
+  const { bag, file } = run(text);
+  const warnings = bag.diagnostics.filter((diagnostic) => diagnostic.code === 'PUI2207');
+  assert.deepEqual(
+    warnings
+      .sort((a, b) => a.span.start - b.span.start)
+      .map((diagnostic) => file.text.slice(diagnostic.span.start, diagnostic.span.end)),
+    ['String', 'int', 'bool', 'double'],
+  );
+  assert.equal(bag.diagnostics.some((diagnostic) => diagnostic.severity === 'error'), false);
+  assert.match(warnings[0]?.hint ?? '', /Text/);
+});
+
+test('PlainUI primitive spellings do not receive deprecation warnings', () => {
+  const text = ['screen Home(title: Text):', '    state count: Int = 0', '    column:', '        text title', '        text count', ''].join('\n');
+  assert.equal(warningsOf(text).includes('PUI2207'), false);
+});
+
 test('unknown lowercase element suggests the nearest built-in', () => {
   const d = diagnosticFor('screen Home:\n    colum:\n        text "x"\n', 'PUI2001');
   assert.match(d.hint ?? '', /column/);
@@ -177,7 +203,7 @@ test('a parameter used only through short interpolation counts as used', () => {
     '        Price("Total")',
     '',
   ].join('\n');
-  assert.deepEqual(warningsOf(text), []);
+  assert.deepEqual(warningsOf(text), ['PUI2207']);
   assert.deepEqual(errorsOf(text), []);
 });
 
@@ -281,7 +307,7 @@ test('PlainUI\'s own type spellings (decision A1) are accepted, not reported', (
   assert.deepEqual(errorsOf(['screen Home:', '    state name: Text = "hi"', '    text name', ''].join('\n')), []);
   assert.deepEqual(errorsOf(['screen Home:', '    state ratio: Float = 1.5', '    text "${ratio}"', ''].join('\n')), []);
   assert.deepEqual(errorsOf(['screen Home:', '    state flag: Bool = true', '    text "${flag}"', ''].join('\n')), []);
-  assert.deepEqual(errorsOf(['screen Home:', '    state maybe: Optional<Int> = null', '    text "${maybe}"', ''].join('\n')), []);
+  assert.deepEqual(errorsOf(['screen Home:', '    state maybe: Optional<Int> = null', '    text maybe.orElse(0)', ''].join('\n')), []);
 });
 
 test('PlainUI type spellings resolve to the same UiType as their Dart aliases', () => {
@@ -293,7 +319,7 @@ test('PlainUI type spellings resolve to the same UiType as their Dart aliases', 
   assert.equal(float.analysis.stateTypes.get('Home')?.get('ratio')?.kind, 'double');
   const bool = run(['screen Home:', '    state flag: Bool = true', '    text "${flag}"', ''].join('\n'));
   assert.equal(bool.analysis.stateTypes.get('Home')?.get('flag')?.kind, 'bool');
-  const optional = run(['screen Home:', '    state maybe: Optional<Int> = null', '    text "${maybe}"', ''].join('\n'));
+  const optional = run(['screen Home:', '    state maybe: Optional<Int> = null', '    text maybe.orElse(0)', ''].join('\n'));
   const maybeType = optional.analysis.stateTypes.get('Home')?.get('maybe');
   assert.equal(maybeType?.kind, 'nullable');
   assert.equal(maybeType?.kind === 'nullable' ? maybeType.inner.kind : undefined, 'int');

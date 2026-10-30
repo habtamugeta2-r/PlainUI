@@ -587,16 +587,12 @@ function unwrapOptionals(text: string): string {
 }
 
 /**
- * Rewrite a user-written type annotation into the Dart text a generator can splice straight into
- * source: `Text` -> `String`, `Int` -> `int`, `Float` -> `double`, `Bool` -> `bool`,
- * `Optional<T>` -> `T?` (recursively). Everything else — custom class names, `List`/`Iterable`/
- * `Set`/`Map` and their type arguments, an existing trailing `?` — passes through untouched.
+ * Legacy Dart-only formatter retained for compatibility and migration tests. Generated code uses
+ * `typeTextForTarget` / `typeToTargetText` in `src/codegen/types.ts`, driven by `Target.types`;
+ * those target-aware formatters are the only route from semantic types to generated code.
  *
- * `typeFromText` turns an annotation into the semantic `UiType` the checker reasons about;
- * `typeToText` turns a *semantic* type back into Dart text, which is lossy for anything the model
- * does not keep (an `Iterable<T>` round-trips as `List<T>`, a `Map<K, V>` loses its arguments). This
- * function is for the one place neither applies: a raw annotation that is already Dart-legal text
- * apart from PlainUI's own spellings, and needs to stay exactly that text otherwise.
+ * New code should not call this when producing target output; the canonical target-map coverage
+ * lives in `src/codegen/types.ts` and is tested against each entry in the target registry.
  */
 export function toDartTypeText(text: string): string {
   const trimmed = text.trim();

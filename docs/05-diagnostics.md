@@ -56,6 +56,11 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2113`](#pui2113) | error | Statement does nothing |
 | [`PUI2114`](#pui2114) | error | Assignment to a design token |
 | [`PUI2206`](#pui2206) | error | Not a target type |
+| [`PUI2207`](#pui2207) | warning | Deprecated host type spelling |
+| [`PUI2365`](#pui2365) | error | Optional value needs handling |
+| [`PUI2366`](#pui2366) | error | Unsupported Optional operation |
+| [`PUI2367`](#pui2367) | error | Invalid Optional fallback |
+| [`PUI2368`](#pui2368) | error | Optional needs a type argument |
 | [`PUI2205`](#pui2205) | error | slot outside a component |
 | [`PUI2201`](#pui2201) | error | Missing required parameter |
 | [`PUI2203`](#pui2203) | error | Children supplied to a component without a slot |
@@ -486,6 +491,50 @@ Design tokens are compile-time values, not variables, so they cannot be assigned
 A type annotation looks like a Dart type but Dart spells it differently, so the generated file would not compile.
 
 *Fix:* Use the lowercase Dart spelling.
+
+### PUI2207
+
+**Deprecated host type spelling** — warning
+
+Dart primitive type spellings are accepted for compatibility, but PlainUI has its own target-independent type vocabulary.
+
+*Fix:* Replace String/int/double/bool with Text/Int/Float/Bool, respectively.
+
+## Styles and bindings
+
+### PUI2365
+
+**Optional value needs handling** — error
+
+An Optional<T> may be absent and cannot be used as a T without an explicit fallback or presence test.
+
+*Fix:* Use value.orElse(fallback), or test value.exists before choosing a branch.
+
+### PUI2366
+
+**Unsupported Optional operation** — error
+
+Optional<T> exposes only the exists property and the orElse(fallback) operation.
+
+*Fix:* Use .exists or .orElse(fallback).
+
+### PUI2367
+
+**Invalid Optional fallback** — error
+
+orElse takes exactly one positional fallback whose type matches the Optional value.
+
+*Fix:* Write value.orElse(fallback) with one compatible fallback.
+
+### PUI2368
+
+**Optional needs a type argument** — error
+
+Optional without a type argument has no statically known value type.
+
+*Fix:* Write Optional<T>, for example Optional<Text>.
+
+## Types
 
 ### PUI2205
 

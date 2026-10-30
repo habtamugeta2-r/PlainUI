@@ -12,10 +12,10 @@ theme Signup:
 
 screen Signup:
 
-    state email: String = ""
-    state handle: String = ""
-    state password: String = ""
-    state done: bool = false
+    state email: Text = ""
+    state handle: Text = ""
+    state password: Text = ""
+    state done: Bool = false
 
     form:
 

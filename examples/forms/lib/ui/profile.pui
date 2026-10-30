@@ -5,9 +5,9 @@
 
 screen Profile:
 
-    state phone: String = ""
-    state bio: String = ""
-    state saved: String = ""
+    state phone: Text = ""
+    state bio: Text = ""
+    state saved: Text = ""
 
     form:
 

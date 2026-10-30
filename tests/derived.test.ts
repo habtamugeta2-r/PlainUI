@@ -20,7 +20,7 @@ function compile(text: string) {
 }
 
 function screen(...body: readonly string[]): string {
-  return ['screen Home:', '', '    state count: int = 1', '    state label: String = "x"', '', ...body, ''].join('\n');
+  return ['screen Home:', '', '    state count: Int = 1', '    state label: Text = "x"', '', ...body, ''].join('\n');
 }
 
 const IGNORED = new Set(['PUI2404', 'PUI2405']);
@@ -153,13 +153,13 @@ test('a derived value can read parameters and tasks', () => {
     '',
     '    derived count = items.value.length',
     '    derived busy = items.loading',
-    '    derived failure = items.error',
+    '    derived failure: Optional<Text> = items.error',
     '',
     '    column:',
     '',
     '        text "${count}${busy}"',
-    '        if failure != null:',
-    '            text failure',
+    '        if failure.exists:',
+    '            text failure.orElse("Unknown error")',
     '',
   ].join('\n');
   assert.deepEqual(errors(tasks), []);
