@@ -102,7 +102,7 @@ workflow `flutter-verify.yml` on machines that have it.
 ```bash
 npm install            # dev toolchain (TypeScript, esbuild)
 npm run build          # compile the CLI to dist/
-npm test               # 190 tests: lexer, parser, checker, codegen, formatter, CLI, docs
+npm test               # 199 tests: lexer, parser, checker, codegen, formatter, CLI, docs
 
 node dist/cli.js build examples/counter   # .pui -> lib/generated/*.pui.dart
 node dist/cli.js watch examples/counter   # rebuild on save

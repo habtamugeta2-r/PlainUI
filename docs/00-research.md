@@ -261,6 +261,19 @@ implementation.
 | D20 | Reference implementation is TypeScript/Node, emitting Dart | Independent compiler, testable here, runs in the browser playground; the *generated* artefact stays pure Dart | Writing the compiler in Dart (nothing wrong with it; see note below) |
 | D21 | Language is versioned inside the file (`pui 1` implicit) and generators declare a target Dart/Flutter floor | Generated code should not silently require a newer Flutter | Unversioned output |
 
+Decisions made while building the compiler, recorded after the fact because they changed the
+shape of the product rather than the language:
+
+| # | Decision | Rationale | Rejected alternative |
+|---|---|---|---|
+| D22 | A formatter ships with the compiler, and golden sources are required to be formatter-clean | A language without one canonical layout turns every diff into a style argument; making the goldens canonical keeps the formatter honest | Leave formatting to editors |
+| D23 | A second target (static HTML) exists for previews | It is the cheapest way to prove the AST is host-neutral, and it gives the playground a real visual preview without a Flutter toolchain | Playground that only shows Dart |
+| D24 | Project roots are derived from `plainui.config.json`, not from the working directory | `plainui build examples/counter` and running from a subdirectory both have to work, and only the config knows where a project starts | Always resolve against `cwd` |
+| D25 | Diagnostic severity lives in the catalogue and call sites are checked against it | Severity is a property of the rule; a second table would drift. A test compares the catalogue with every `this.error('PUI…')` site | Per-site severity, documented by hand |
+| D26 | Calls that mutate state run inside `setState`; other calls do not | `tasks.add(x)` without a rebuild is a silent bug, while wrapping host calls hides their side effects | Wrap every call / wrap nothing |
+| D27 | The playground imports the compiler rather than calling a server | Same code path as the CLI, nothing uploaded, no cold starts; a test drives it through jsdom | Server-side compile endpoint |
+| D28 | Examples are compiled on every commit and their `main.dart` is checked in | Documentation that cannot rot; the generated Dart stays out of git | Screenshots and prose |
+
 **On D20.** The original sketch suggests `dart run tool/plainui.dart build`. Hosting the
 compiler in Dart is a fine choice and is *the* right long-term choice for a Dart-first
 ecosystem (no extra toolchain in CI, and `build_runner` integration becomes natural). It was
