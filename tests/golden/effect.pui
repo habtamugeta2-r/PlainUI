@@ -1,0 +1,28 @@
+// `effect on <state>`: actions that run on mount and when the named state changes.
+
+screen Effects:
+
+    state query: String = ""
+    state count: int = 0
+    state hits: int = 0
+    state label: String = ""
+    state items: List<String> = []
+
+    effect on query:
+        set hits = hits + 1
+        set label = "searching ${query}"
+
+    effect on count, query:
+        set items = []
+
+    column padding=16 gap=8:
+
+        text label style=heading
+        text "${hits} hits in ${items.length}"
+        text "${count} taps"
+
+        input bind=query placeholder="Search" label="Query"
+
+        button "Bump":
+
+            on tap: set count += 1
