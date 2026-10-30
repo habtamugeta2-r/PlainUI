@@ -47,7 +47,7 @@ const SPACED = new Set([
 ]);
 
 /** Lines on which `=` is spaced (`state a = 1`); everywhere else it is tight (`gap=8`). */
-const SPACED_EQ_FIRST = new Set(['state', 'set', 'task']);
+const SPACED_EQ_FIRST = new Set(['state', 'set', 'task', 'derived']);
 
 /** Theme token lines (`color brand = #2563eb`) are spaced too, but only in that exact shape. */
 const TOKEN_CATEGORIES = new Set(['color', 'space', 'spacing', 'radius']);
