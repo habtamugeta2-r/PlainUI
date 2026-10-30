@@ -12,7 +12,7 @@ could go wrong — the second half matters more.
 | Project compilation | imports, re-basing, duplicate detection, deterministic output |
 | CLI | build, check, watch, format, init, ast, tokens, explain, widgets |
 | Tooling | formatter, playground (browser), golden files, examples, generated docs |
-| Tests | 190, no mocks, no network, no Flutter SDK required |
+| Tests | 208, no mocks, no network, no Flutter SDK required |
 | Real Flutter verification | `flutter-verify.yml` — generate, `dart analyze`, widget test |
 
 ## Next, in order
@@ -62,10 +62,13 @@ Until then, the playground demonstrates the loop: type, see diagnostics, see out
 
 The AST holds no framework nouns, so the work is a registry variant plus an emitter, not a fork.
 
-### 4. Watch mode that watches (not polls)
+### 4. ~~Watch mode that watches (not polls)~~ — done
 
-Polling is fine for `npm run watch` on 200 files; it is not fine on 20 000. `fs.watch` with
-recursive mode where the platform supports it, plus a debounce, is the fix.
+`src/watch.ts` now uses `fs.watch` (recursive → per-directory → polling), debounces saves by 60 ms
+and queues one rebuild when a save lands mid-build. The next step here is not the mechanism but the
+incrementality: every change recompiles every file, because `compileProject` has no cache. A
+`mtime`+content-hash memo per source file is the obvious fix, and it is also what a language server
+needs.
 
 ### 5. Layout intent, not just boxes
 

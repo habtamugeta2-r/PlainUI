@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 
+import { watchForChanges } from '../src/watch.ts';
+
 const root = mkdtempSync(join(tmpdir(), 'plainui-watch-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
@@ -63,5 +65,77 @@ test('watch rebuilds when a source file changes', { timeout: 30_000 }, async () 
   } finally {
     child.kill('SIGINT');
     await new Promise((resolve) => child.on('exit', resolve));
+  }
+});
+
+test('watchForChanges reports .pui edits and ignores everything else', { timeout: 20_000 }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'plainui-watch-unit-'));
+  try {
+    writeFileSync(join(dir, 'home.pui'), 'screen Home:\n', 'utf8');
+
+    const seen: string[][] = [];
+    const watcher = watchForChanges({
+      roots: [dir],
+      onChange: (changed) => seen.push([...changed]),
+      debounceMs: 10,
+    });
+    try {
+      assert.ok(['recursive', 'per-directory', 'polling'].includes(watcher.mode), `unexpected mode ${watcher.mode}`);
+
+      writeFileSync(join(dir, 'home.pui'), 'screen Home:\n    text "hi"\n', 'utf8');
+      await waitFor(() => seen.length > 0, 'the first change');
+
+      const first = seen[0]!;
+      assert.equal(first.some((path) => path.endsWith('home.pui')), true, `expected home.pui, got ${first.join(', ')}`);
+
+      const before = seen.length;
+      writeFileSync(join(dir, 'notes.txt'), 'not a source file\n', 'utf8');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.equal(seen.length, before, 'a .txt file should not trigger a rebuild');
+    } finally {
+      watcher.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('watch sees a file created in a new directory', { timeout: 30_000 }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'plainui-watch-new-'));
+  try {
+    writeFileSync(join(dir, 'plainui.config.json'), '{ "srcDir": "lib/ui", "outDir": "lib/generated" }\n', 'utf8');
+    mkdirSync(join(dir, 'lib/ui'), { recursive: true });
+    writeFileSync(join(dir, 'lib/ui/home.pui'), HOME, 'utf8');
+
+    const child = spawn(process.execPath, ['--experimental-strip-types', 'src/cli.ts', 'watch', dir], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      output += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      output += chunk;
+    });
+
+    try {
+      await waitFor(() => output.includes('watching'), 'the watcher to start');
+      mkdirSync(join(dir, 'lib/ui/parts'), { recursive: true });
+      writeFileSync(join(dir, 'lib/ui/parts/header.pui'), 'component Header():\n    text "head"\n', 'utf8');
+
+      await waitFor(
+        () => existsSync(join(dir, 'lib/generated/header.pui.dart')),
+        'the new file to be compiled',
+      );
+    } finally {
+      child.kill('SIGINT');
+      await new Promise((resolve) => child.on('exit', resolve));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

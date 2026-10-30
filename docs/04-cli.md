@@ -40,8 +40,16 @@ Exit code `1` when there are errors, `0` otherwise (warnings included).
 
 ### `plainui watch`
 
-Rebuilds when a `.pui` file is added, removed or changed. Polls the tree every 250 ms — no
-watcher dependency, and it works on network filesystems where `fs.watch` does not.
+Rebuilds when a `.pui` file — or `plainui.config.json` — is added, removed or changed.
+
+Watching is push-based (`fs.watch`) and degrades instead of failing: recursive watching where the
+platform allows it, then one watcher per directory, then polling every 250 ms. `--verbose` prints
+which strategy is in use. Saves are debounced by 60 ms, so the three events an editor emits for one
+keystroke produce one rebuild, and a save during a build queues exactly one follow-up rather than
+stacking builds.
+
+A new file in a directory that did not exist at startup is picked up: the recursive watcher sees
+it, and in per-directory mode each new directory is attached as it appears.
 
 ### `plainui format`
 

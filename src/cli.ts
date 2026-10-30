@@ -18,6 +18,7 @@ import { renderAst } from './debug.ts';
 import { sourceFile } from './source.ts';
 import { WIDGETS, eventsFor, propsFor, widgetsByGroup } from './widgets/registry.ts';
 import { COMPILER_VERSION } from './compile.ts';
+import { watchForChanges } from './watch.ts';
 
 // ---------------------------------------------------------------------------------------------
 // Argument parsing
@@ -369,52 +370,47 @@ async function commandFormat(args: Args): Promise<number> {
   return 0;
 }
 
-const WATCH_INTERVAL_MS = 250;
-
 async function commandWatch(args: Args): Promise<number> {
   const { config, roots } = resolveProject(args);
+  const sourceCount = discoverSources(roots, config).length;
 
-  const snapshot = (): Map<string, string> => {
-    const map = new Map<string, string>();
-    for (const file of discoverSources(roots, config)) {
-      const stats = statSync(file);
-      map.set(file, `${stats.mtimeMs}:${stats.size}`);
-    }
-    return map;
-  };
-
-  let previous = snapshot();
-  say(`plainui: watching ${previous.size} file(s) — press Ctrl+C to stop`);
+  say(`plainui: watching ${sourceCount} file(s) — press Ctrl+C to stop`);
   await commandBuild(args);
 
   return await new Promise<number>((resolvePromise) => {
-    const timer = setInterval(() => {
-      let next: Map<string, string>;
-      try {
-        next = snapshot();
-      } catch {
+    let building = false;
+    let queued = false;
+
+    const build = (changed: readonly string[]): void => {
+      if (building) {
+        queued = true;
         return;
       }
-      let dirty = next.size !== previous.size;
-      if (!dirty) {
-        for (const [file, stamp] of next) {
-          if (previous.get(file) !== stamp) {
-            dirty = true;
-            break;
-          }
-        }
-      }
-      if (!dirty) return;
-      previous = next;
+      building = true;
       const stamp = new Date().toLocaleTimeString();
-      say(`\n[${stamp}] change detected`);
+      const first = changed[0] ?? '';
+      const where = changed.length > 1 ? `${changed.length} files` : relativePath(process.cwd(), first);
+      say(`\n[${stamp}] change detected — ${where}`);
       void commandBuild(args).then((code) => {
+        building = false;
         if (code === 0) say(`[${stamp}] build ok — waiting for changes`);
+        if (queued) {
+          queued = false;
+          build([first]);
+        }
       });
-    }, WATCH_INTERVAL_MS);
+    };
+
+    const watcher = watchForChanges({
+      roots,
+      onChange: build,
+      isRelevant: (path) => path.endsWith('.pui') || path.endsWith('plainui.config.json'),
+    });
+
+    if (process.argv.includes('--verbose')) say(`plainui: using ${watcher.mode} watching`);
 
     const stop = (): void => {
-      clearInterval(timer);
+      watcher.close();
       say('\nplainui: stopped');
       resolvePromise(0);
     };
