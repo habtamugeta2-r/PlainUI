@@ -49,7 +49,17 @@ keystroke produce one rebuild, and a save during a build queues exactly one foll
 stacking builds.
 
 A new file in a directory that did not exist at startup is picked up: the recursive watcher sees
-it, and in per-directory mode each new directory is attached as it appears.
+it, and in per-directory mode each new directory is attached as it appears. A directory event is
+itself a reason to rebuild — `mkdir parts && echo … > parts/a.pui` gives the file no event of its
+own — and the generated output directory is excluded, so a build never triggers the next one.
+
+Watching starts *before* the first compile, so a save that lands while it runs is a change rather
+than a miss: polling takes its baseline snapshot at startup, and anything written before that used
+to be invisible.
+
+`PLAINUI_WATCH_MODE=recursive|per-directory|polling` forces a strategy. It is there for network
+filesystems, where `fs.watch` reports nothing, and for tests that need to exercise the fallbacks
+deliberately instead of hoping the platform picks them.
 
 Changes are incremental: the session keeps a per-file cache keyed by the file's text, its imports
 and the project's declaration table, so saving one screen recompiles one screen. `--verbose` shows

@@ -139,7 +139,81 @@ test('watch sees a file created in a new directory', { timeout: 30_000 }, async 
       );
     } finally {
       child.kill('SIGINT');
-      await new Promise((resolve) => child.on('exit', resolve));
+      // A child that already exited never emits `exit` again, so the wait has a floor as well.
+      await Promise.race([new Promise((resolve) => child.on('exit', resolve)), new Promise((resolve) => setTimeout(resolve, 3_000))]);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const mode of ['recursive', 'per-directory', 'polling'] as const) {
+  test(`watchForChanges reports edits in ${mode} mode`, { timeout: 20_000 }, async () => {
+    // The fallbacks matter: a project on a network filesystem gets polling, and a platform without
+    // recursive watching gets one watcher per directory. Both are exercised deliberately here.
+    const dir = mkdtempSync(join(tmpdir(), `plainui-watch-${mode}-`));
+    const previous = process.env['PLAINUI_WATCH_MODE'];
+    process.env['PLAINUI_WATCH_MODE'] = mode;
+    try {
+      writeFileSync(join(dir, 'home.pui'), 'screen Home:\n', 'utf8');
+      const seen: string[][] = [];
+      const watcher = watchForChanges({ roots: [dir], onChange: (changed) => seen.push([...changed]), debounceMs: 10 });
+      try {
+        assert.equal(watcher.mode, mode);
+        writeFileSync(join(dir, 'home.pui'), 'screen Home:\n    text "hi"\n', 'utf8');
+        await waitFor(() => seen.length > 0, `the change in ${mode} mode`);
+        assert.ok(seen[0]!.some((path) => path.endsWith('home.pui')));
+      } finally {
+        watcher.close();
+      }
+    } finally {
+      if (previous === undefined) delete process.env['PLAINUI_WATCH_MODE'];
+      else process.env['PLAINUI_WATCH_MODE'] = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('an edit made while the first build is running is not lost', { timeout: 30_000 }, async () => {
+  // The watcher starts before the first compile, so a save that lands during it must still be
+  // picked up. With polling the baseline snapshot is taken at startup, which made this a real
+  // miss rather than a theoretical one.
+  const dir = mkdtempSync(join(tmpdir(), 'plainui-watch-race-'));
+  try {
+    writeFileSync(join(dir, 'plainui.config.json'), '{ "srcDir": "lib/ui", "outDir": "lib/generated" }\n', 'utf8');
+    mkdirSync(join(dir, 'lib/ui'), { recursive: true });
+    writeFileSync(join(dir, 'lib/ui/home.pui'), HOME, 'utf8');
+
+    const child = spawn(process.execPath, ['--experimental-strip-types', 'src/tooling/cli.ts', 'watch', dir], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: spawnEnv,
+    });
+    let output = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      output += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      output += chunk;
+    });
+
+    try {
+      // No waiting: edit immediately, while the first build is still starting.
+      writeFileSync(join(dir, 'lib/ui/home.pui'), ['screen Home:', '', '    text "edited immediately"', ''].join('\n'), 'utf8');
+      const generated = join(dir, 'lib/generated/home.pui.dart');
+      const compiled = (): boolean =>
+        existsSync(generated) && readFileSync(generated, 'utf8').includes('edited immediately');
+      try {
+        await waitFor(compiled, 'the immediate edit to be compiled');
+      } catch (error) {
+        assert.fail(`${(error as Error).message}\n--- watcher output ---\n${output}`);
+      }
+    } finally {
+      child.kill('SIGINT');
+      // A child that already exited never emits `exit` again, so the wait has a floor as well.
+      await Promise.race([new Promise((resolve) => child.on('exit', resolve)), new Promise((resolve) => setTimeout(resolve, 3_000))]);
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -79,9 +79,11 @@ jobs:
 
           # Generated code is machine written, so lint opinions about it are not interesting;
           # errors and warnings are.
+          # `run:` steps execute with `bash -e`, so a non-zero exit would end the step before the
+          # findings could be captured. `|| status=$?` keeps the status and the output.
+          status=0
           dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/verify.dart \
-            > /tmp/analyze.log 2>&1
-          status=$?
+            > /tmp/analyze.log 2>&1 || status=$?
           cat /tmp/analyze.log
           if [ "$status" -ne 0 ]; then
             # Annotations are reachable through the API when job logs are not. Emit the findings
@@ -131,8 +133,8 @@ jobs:
             });
           }
           DART
-          flutter test test/generated_test.dart > /tmp/test.log 2>&1
-          status=$?
+          status=0
+          flutter test test/generated_test.dart > /tmp/test.log 2>&1 || status=$?
           cat /tmp/test.log
           if [ "$status" -ne 0 ]; then
             grep -E 'Expected:|Actual:|Error|Exception|failed' /tmp/test.log | head -30 \

@@ -284,45 +284,59 @@ async function commandFormat(args: Args): Promise<number> {
 }
 
 async function commandWatch(args: Args): Promise<number> {
-  const { config, roots } = resolveProject(args);
+  const { config, roots, root } = resolveProject(args);
   const sourceCount = sourcesOf(roots, config).length;
   // One cache for the whole session: a save recompiles the saved file, not the project.
   const cache = new ProjectCache();
 
   say(`plainui: watching ${sourceCount} file(s) — press Ctrl+C to stop`);
-  await commandBuild(args, cache);
 
   return await new Promise<number>((resolvePromise) => {
     let building = false;
     let queued = false;
 
-    const build = (changed: readonly string[]): void => {
+    /**
+     * Runs a build, or queues exactly one if a build is already running.
+     *
+     * `changed` is null for the initial build, which is also started through this gate: watching
+     * begins *before* the first compile, so an edit made while it runs is a change, not a silent
+     * miss. Polling made that concrete — its baseline snapshot is taken when the watcher starts, so
+     * anything written between "watching" and the snapshot was invisible.
+     */
+    const build = (changed: readonly string[] | null): void => {
       if (building) {
         queued = true;
         return;
       }
       building = true;
       const stamp = new Date().toLocaleTimeString();
-      const first = changed[0] ?? '';
-      const where = changed.length > 1 ? `${changed.length} files` : relativePath(process.cwd(), first);
-      say(`\n[${stamp}] change detected — ${where}`);
+      const first = changed?.[0] ?? '';
+      if (changed !== null) {
+        const where = changed.length > 1 ? `${changed.length} files` : relativePath(process.cwd(), first);
+        say(`\n[${stamp}] change detected — ${where}`);
+      }
       void commandBuild(args, cache).then((code) => {
         building = false;
-        if (code === 0) say(`[${stamp}] build ok — waiting for changes`);
+        if (changed !== null && code === 0) say(`[${stamp}] build ok — waiting for changes`);
         if (queued) {
           queued = false;
-          build([first]);
+          build(changed === null ? [] : [first]);
         }
       });
     };
 
+    // Generated output is not input: watching it would make every build trigger the next one.
+    const outDir = resolve(root, config.outDir);
     const watcher = watchForChanges({
       roots,
-      onChange: build,
+      onChange: (changed) => build(changed),
       isRelevant: (path) => path.endsWith('.pui') || path.endsWith('plainui.config.json'),
+      ignore: (path) => path === outDir || path.startsWith(`${outDir}/`),
     });
 
     if (process.argv.includes('--verbose')) say(`plainui: using ${watcher.mode} watching`);
+
+    build(null);
 
     const stop = (): void => {
       watcher.close();

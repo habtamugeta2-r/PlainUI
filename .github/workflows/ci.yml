@@ -43,10 +43,6 @@ jobs:
           fi
           exit "$status"
 
-      - name: Annotation probe
-        if: always()
-        run: echo "::error ::probe-annotations-work"
-
       - name: Build the CLI
         run: npm run build
 

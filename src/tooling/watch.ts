@@ -26,6 +26,11 @@ export interface WatchOptions {
   readonly onChange: (changed: readonly string[]) => void;
   /** Which paths count as a change. Defaults to `.pui` files and `plainui.config.json`. */
   readonly isRelevant?: (path: string) => boolean;
+  /**
+   * Paths that never trigger a rebuild. The output directory belongs here: a build writes into it,
+   * and on platforms that report directory events the build would otherwise trigger itself.
+   */
+  readonly ignore?: (path: string) => boolean;
   readonly debounceMs?: number;
   readonly pollIntervalMs?: number;
 }
@@ -89,7 +94,7 @@ export function watchForChanges(options: WatchOptions): Watcher {
   };
 
   const record = (path: string): void => {
-    if (closed || !relevant(path)) return;
+    if (closed || !relevant(path) || ignored(path)) return;
     pending.add(path);
     // Coalesce the burst a single editor save produces: write, rename, attribute change.
     if (timer === undefined) timer = setTimeout(flush, debounceMs);
@@ -100,8 +105,10 @@ export function watchForChanges(options: WatchOptions): Watcher {
    * in the same millisecond — `mkdir parts && echo … > parts/a.pui` — produces no event of its own.
    * Rebuilding is the cheap, correct answer: the cache makes an unchanged project nearly free.
    */
+  const ignored = (path: string): boolean => options.ignore?.(path) === true;
+
   const recordDirectory = (path: string): void => {
-    if (closed) return;
+    if (closed || ignored(path)) return;
     pending.add(path);
     if (timer === undefined) timer = setTimeout(flush, debounceMs);
   };
@@ -114,10 +121,15 @@ export function watchForChanges(options: WatchOptions): Watcher {
     timer = undefined;
   };
 
+  // `PLAINUI_WATCH_MODE` forces a strategy. It exists for network filesystems (where fs.watch
+  // reports nothing) and for tests that need to exercise the fallbacks deliberately.
+  const forced = process.env['PLAINUI_WATCH_MODE'];
+
   // 1. Recursive watching, if the platform allows it.
   const recursive: FSWatcher[] = [];
   let recursiveOk = false;
   try {
+    if (forced !== undefined && forced !== 'recursive') throw new Error('skipped');
     for (const root of options.roots) {
       let stats;
       try {
@@ -157,6 +169,7 @@ export function watchForChanges(options: WatchOptions): Watcher {
 
   // 2. One watcher per directory. New directories are attached as they appear.
   const perDirectory = new Map<string, FSWatcher>();
+  const skipPerDirectory = forced === 'polling';
   const attach = (dir: string): void => {
     if (perDirectory.has(dir)) return;
     try {
@@ -182,6 +195,7 @@ export function watchForChanges(options: WatchOptions): Watcher {
   };
 
   try {
+    if (skipPerDirectory) throw new Error('skipped');
     for (const root of options.roots) {
       try {
         if (!statSync(root).isDirectory()) continue;
@@ -208,8 +222,10 @@ export function watchForChanges(options: WatchOptions): Watcher {
   }
 
   // 3. Last resort: poll mtimes, as v1 did everywhere.
-  const snapshot = (): Map<string, number> => {
-    const map = new Map<string, number>();
+  // `mtime` alone is not enough: two writes inside the same millisecond share it. Size breaks the
+  // tie for every edit that changes the content, which is every edit that matters.
+  const snapshot = (): Map<string, string> => {
+    const map = new Map<string, string>();
     const visit = (dir: string): void => {
       let entries: string[];
       try {
@@ -223,7 +239,7 @@ export function watchForChanges(options: WatchOptions): Watcher {
         try {
           const stats = statSync(full);
           if (stats.isDirectory()) visit(full);
-          else if (relevant(full)) map.set(full, stats.mtimeMs);
+          else if (relevant(full)) map.set(full, `${stats.mtimeMs}:${stats.size}`);
         } catch {
           // Ignore files that disappear mid-scan.
         }
