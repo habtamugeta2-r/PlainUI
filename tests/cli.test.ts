@@ -166,7 +166,8 @@ test('format rewrites files, --check reports and --stdout prints', async () => {
 
   const check = await run(['format', 'lib/ui', '--check'], directory);
   assert.equal(check.code, 3);
-  assert.match(check.err, /not formatted/);
+  assert.match(check.err, /PUI4003/);
+  assert.match(check.err, /need formatting/);
 
   const printed = await run(['format', 'lib/ui', '--stdout'], directory);
   assert.equal(printed.code, 0);

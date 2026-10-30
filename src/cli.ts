@@ -86,6 +86,13 @@ function warn(message: string): void {
   process.stderr.write(`${message}\n`);
 }
 
+/** Report a failure that has a catalogue entry, in the same shape as a diagnostic. */
+function fail(code: 'PUI3003' | 'PUI4001' | 'PUI4002' | 'PUI4003', message: string): void {
+  const info = CODES[code];
+  warn(`${paint('error', 31)}${paint(`[${code}]`, 2)}: ${message}`);
+  if (info.fix !== undefined) warn(`  = hint: ${info.fix}`);
+}
+
 function paint(text: string, code: number): string {
   return ui.color ? `\u001b[${code}m${text}\u001b[0m` : text;
 }
@@ -146,7 +153,7 @@ function loadConfig(path: string | undefined): Config {
       exclude: Array.isArray(raw.exclude) ? raw.exclude.filter((x): x is string => typeof x === 'string') : [],
     };
   } catch (error) {
-    throw new Error(`PUI4002: invalid configuration in ${path}: ${(error as Error).message}`);
+    throw new Error(`invalid configuration in ${path}: ${(error as Error).message}`);
   }
 }
 
@@ -237,7 +244,7 @@ async function commandBuild(args: Args): Promise<number> {
   const files = discoverSources(roots, project.config);
 
   if (files.length === 0) {
-    warn(`plainui: no .pui files found (looked in ${roots.join(', ')})`);
+    fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
     return 1;
   }
 
@@ -271,15 +278,20 @@ async function commandBuild(args: Args): Promise<number> {
       unchanged += 1;
       continue;
     }
-    mkdirSync(dirname(absolute), { recursive: true });
-    writeFileSync(absolute, file.code, 'utf8');
+    try {
+      mkdirSync(dirname(absolute), { recursive: true });
+      writeFileSync(absolute, file.code, 'utf8');
+    } catch (error) {
+      fail('PUI3003', `could not write ${file.outputPath}: ${(error as Error).message}`);
+      return 1;
+    }
     written += 1;
     if (ui.verbose) say(`  wrote ${file.outputPath}`);
   }
 
   if (args.flags.has('--check')) {
     if (stale.length > 0) {
-      warn(`plainui: ${stale.length} generated file(s) are out of date: ${stale.join(', ')}`);
+      fail('PUI4003', `${stale.length} generated file(s) are out of date: ${stale.join(', ')}`);
       return 3;
     }
     say(`plainui: ${result.files.length} file(s) up to date${warnings > 0 ? `, ${warnings} warning(s)` : ''}`);
@@ -298,7 +310,7 @@ async function commandCheck(args: Args): Promise<number> {
   const { config, roots, root } = resolveProject(args);
   const files = discoverSources(roots, config);
   if (files.length === 0) {
-    warn(`plainui: no .pui files found (looked in ${roots.join(', ')})`);
+    fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
     return 1;
   }
   const result = compileProject(toInputs(files, root), { outDir: config.outDir });
@@ -311,31 +323,31 @@ async function commandFormat(args: Args): Promise<number> {
   const { config, roots } = resolveProject(args);
   const files = discoverSources(roots, config);
   if (files.length === 0) {
-    warn(`plainui: no .pui files found (looked in ${roots.join(', ')})`);
+    fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
     return 1;
   }
 
   const checkOnly = args.flags.has('--check');
   const toStdout = args.flags.has('--stdout');
+  const unformatted: string[] = [];
   let changed = 0;
 
   for (const file of files) {
     const original = readFileSync(file, 'utf8');
     const result = formatText(file, original);
     if (result.skipped) {
-      warn(`plainui: ${file}: not formatted because it does not parse`);
+      warn(`plainui: ${relativePath(process.cwd(), file)}: left untouched because it does not parse`);
       continue;
     }
     if (!result.changed) continue;
+
     changed += 1;
     if (toStdout) {
       process.stdout.write(result.text);
       continue;
     }
-    if (toStdout) return 0;
-
-  if (checkOnly) {
-      warn(`plainui: ${relativePath(process.cwd(), file)} is not formatted`);
+    if (checkOnly) {
+      unformatted.push(relativePath(process.cwd(), file));
       continue;
     }
     writeFileSync(file, result.text, 'utf8');
@@ -345,8 +357,8 @@ async function commandFormat(args: Args): Promise<number> {
   if (toStdout) return 0;
 
   if (checkOnly) {
-    if (changed > 0) {
-      warn(`plainui: ${changed} file(s) need formatting`);
+    if (unformatted.length > 0) {
+      fail('PUI4003', `${unformatted.length} file(s) need formatting: ${unformatted.join(', ')}`);
       return 3;
     }
     say(`plainui: ${files.length} file(s) already formatted`);
@@ -609,7 +621,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         return 2;
     }
   } catch (error) {
-    warn(`plainui: ${(error as Error).message}`);
+    fail('PUI4002', (error as Error).message);
     return 2;
   }
 }
