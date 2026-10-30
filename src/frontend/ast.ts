@@ -235,6 +235,27 @@ export interface DerivedDecl {
   readonly init: Expr;
 }
 
+/** One name in an `effect on a, b:` header. */
+export interface WatchedState {
+  readonly name: string;
+  readonly span: Span;
+}
+
+/**
+ * `effect on query:` — actions that run after the screen is mounted and again whenever one of the
+ * named states changes, and at no other time.
+ *
+ * The names in the header are the whole dependency list. There is no "run after every change" and
+ * no implicit tracking: both would be a re-render loop or a behaviour no target can reproduce.
+ */
+export interface EffectDecl {
+  readonly kind: 'Effect';
+  readonly span: Span;
+  /** The states named in the header, in source order, without duplicates. */
+  readonly watches: readonly WatchedState[];
+  readonly body: readonly Action[];
+}
+
 /**
  * `task items: List<Todo> = loadTodos()` — an async value owned by the screen.
  *
@@ -316,7 +337,16 @@ export interface SlotNode {
 
 /** Nodes may appear in a body. `State`/`Event` are only legal in specific positions and are
  *  checked by the validator rather than the parser, which keeps error messages semantic. */
-export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | TaskDecl | DerivedDecl | EventHandler;
+export type Node =
+  | ElementNode
+  | IfNode
+  | ForNode
+  | SlotNode
+  | StateDecl
+  | TaskDecl
+  | DerivedDecl
+  | EffectDecl
+  | EventHandler;
 
 // ---------------------------------------------------------------------------------------------
 // Actions (event bodies)
@@ -373,6 +403,8 @@ export interface ScreenDecl {
   readonly tasks: readonly TaskDecl[];
   /** Computed values, in declaration order. */
   readonly derived: readonly DerivedDecl[];
+  /** Effects, in declaration order: the order they run in when several are due together. */
+  readonly effects: readonly EffectDecl[];
   readonly body: readonly Node[];
 }
 
@@ -386,6 +418,8 @@ export interface ComponentDecl {
   readonly tasks: readonly TaskDecl[];
   /** Computed values, in declaration order. */
   readonly derived: readonly DerivedDecl[];
+  /** Effects, in declaration order: the order they run in when several are due together. */
+  readonly effects: readonly EffectDecl[];
   readonly body: readonly Node[];
 }
 

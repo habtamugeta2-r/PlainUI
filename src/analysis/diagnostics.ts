@@ -474,6 +474,39 @@ export const CODES = {
     description: 'The declared type of a derived value does not match the type of its expression.',
     fix: 'Correct the type, or the expression.',
   },
+  PUI2360: {
+    severity: 'error',
+    title: 'Effect watches something that is not state',
+    description:
+      'An effect runs when one of the states it names changes. A task, a parameter or a derived value is not state, so its change is either invisible to the target or arrives at a moment the effect cannot name.',
+    fix: 'Watch the state the value is computed from, or the state the task writes into.',
+  },
+  PUI2361: {
+    severity: 'error',
+    title: 'Effect has no actions',
+    description: 'An effect with an empty body runs and does nothing, which is a declaration in progress rather than a behaviour.',
+    fix: 'Add the action it should run, or remove the effect.',
+  },
+  PUI2362: {
+    severity: 'error',
+    title: 'Effect in the wrong place',
+    description:
+      'An effect belongs to the whole screen or component, so it is declared at the top level next to the state it watches.',
+    fix: 'Move it up to the top level, or put the action in an event handler.',
+  },
+  PUI2363: {
+    severity: 'error',
+    title: 'Effect writes the state it watches',
+    description:
+      'The effect names a state and assigns it, so every run schedules the next one: the run that changes the value is also the run that reacts to it.',
+    fix: 'Watch a different state, or assign a state the effect does not name.',
+  },
+  PUI2364: {
+    severity: 'error',
+    title: 'Effect watches an undeclared name',
+    description: 'The header of an effect names the states it watches, and every one of them has to exist in this screen or component.',
+    fix: 'Declare it with state, or correct the name.',
+  },
   PUI2340: {
     severity: 'error',
     title: 'Host surface has no such name',

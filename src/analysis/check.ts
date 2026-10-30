@@ -29,6 +29,7 @@ import {
   type HostFn,
   type ImportDecl,
   type DerivedDecl,
+  type EffectDecl,
   type Node,
   type Param,
   type Program,
@@ -716,6 +717,8 @@ class Checker {
       }
     }
 
+    for (const effect of decl.effects) this.checkEffect(effect, decl, scope);
+
     this.checkBody(decl.body, scope, ctx);
 
     // A component that renders `slot` necessarily uses its `children` parameter.
@@ -763,6 +766,14 @@ class Checker {
             'derived may only be declared at the top level of a screen or component',
             node.span,
             'move it up next to the state it reads',
+          );
+          break;
+        case 'Effect':
+          this.error(
+            'PUI2362',
+            'effect may only be declared at the top level of a screen or component',
+            node.span,
+            'move it up next to the state it watches, or put the action in an event handler',
           );
           break;
         case 'Slot':
@@ -915,6 +926,15 @@ class Checker {
           'derived may only be declared at the top level of a screen or component',
           child.span,
           'move it up next to the state it reads',
+        );
+        continue;
+      }
+      if (child.kind === 'Effect') {
+        this.error(
+          'PUI2362',
+          'effect may only be declared at the top level of a screen or component',
+          child.span,
+          'move it up next to the state it watches, or put the action in an event handler',
         );
         continue;
       }
@@ -1987,6 +2007,65 @@ class Checker {
    * A computed value that depends on its own result has no value: the generated getter would call
    * itself until the stack ends. Reported once per cycle, at the declaration that closes it.
    */
+  /**
+   * `effect on a, b:` — the dependency list is written, not inferred, so what is checked here is
+   * that the list is legal and that the body does not feed the trigger.
+   */
+  private checkEffect(effect: EffectDecl, decl: ScreenDecl | ComponentDecl, scope: Scope): void {
+    if (effect.body.length === 0) {
+      this.error('PUI2361', 'this effect has no actions', effect.span, 'add the action it should run');
+    }
+
+    const watched = new Set<string>();
+    for (const watch of effect.watches) {
+      const varInfo = scope.vars.get(watch.name);
+      if (varInfo === undefined) {
+        this.error(
+          'PUI2364',
+          `effect watches "${watch.name}", which is not declared`,
+          watch.span,
+          didYouMean(watch.name, this.visibleNames(scope)) ?? 'declare it with "state <name>: <Type> = <value>"',
+        );
+        continue;
+      }
+      if (varInfo.kind !== 'state') {
+        const why =
+          varInfo.kind === 'derived'
+            ? 'a derived value recomputes on every read; watch the state it reads instead'
+            : varInfo.kind === 'task'
+              ? 'a task changes when a load finishes; watch the state you copy its result into'
+              : varInfo.kind === 'param'
+                ? 'a parameter changes when the parent rebuilds, which is not a change this target can name'
+                : `an effect watches state, and "${watch.name}" is not state`;
+        this.error(
+          'PUI2360',
+          `effect watches "${watch.name}", which is ${article(varInfo.kind)}`,
+          watch.span,
+          why,
+        );
+        continue;
+      }
+      varInfo.used = true;
+      watched.add(watch.name);
+    }
+
+    this.checkActions(effect.body, scope);
+
+    // Assigning a watched state is the one shape that cannot terminate: the run that writes the
+    // value is the run that reads it back.
+    for (const name of assignedNames(effect.body)) {
+      if (!watched.has(name)) continue;
+      this.error(
+        'PUI2363',
+        `effect writes "${name}", which it watches`,
+        effect.watches.find((watch) => watch.name === name)?.span ?? effect.span,
+        'every run would schedule the next one — assign a different state instead',
+      );
+    }
+
+    void decl;
+  }
+
   private checkDerivedCycles(decl: ScreenDecl | ComponentDecl, known: ReadonlyMap<string, DerivedDecl>): void {
     const edges = new Map<string, Set<string>>();
     for (const [name, item] of known) edges.set(name, this.derivedDependencies(item.init, known));
@@ -2576,3 +2655,32 @@ export function check(file: SourceFile, program: Program, options: CheckOptions 
 }
 
 export { isStringType, isBoolType, isNumericType };
+
+/** `a`/`an` for a variable kind, used in the effect diagnostics. */
+function article(kind: string): string {
+  if (kind === 'task') return 'a task';
+  if (kind === 'derived') return 'derived';
+  if (kind === 'param') return 'a parameter';
+  if (kind === 'loop') return 'a loop variable';
+  if (kind === 'token') return 'a design token';
+  return 'not state';
+}
+
+/** The state names an action body assigns, including through nested `if` blocks. */
+function assignedNames(actions: readonly Action[]): Set<string> {
+  const names = new Set<string>();
+  const visit = (list: readonly Action[]): void => {
+    for (const action of list) {
+      if (action.kind === 'Set') {
+        if (action.target.kind === 'Ident') names.add(action.target.name);
+        continue;
+      }
+      if (action.kind === 'ActionIf') {
+        for (const branch of action.branches) visit(branch.body);
+        if (action.elseBody !== undefined) visit(action.elseBody);
+      }
+    }
+  };
+  visit(actions);
+  return names;
+}
