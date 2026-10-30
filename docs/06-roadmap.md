@@ -12,7 +12,7 @@ could go wrong — the second half matters more.
 | Project compilation | imports, re-basing, duplicate detection, deterministic output |
 | CLI | build, check, watch, format, init, ast, tokens, explain, widgets, lsp |
 | Tooling | formatter, playground (browser), golden files, examples, generated docs |
-| Tests | 215, no mocks, no network, no Flutter SDK required |
+| Tests | 200+, no mocks, no network, no Flutter SDK required |
 | Real Flutter verification | `flutter-verify.yml` — generate, `dart analyze`, widget test |
 
 ## Next, in order

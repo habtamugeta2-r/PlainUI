@@ -121,7 +121,7 @@ HTML target does exactly that, and it is a good template.
 
 ## Performance
 
-Compilation is linear in source size; the whole test suite (215 tests, including 60+ compiles)
+Compilation is linear in source size; the whole test suite (200+ tests, including 60+ compiles)
 runs in about six seconds, and a single screen compiles in well under a millisecond. The
 playground recompiles the whole file on every keystroke, which is why the compiler never keeps
 global mutable state.
