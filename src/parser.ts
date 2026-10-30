@@ -1074,6 +1074,14 @@ class Parser {
       const token = this.peek();
       if (token.kind === 'newline' || token.kind === 'dedent') break;
       if (token.kind === 'op') {
+        if (token.value === '>=' || token.value === '<=') {
+          this.error(
+            'PUI1023',
+            `"${token.value}" is read as one operator, not as a closing ">" plus "="`,
+            token.span,
+            'put a space before "=" (for example: List<String> = [])',
+          );
+        }
         // Stops are only meaningful at the top level; inside brackets they are part of the type.
         if (depth === 0 && stops.has(token.value)) break;
         if (token.value === '<' || token.value === '[' || token.value === '(') depth += 1;
