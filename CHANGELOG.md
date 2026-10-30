@@ -8,6 +8,25 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **The phase-gate app (`examples/demo`, "Beacon").** Three screens that together use every construct
+  of the Flutter-depth phase, written in `.pui` alone:
+
+  ```
+  theme.pui      the design system, imported by all three screens
+  inbox.pui      a task over host objects, a filter, an effect that searches as you type,
+                 three derived values, a keyed list, navigate with arguments
+  detail.pui     a task for the comment thread, derived count and heading, a validated
+                 comment form, back()
+  new_issue.pui  a second validated form, a multiline input, navigate from inside the handler
+  ```
+
+  The hand-written Dart is `main.dart` (first screen, theme, deep-link route table) and
+  `lib/model/data.dart` (the store, with its own `Issue` class). The `.pui` files declare the surface
+  they call, so every argument is checked at compile time. `flutter-verify.yml` now compiles the app,
+  analyzes it and drives it with widget tests: the inbox loads and filters, the detail screen refuses
+  an empty comment and then posts one, and the new-issue form creates an issue and lands on the list
+  with it. This is the gate the vision document sets for leaving the Flutter phase.
+
 - **Effects (`effect on <state>`).** The other half of the state model: actions that belong to a
   moment rather than to a click.
 

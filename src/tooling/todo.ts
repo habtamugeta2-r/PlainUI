@@ -170,10 +170,11 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Phase gate: the demo app',
     size: 'M',
-    status: 'next',
+    status: 'done',
     acceptance:
       'One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond ' +
       '`main.dart`, and is verified in CI like the other examples.',
+
     touches: ['examples/demo', '.github/workflows/flutter-verify.yml'],
   },
 
@@ -183,7 +184,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'architecture',
     title: 'The `Target` contract',
     size: 'L',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind ' +
       'one interface per target; the front end no longer names a framework.',
