@@ -51,6 +51,16 @@ stacking builds.
 A new file in a directory that did not exist at startup is picked up: the recursive watcher sees
 it, and in per-directory mode each new directory is attached as it appears.
 
+Changes are incremental: the session keeps a per-file cache keyed by the file's text, its imports
+and the project's declaration table, so saving one screen recompiles one screen. `--verbose` shows
+what happened:
+
+```
+[2:37:43 PM] change detected — lib/ui/counter.pui
+  cache: 0 reused, 1 recompiled (1 entries)
+  wrote lib/generated/counter.pui.dart
+```
+
 ### `plainui format`
 
 Applies the canonical style: four-space indentation, normalised spacing, one blank line between

@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { compileOne, compileProject, outputPathFor } from '../src/project.ts';
+import { ProjectCache, compileOne, compileProject, outputPathFor } from '../src/project.ts';
 import type { Diagnostic } from '../src/diagnostics.ts';
 
 const codes = (diagnostics: readonly Diagnostic[]): string[] => diagnostics.map((d) => d.code);
@@ -203,4 +203,116 @@ test('compileOne is the single file convenience wrapper', () => {
   const broken = compileOne('x.pui', 'screen Home:\n');
   assert.equal(broken.code, undefined);
   assert.ok(broken.diagnostics.length > 0);
+});
+
+// ---------------------------------------------------------------------------------------------
+// The incremental cache
+// ---------------------------------------------------------------------------------------------
+
+const screenText = (name: string, body: string): string => ['screen ' + name + ':', body, ''].join('\n');
+
+test('a second compile of unchanged inputs is served from the cache', () => {
+  const inputs = [
+    { path: 'lib/ui/home.pui', text: screenText('Home', '    text "home"') },
+    { path: 'lib/ui/shelf.pui', text: screenText('Shelf', '    text "shelf"') },
+  ];
+  const cache = new ProjectCache();
+
+  const cold = compileProject(inputs, { outDir: 'lib/generated', cache });
+  assert.equal(cache.misses, 2);
+  assert.equal(cache.hits, 0);
+
+  const warm = compileProject(inputs, { outDir: 'lib/generated', cache });
+  assert.equal(cache.hits, 2);
+  assert.equal(cache.misses, 2, 'the warm compile adds no misses');
+  assert.equal(cache.size, 2, 'one entry per file, no matter how often it is rebuilt');
+
+  assert.deepEqual(
+    warm.files.map((file) => file.code),
+    cold.files.map((file) => file.code),
+    'cached output must be identical',
+  );
+  assert.deepEqual(
+    warm.diagnostics.map((d) => d.code),
+    cold.diagnostics.map((d) => d.code),
+  );
+});
+
+test('editing one file recompiles only that file, and still matches a cold build', () => {
+  const inputs = [
+    { path: 'lib/ui/home.pui', text: screenText('Home', '    text "home"') },
+    { path: 'lib/ui/shelf.pui', text: screenText('Shelf', '    text "shelf"') },
+  ];
+  const cache = new ProjectCache();
+  compileProject(inputs, { outDir: 'lib/generated', cache });
+
+  const edited = [
+    { path: 'lib/ui/home.pui', text: screenText('Home', '    text "home, edited"') },
+    inputs[1]!,
+  ];
+  cache.hits = 0;
+  cache.misses = 0;
+  const warm = compileProject(edited, { outDir: 'lib/generated', cache });
+  assert.equal(warm.files.length, 2);
+  assert.equal(cache.misses, 1, 'only the edited file is rechecked');
+  assert.equal(cache.hits, 1);
+
+  const cold = compileProject(edited, { outDir: 'lib/generated' });
+  assert.deepEqual(
+    warm.files.map((file) => file.code),
+    cold.files.map((file) => file.code),
+    'a warm build must produce exactly what a cold build produces',
+  );
+});
+
+test('editing an imported component invalidates the files that import it', () => {
+  const shell = (label: string): string =>
+    ['component Shell(children: List<Widget>):', '    card padding=16:', `        text "${label}"`, '        slot', ''].join('\n');
+  const home = ['import "shell.pui"', '', 'screen Home:', '    Shell():', '        text "child"', ''].join('\n');
+
+  const cache = new ProjectCache();
+  compileProject([{ path: 'lib/ui/shell.pui', text: shell('one') }, { path: 'lib/ui/home.pui', text: home }], {
+    outDir: 'lib/generated',
+    cache,
+  });
+
+  // The importer's own text did not change, but its generated import and analysis depend on the
+  // imported component; reusing its cached result here would be a stale-build bug.
+  cache.hits = 0;
+  cache.misses = 0;
+  compileProject([{ path: 'lib/ui/shell.pui', text: shell('two') }, { path: 'lib/ui/home.pui', text: home }], {
+    outDir: 'lib/generated',
+    cache,
+  });
+  assert.equal(cache.misses, 2, 'both files must be rechecked');
+});
+
+test('a new declaration elsewhere invalidates the project (duplicate name detection)', () => {
+  const cache = new ProjectCache();
+  const first = [{ path: 'lib/ui/home.pui', text: ['screen Home:', '    text "a"', ''].join('\n') }];
+  compileProject(first, { outDir: 'lib/generated', cache });
+
+  cache.hits = 0;
+  cache.misses = 0;
+  const result = compileProject(
+    [...first, { path: 'lib/ui/other.pui', text: ['screen Other:', '    text "b"', ''].join('\n') }],
+    { outDir: 'lib/generated', cache },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(cache.misses, 2, 'the declaration table changed, so nothing may be reused');
+});
+
+test('errors are cached, so a broken file is not re-analysed on every save', () => {
+  const inputs = [{ path: 'lib/ui/home.pui', text: ['screen Home:', '    colum:', '        text "x"', ''].join('\n') }];
+  const cache = new ProjectCache();
+
+  const first = compileProject(inputs, { outDir: 'lib/generated', cache });
+  assert.equal(first.ok, false);
+  assert.ok(codes(first.diagnostics).includes('PUI2001'), `got ${codes(first.diagnostics).join(', ')}`);
+
+  cache.hits = 0;
+  const second = compileProject(inputs, { outDir: 'lib/generated', cache });
+  assert.equal(cache.hits, 1);
+  assert.equal(second.ok, false);
+  assert.deepEqual(codes(second.diagnostics), codes(first.diagnostics), 'cached diagnostics must match');
 });

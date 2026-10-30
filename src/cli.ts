@@ -11,7 +11,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from './diagnostics.ts';
 import { formatText } from './format.ts';
 import { describeTokens, tokenize } from './lexer.ts';
-import { compileProject, type SourceInput } from './project.ts';
+import { ProjectCache, compileProject, type SourceInput } from './project.ts';
 import { basename, extensionOf, normalizePath, relativePath } from './paths.ts';
 import { parse } from './parser.ts';
 import { renderAst } from './debug.ts';
@@ -238,7 +238,7 @@ function resolveProject(args: Args): ResolvedProject {
   return { config, roots: resolvedRoots, root };
 }
 
-async function commandBuild(args: Args): Promise<number> {
+async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
   const project = resolveProject(args);
   const outDir = typeof args.flags.get('--out') === 'string' ? (args.flags.get('--out') as string) : project.config.outDir;
   const { roots, root } = project;
@@ -250,7 +250,13 @@ async function commandBuild(args: Args): Promise<number> {
   }
 
   const inputs = toInputs(files, root);
-  const result = compileProject(inputs, { outDir });
+  const before = cache === undefined ? undefined : { hits: cache.hits, misses: cache.misses };
+  const result = compileProject(inputs, cache === undefined ? { outDir } : { outDir, cache });
+  if (cache !== undefined && ui.verbose && before !== undefined) {
+    const hits = cache.hits - before.hits;
+    const misses = cache.misses - before.misses;
+    if (hits + misses > 0) say(`  cache: ${hits} reused, ${misses} recompiled (${cache.size} entries)`);
+  }
   printDiagnostics(result.diagnostics);
 
   const errors = result.diagnostics.filter((d) => d.severity === 'error').length;
@@ -373,9 +379,11 @@ async function commandFormat(args: Args): Promise<number> {
 async function commandWatch(args: Args): Promise<number> {
   const { config, roots } = resolveProject(args);
   const sourceCount = discoverSources(roots, config).length;
+  // One cache for the whole session: a save recompiles the saved file, not the project.
+  const cache = new ProjectCache();
 
   say(`plainui: watching ${sourceCount} file(s) — press Ctrl+C to stop`);
-  await commandBuild(args);
+  await commandBuild(args, cache);
 
   return await new Promise<number>((resolvePromise) => {
     let building = false;
@@ -391,7 +399,7 @@ async function commandWatch(args: Args): Promise<number> {
       const first = changed[0] ?? '';
       const where = changed.length > 1 ? `${changed.length} files` : relativePath(process.cwd(), first);
       say(`\n[${stamp}] change detected — ${where}`);
-      void commandBuild(args).then((code) => {
+      void commandBuild(args, cache).then((code) => {
         building = false;
         if (code === 0) say(`[${stamp}] build ok — waiting for changes`);
         if (queued) {

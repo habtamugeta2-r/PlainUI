@@ -117,7 +117,31 @@ HTML target does exactly that, and it is a good template.
 
 ## Performance
 
-Compilation is linear in source size; the whole test suite (208 tests, including 60+ compiles)
+Compilation is linear in source size; the whole test suite (213 tests, including 60+ compiles)
 runs in about six seconds, and a single screen compiles in well under a millisecond. The
 playground recompiles the whole file on every keystroke, which is why the compiler never keeps
 global mutable state.
+
+### Incremental compilation
+
+`plainui watch` keeps a `ProjectCache` for the session. Each file gets a fingerprint of
+everything that can change its result:
+
+- its own text,
+- the compiler version and `outDir` (they appear in the generated imports and banner),
+- the text of every `.pui` file it imports (their component declarations shape the analysis),
+- the project-wide table of declared names (duplicate and shadowing checks are project-wide).
+
+Anything else in the project is irrelevant, so editing one widget body recompiles one file. On a
+synthetic 300-screen project a cold build takes ~190 ms and a one-file edit ~40 ms; parsing is only
+14% of a cold build, so the cache skips the part that costs the most (checking and generation).
+Errors are cached too — while a file is broken, a save elsewhere must not re-analyse it.
+
+The hash is `src/hash.ts`, FNV-1a and djb2 over the text, not `node:crypto`: the same module is
+bundled into the browser playground, where a Node builtin would break the build. Two independent
+32-bit lanes make an accidental collision between two versions of one file negligible, and a
+collision there would only mean a stale result for a keystroke or two.
+
+The cache lives in memory only. A process-wide disk cache would help `plainui build` in CI, and it
+needs a version-and-flags key that this one does not have yet — listed in the roadmap rather than
+half-built.

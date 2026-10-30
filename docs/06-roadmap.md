@@ -12,7 +12,7 @@ could go wrong — the second half matters more.
 | Project compilation | imports, re-basing, duplicate detection, deterministic output |
 | CLI | build, check, watch, format, init, ast, tokens, explain, widgets |
 | Tooling | formatter, playground (browser), golden files, examples, generated docs |
-| Tests | 208, no mocks, no network, no Flutter SDK required |
+| Tests | 213, no mocks, no network, no Flutter SDK required |
 | Real Flutter verification | `flutter-verify.yml` — generate, `dart analyze`, widget test |
 
 ## Next, in order
@@ -65,10 +65,14 @@ The AST holds no framework nouns, so the work is a registry variant plus an emit
 ### 4. ~~Watch mode that watches (not polls)~~ — done
 
 `src/watch.ts` now uses `fs.watch` (recursive → per-directory → polling), debounces saves by 60 ms
-and queues one rebuild when a save lands mid-build. The next step here is not the mechanism but the
-incrementality: every change recompiles every file, because `compileProject` has no cache. A
-`mtime`+content-hash memo per source file is the obvious fix, and it is also what a language server
-needs.
+and queues one rebuild when a save lands mid-build. `ProjectCache` makes the rebuild incremental:
+a fingerprint over the file's text, its imports and the project's declaration table means one save
+recompiles one file (~40 ms instead of ~190 ms on a synthetic 300-screen project).
+
+What is *not* done: the cache is in memory, so a cold `plainui build` still compiles everything.
+A disk cache would help CI, but it needs a key that covers compiler version, flags and the full
+import closure — a half-right disk cache is a stale-build bug waiting to happen, so it is not
+shipped.
 
 ### 5. Layout intent, not just boxes
 

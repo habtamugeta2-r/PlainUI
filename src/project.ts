@@ -15,6 +15,7 @@ import { DiagnosticBag } from './diagnostics.ts';
 import { parse } from './parser.ts';
 import { basename, camelCase, dartImportSpecifier, dirname, extensionOf, joinPath, normalizePath } from './paths.ts';
 import { sourceFile, type SourceFile } from './source.ts';
+import { hashText } from './hash.ts';
 import { COMPILER_VERSION } from './compile.ts';
 
 export interface SourceInput {
@@ -26,6 +27,50 @@ export interface ProjectOptions extends CheckOptions {
   /** Directory (project-relative) for generated files. */
   readonly outDir?: string;
   readonly compilerVersion?: string;
+  /**
+   * Reuse the checking and generation results of files whose inputs have not changed. `watch`
+   * passes one so a save recompiles one file instead of the project; a cold build passes none.
+   */
+  readonly cache?: ProjectCache;
+}
+
+/** What a cache entry holds: the diagnostics and, when the file compiled, its Dart. */
+export interface CachedResult {
+  readonly diagnostics: readonly Diagnostic[];
+  readonly outputPath?: string;
+  readonly code?: string;
+}
+
+/**
+ * A memo of per-file results, keyed by a fingerprint of everything that can change them.
+ *
+ * Deliberately dumb: no eviction, no timestamps, no file watching. The CLI owns one for the
+ * lifetime of a `watch` session; everything else creates none and behaves exactly as before.
+ */
+export class ProjectCache {
+  /** One entry per source file: a save replaces the previous result instead of accumulating. */
+  private readonly entries = new Map<string, { key: string; result: CachedResult }>();
+  hits = 0;
+  misses = 0;
+
+  get(path: string, key: string): CachedResult | undefined {
+    const found = this.entries.get(path);
+    if (found === undefined || found.key !== key) {
+      this.misses += 1;
+      return undefined;
+    }
+    this.hits += 1;
+    return found.result;
+  }
+
+  set(path: string, key: string, result: CachedResult): void {
+    this.entries.set(path, { key, result });
+  }
+
+  /** Number of files remembered — bounded by the size of the project, not by the number of saves. */
+  get size(): number {
+    return this.entries.size;
+  }
 }
 
 export interface FileResult {
@@ -113,9 +158,42 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     resolutions.set(path, { plainuiComponents: components, plainuiEdges: edges, hostRoots });
   }
 
+  // ---- cache ------------------------------------------------------------------------------
+  // A file's result depends on its own text, on the text of the .pui files it imports (their
+  // component declarations shape the analysis), and on the project-wide table of declared names
+  // (which drives duplicate and shadowing checks). Anything else in the project is irrelevant,
+  // which is why editing one widget body does not invalidate the other 299 files.
+  const cache = options.externalComponents === undefined ? options.cache : undefined;
+  const cacheKeys = new Map<string, string>();
+  const cachedResults = new Map<string, CachedResult | undefined>();
+  if (cache !== undefined) {
+    const nameTable = [...declaredNames]
+      .sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
+      .map(([name, file]) => `${name}@${file}`)
+      .join('|');
+    const namesHash = hashText(nameTable);
+    for (const [path, entry] of parsed) {
+      const resolution = resolutions.get(path)!;
+      const imports = entry.program.imports
+        .map((imp) => {
+          const target = resolution.plainuiEdges.get(imp.path);
+          const targetText = target === undefined ? '' : sources.get(target)?.text ?? '';
+          return `${imp.path}=>${target ?? ''}:${hashText(targetText)}`;
+        })
+        .sort()
+        .join('|');
+      const key = hashText(
+        [version, outDir, path, sources.get(path)!.text, namesHash, imports].join('\u0000'),
+      );
+      cacheKeys.set(path, key);
+      cachedResults.set(path, cache.get(path, key));
+    }
+  }
+
   // ---- validate ---------------------------------------------------------------------------
   const checked = new Map<string, ReturnType<typeof check>>();
   for (const [path, entry] of parsed) {
+    if (cachedResults.get(path) !== undefined) continue;
     const source = sources.get(path)!;
     const resolution = resolutions.get(path)!;
     const result = check(source, entry.program, {
@@ -149,13 +227,21 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
 
   for (const [path, entry] of parsed) {
     const source = sources.get(path)!;
-    const diagnostics = entry.bag.sorted();
+    const diagnostics = cachedResults.get(path)?.diagnostics ?? entry.bag.sorted();
     allDiagnostics.push(...diagnostics);
-    if (entry.bag.hasErrors) ok = false;
+    if (diagnostics.some((diagnostic) => diagnostic.severity === 'error')) ok = false;
     files.push({ source, program: entry.program, diagnostics });
   }
 
   if (!ok) {
+    // Errors are cached too: while a file is broken, every save in another file would otherwise
+    // re-analyse it.
+    if (cache !== undefined) {
+      for (const file of files) {
+        const key = cacheKeys.get(file.source.path);
+        if (key !== undefined) cache.set(file.source.path, key, { diagnostics: file.diagnostics });
+      }
+    }
     return { ok, files: files.map((file) => ({ ...file })), diagnostics: allDiagnostics };
   }
 
@@ -165,9 +251,9 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
     const source = sources.get(path)!;
     const resolution = resolutions.get(path)!;
     const outputPath = outputPathFor(path, outDir);
-    const analysis = checked.get(path)!.analysis;
+    const cached = cachedResults.get(path);
 
-    const code = generateFlutter(analysis, source, {
+    const code = cached?.code ?? generateFlutter(checked.get(path)!.analysis, source, {
       compilerVersion: version,
       sourcePath: path,
       resolvePlainuiImport: (importPath: string): string => {
@@ -186,8 +272,17 @@ export function compileProject(inputs: readonly SourceInput[], options: ProjectO
       program: entry.program,
       outputPath,
       code,
-      diagnostics: entry.bag.sorted(),
+      diagnostics: cached?.diagnostics ?? entry.bag.sorted(),
     });
+  }
+
+  if (cache !== undefined) {
+    for (const file of generated) {
+      const key = cacheKeys.get(file.source.path);
+      if (key !== undefined) {
+        cache.set(file.source.path, key, { diagnostics: file.diagnostics, outputPath: file.outputPath, code: file.code });
+      }
+    }
   }
 
   return { ok, files: generated, diagnostics: allDiagnostics };
