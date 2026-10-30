@@ -1531,7 +1531,7 @@ class FlutterGenerator {
 
   private emitClosure(el: ElementNode, event: EventHandler): string {
     const valueType = eventValueType(el.tag, event.name);
-    const isAsync = actionsContainAwait(event.actions);
+    const isAsync = actionsContainAwait(event.actions) || this.submitBodyIsAsync(event.actions);
     const body = this.emitActions(event.actions);
     const header = `(${valueType === undefined ? '' : VALUE_PARAM_NAME})${isAsync ? ' async' : ''} {`;
     if (body.length === 0) return `${header}\n}`;
@@ -1612,6 +1612,18 @@ class FlutterGenerator {
     if (receiver.kind !== 'Ident') return false;
     const states = this.analysis.stateTypes.get(this.currentDeclName());
     return states !== undefined && states.has(receiver.name);
+  }
+
+  /**
+   * A handler that calls `submit()` inlines the form's body, so an `await` in that body belongs to
+   * the handler's closure and the closure has to be `async`. Without this the generated Dart says
+   * `await` inside a non-async function — legal in `.pui`, rejected by the analyzer.
+   */
+  private submitBodyIsAsync(actions: readonly Action[]): boolean {
+    const form = this.formStack[this.formStack.length - 1];
+    if (form === undefined) return false;
+    const submits = actions.some((action) => action.kind === 'Call' && isSubmitCall(action.expr));
+    return submits && actionsContainAwait(form.actions);
   }
 
   /**

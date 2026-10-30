@@ -329,3 +329,39 @@ test('the form parses into an element whose submit handler is an event', () => {
   assert.deepEqual(form.events.map((event) => event.name), ['submit']);
   assert.deepEqual(form.events[0]!.actions.map((action) => action.kind), ['Set']);
 });
+
+test('an awaiting submit body makes the button closure async', () => {
+  // `submit()` inlines the form's `on submit:` body at the call site, so an `await` inside that body
+  // lands inside the button's closure — which therefore has to be emitted as `async`. Without this
+  // the generated Dart is `await` inside a non-async function, and only the analyzer notices.
+  const source = [
+    'screen Comment:',
+    '',
+    '    state note: String = ""',
+    '',
+    '    form:',
+    '',
+    '        column gap=8:',
+    '',
+    '            input bind=note label="Comment" validate=[required]',
+    '            button "Post":',
+    '                on tap: submit()',
+    '',
+    '        on submit:',
+    '            await saveComment(note)',
+    '',
+  ].join('\n');
+  const result = compile(source);
+  assert.deepEqual(
+    result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').map((diagnostic) => diagnostic.code),
+    [],
+  );
+  assert.match(result.code ?? '', /onPressed: \(\) async \{/);
+  assert.match(result.code ?? '', /await saveComment\(note\);/);
+});
+
+test('a submit body with nothing to await stays synchronous', () => {
+  const result = compile(SIGNUP);
+  assert.match(result.code ?? '', /onPressed: \(\) \{/);
+  assert.doesNotMatch(result.code ?? '', /onPressed: \(\) async \{/);
+});
