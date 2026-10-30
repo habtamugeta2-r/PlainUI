@@ -12,26 +12,30 @@ screen NewIssue:
     state title: String = ""
     state body: String = ""
 
-    column padding=md gap=sm:
+    // The screen is a page, not a fragment: `scaffold` is what gives a pushed screen its own
+    // Material, which `Card`, `TextField` and the rest need wherever they are used.
+    scaffold background=surface:
 
-        row main=between gap=sm:
+        column padding=md gap=sm:
 
-            button "Cancel" variant=text:
-                on tap: back()
+            row main=between gap=sm:
 
-            text "New issue" style=heading
+                button "Cancel" variant=text:
+                    on tap: back()
 
-        form:
+                text "New issue" style=heading
 
-            column gap=sm:
+            form:
 
-                input bind=title placeholder="What is wrong?" label="Title" validate=[required, min(4)]
+                column gap=sm:
 
-                input bind=body placeholder="Anything else?" label="Details" multiline
+                    input bind=title placeholder="What is wrong?" label="Title" validate=[required, min(4)]
 
-                button "Create":
-                    on tap: submit()
+                    input bind=body placeholder="Anything else?" label="Details" multiline
 
-            on submit:
-                await createIssue(title, body)
-                navigate Inbox()
+                    button "Create":
+                        on tap: submit()
+
+                on submit:
+                    await createIssue(title, body)
+                    navigate Inbox()

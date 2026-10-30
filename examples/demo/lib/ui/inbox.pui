@@ -25,43 +25,47 @@ screen Inbox:
     effect on filter:
         issues.retry()
 
-    column padding=md gap=sm:
+    // The screen is a page, not a fragment: `scaffold` is what gives a pushed screen its own
+    // Material, which `Card`, `TextField` and the rest need wherever they are used.
+    scaffold background=surface:
 
-        row gap=sm main=between:
+        column padding=md gap=sm:
 
-            text "Beacon" style=heading
-            button "New" variant=text:
-                on tap: navigate NewIssue()
+            row gap=sm main=between:
 
-        input bind=filter placeholder="Filter issues" label="Filter"
+                text "Beacon" style=heading
+                button "New" variant=text:
+                    on tap: navigate NewIssue()
 
-        text summary style=caption
+            input bind=filter placeholder="Filter issues" label="Filter"
 
-        if issues.loading:
+            text summary style=caption
 
-            progress
+            if issues.loading:
 
-        elif issues.error != null:
+                progress
 
-            text issues.error color=danger
-            button "Try again":
-                on tap: issues.retry()
+            elif issues.error != null:
 
-        elif shown == 0:
+                text issues.error color=danger
+                button "Try again":
+                    on tap: issues.retry()
 
-            text "Nothing matches \"${filter}\"" color=muted
+            elif shown == 0:
 
-        else:
+                text "Nothing matches \"${filter}\"" color=muted
 
-            column gap=sm:
+            else:
 
-                for issue in issues.value key=issue.id:
+                column gap=sm:
 
-                    card padding=md radius=card border=1 borderColor=ink:
+                    for issue in issues.value key=issue.id:
 
-                        on tap: navigate Detail(id: issue.id, title=issue.title)
+                        card padding=md radius=card border=1 borderColor=ink:
 
-                        row gap=sm main=between:
+                            on tap: navigate Detail(id: issue.id, title=issue.title)
 
-                            text issue.title
-                            text issue.open ? "open" : "closed" color=issue.open ? success : muted
+                            row gap=sm main=between:
+
+                                text issue.title
+                                text issue.open ? "open" : "closed" color=issue.open ? success : muted

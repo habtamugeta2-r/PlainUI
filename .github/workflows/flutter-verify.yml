@@ -311,7 +311,8 @@ jobs:
             });
 
             testWidgets('the demo loads a keyed list and filters it through an effect', (tester) async {
-              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: demo_inbox.Inbox())));
+              // A demo screen is a page: it renders its own `scaffold`, so `MaterialApp` is enough.
+              await tester.pumpWidget(const MaterialApp(home: demo_inbox.Inbox()));
 
               // `task issues: List<Issue> = data.loadIssues(filter)` — the list arrives on its own.
               await tester.pump(const Duration(milliseconds: 200));
@@ -334,7 +335,7 @@ jobs:
 
             testWidgets('the demo opens a detail screen and gates its comment form', (tester) async {
               await tester.pumpWidget(const MaterialApp(
-                home: Scaffold(body: demo_detail.Detail(id: 'pui-1', title: 'Derive instead of storing')),
+                home: demo_detail.Detail(id: 'pui-1', title: 'Derive instead of storing'),
               ));
               await tester.pump(const Duration(milliseconds: 200));
               await tester.pump();
@@ -360,7 +361,7 @@ jobs:
             });
 
             testWidgets('the demo creates an issue and lands back on the list', (tester) async {
-              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: demo_new_issue.NewIssue())));
+              await tester.pumpWidget(const MaterialApp(home: demo_new_issue.NewIssue()));
 
               await tester.tap(find.text('Create'));
               await tester.pumpAndSettle();

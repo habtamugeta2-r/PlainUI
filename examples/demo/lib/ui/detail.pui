@@ -19,54 +19,58 @@ screen Detail(id: String, title: String = "Issue"):
     derived count = comments.value.length
     derived heading = count == 1 ? "1 comment" : "${count} comments"
 
-    column padding=md gap=sm:
+    // The screen is a page, not a fragment: `scaffold` is what gives a pushed screen its own
+    // Material, which `Card`, `TextField` and the rest need wherever they are used.
+    scaffold background=surface:
 
-        row main=between gap=sm:
+        column padding=md gap=sm:
 
-            button "Back" variant=text:
-                on tap: back()
+            row main=between gap=sm:
 
-            text title style=heading
+                button "Back" variant=text:
+                    on tap: back()
 
-        text heading style=caption
+                text title style=heading
 
-        if comments.loading:
+            text heading style=caption
 
-            progress
+            if comments.loading:
 
-        elif comments.error != null:
+                progress
 
-            text comments.error color=danger
+            elif comments.error != null:
 
-        else:
+                text comments.error color=danger
 
-            column gap=sm:
+            else:
 
-                for comment in comments.value key=comment:
+                column gap=sm:
 
-                    card padding=sm radius=card background=surface:
+                    for comment in comments.value key=comment:
 
-                        text comment
+                        card padding=sm radius=card background=surface:
 
-                if count == 0:
+                            text comment
 
-                    text "No comments yet" color=muted
+                    if count == 0:
 
-        form:
+                        text "No comments yet" color=muted
 
-            column gap=sm:
+            form:
 
-                input bind=note placeholder="Add a comment" label="Comment" helper="At least 3 characters" validate=[required, min(3)]
+                column gap=sm:
 
-                if posted:
+                    input bind=note placeholder="Add a comment" label="Comment" helper="At least 3 characters" validate=[required, min(3)]
 
-                    text "Posted" color=success
+                    if posted:
 
-                button "Post":
-                    on tap: submit()
+                        text "Posted" color=success
 
-            on submit:
-                await addComment(id, note)
-                set note = ""
-                set posted = true
-                comments.retry()
+                    button "Post":
+                        on tap: submit()
+
+                on submit:
+                    await addComment(id, note)
+                    set note = ""
+                    set posted = true
+                    comments.retry()
