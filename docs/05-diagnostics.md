@@ -115,6 +115,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI4001`](#pui4001) | error | No sources found |
 | [`PUI4002`](#pui4002) | error | Invalid configuration |
 | [`PUI4003`](#pui4003) | error | Formatting required |
+| [`PUI4004`](#pui4004) | error | Generated output out of date |
 
 ## Lexical and structural
 
@@ -965,3 +966,11 @@ plainui.config.json could not be parsed or has an invalid setting.
 --check was passed and at least one file is not formatted.
 
 *Fix:* Run plainui format.
+
+### PUI4004
+
+**Generated output out of date** — error
+
+--check was passed and the Dart in the output directory no longer matches what the source compiles to.
+
+*Fix:* Run plainui build, and commit the result.

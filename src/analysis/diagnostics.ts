@@ -706,6 +706,12 @@ export const CODES = {
     description: '--check was passed and at least one file is not formatted.',
     fix: 'Run plainui format.',
   },
+  PUI4004: {
+    severity: 'error',
+    title: 'Generated output out of date',
+    description: '--check was passed and the Dart in the output directory no longer matches what the source compiles to.',
+    fix: 'Run plainui build, and commit the result.',
+  },
 } as const satisfies Record<string, CodeInfo>;
 
 export type DiagnosticCode = keyof typeof CODES;
