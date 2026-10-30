@@ -595,6 +595,11 @@ class FlutterGenerator {
     return `_load${capitalize(sanitizeName(name))}`;
   }
 
+  /** The sequence number of a task's current attempt: the newest load wins. */
+  private taskRequestField(name: string): string {
+    return `_${sanitizeName(name)}Request`;
+  }
+
   /** The declarations of every task: value, error and loading flag. */
   private taskFields(decl: ScreenDecl | ComponentDecl): string[] {
     const lines: string[] = [];
@@ -604,36 +609,42 @@ class FlutterGenerator {
       lines.push(`  ${valueText}? ${this.taskField(task.name, 'value')};`);
       lines.push(`  String? ${this.taskField(task.name, 'error')};`);
       lines.push(`  bool ${this.taskField(task.name, 'loading')} = true;`);
+      lines.push(`  int ${this.taskRequestField(task.name)} = 0;`);
     }
     return lines;
   }
 
   /**
-   * The loader for one task. Three details matter more than they look:
+   * The loader for one task. Four details matter more than they look:
    *
    *   - the flag and the error are reset on every run, so a retry shows loading rather than the
    *     previous failure;
    *   - `mounted` is checked after the await, because a screen can be popped while a load is in
    *     flight and `setState` after that throws;
+   *   - each run takes a sequence number, and a result whose number is no longer the current one is
+   *     dropped. Without it the most natural user action — retrying a slow load — lets the slow
+   *     result overwrite the fresh one, intermittently, which is the worst kind of bug;
    *   - the error is captured as text, so the tree can render it without a nullable-object dance.
    */
   private taskLoaderMethod(task: TaskDecl): string[] {
     const field = (part: 'value' | 'error' | 'loading'): string => this.taskField(task.name, part);
     const lines: string[] = [];
+    const request = this.taskRequestField(task.name);
     lines.push(`  Future<void> ${this.taskLoader(task.name)}() async {`);
+    lines.push(`    final request = ++${request};`);
     lines.push('    setState(() {');
     lines.push(`      ${field('loading')} = true;`);
     lines.push(`      ${field('error')} = null;`);
     lines.push('    });');
     lines.push('    try {');
     lines.push(`      final result = await ${this.expr(task.init)};`);
-    lines.push('      if (!mounted) return;');
+    lines.push(`      if (!mounted || request != ${request}) return;`);
     lines.push('      setState(() {');
     lines.push(`        ${field('value')} = result;`);
     lines.push(`        ${field('loading')} = false;`);
     lines.push('      });');
     lines.push('    } catch (error) {');
-    lines.push('      if (!mounted) return;');
+    lines.push(`      if (!mounted || request != ${request}) return;`);
     lines.push('      setState(() {');
     lines.push(`        ${field('error')} = error.toString();`);
     lines.push(`        ${field('loading')} = false;`);
