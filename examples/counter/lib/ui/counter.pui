@@ -1,5 +1,7 @@
-// The smallest complete app: state, an event, a text field bound to state, and values computed
-// from that state. `derived` has no storage, so it cannot be stale and cannot be assigned.
+// The smallest complete app: state, an event, a text field bound to state, values computed from
+// that state, and an effect that runs when one of them changes. `derived` has no storage, so it
+// cannot be stale and cannot be assigned; an `effect` names the state it reacts to, so it cannot
+// run on every rebuild either.
 
 style figure:
     size=56
@@ -10,9 +12,13 @@ screen Counter:
 
     state count: int = 0
     state name: String = "PlainUI"
+    state lastChange: String = "none yet"
 
     derived doubled = count * 2
     derived greeting = name == "" ? "Hello, stranger" : "Hello, ${name}"
+
+    effect on count:
+        set lastChange = "count is ${count}"
 
     column padding=24 gap=16 main=center:
 
@@ -20,6 +26,7 @@ screen Counter:
         text count style=figure
         text "Taps so far" style=caption
         text "x2 = ${doubled}" style=caption
+        text "last: ${lastChange}" style=caption
 
         row gap=12 main=center:
             button "One less" variant=outlined:
