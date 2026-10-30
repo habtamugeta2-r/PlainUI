@@ -452,6 +452,10 @@ class FlutterGenerator {
       const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
       this.scope.set(task.name, { emittedName: this.taskField(task.name, 'value'), type: { kind: 'task', value } });
     }
+    for (const item of decl.derived) {
+      const type = this.analysis.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC;
+      this.scope.set(item.name, { emittedName: item.name, type });
+    }
 
     // Build the tree first: emitting it records controller and form-key requirements.
     const body = this.emitBody(decl.body);
@@ -513,6 +517,7 @@ class FlutterGenerator {
       lines.push('');
       for (const field of this.fields(decl)) lines.push(`  ${field}`);
     }
+    lines.push(...this.derivedGetters(decl));
     lines.push('');
     lines.push('  @override');
     lines.push('  Widget build(BuildContext context) {');
@@ -559,6 +564,7 @@ class FlutterGenerator {
     for (const key of formKeys) {
       lines.push(`  /// The validation state of one form in this screen.\n  final GlobalKey<FormState> ${key} = GlobalKey<FormState>();`);
     }
+    lines.push(...this.derivedGetters(decl));
     lines.push('');
 
     if (decl.tasks.length > 0) {
@@ -601,6 +607,26 @@ class FlutterGenerator {
     lines.push(`    return ${indentCode(body, 4)};`);
     lines.push('  }');
     lines.push('}');
+    return lines;
+  }
+
+  /**
+   * `derived` compiles to a getter, so the value is computed when it is read and stored nowhere.
+   *
+   * A stored field would have to be recomputed at exactly the right moments — every write to every
+   * value it reads — which is the bug this construct exists to remove. A getter cannot be stale,
+   * because there is nothing to go stale. The cost is one computation per read, which is the trade
+   * `docs/10-decisions.md` B1 records, and the reason memoisation is a later, per-target step.
+   */
+  private derivedGetters(decl: ScreenDecl | ComponentDecl): string[] {
+    const lines: string[] = [];
+    if (decl.derived.length === 0) return lines;
+    for (const item of decl.derived) {
+      const type = item.typeText ?? typeToText(this.analysis.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC);
+      lines.push('');
+      lines.push(`  /// \`derived ${item.name}\` — computed on every read, never stored.`);
+      lines.push(`  ${type} get ${item.name} => ${this.expr(item.init)};`);
+    }
     return lines;
   }
 

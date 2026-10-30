@@ -16,12 +16,14 @@
 import type {
   ComponentDecl,
   Decl,
+  DerivedDecl,
   Expr,
   IfNode,
   Node,
   Prop,
   ScreenDecl,
   ForNode,
+  Param,
   StateDecl,
   TaskDecl,
   TokenDecl,
@@ -98,6 +100,21 @@ function evaluate(expr: Expr, env: Env): Value {
           const part = (task as unknown as Record<string, Value>)[expr.name];
           return part ?? UNKNOWN(expr);
         }
+      }
+      // The members whose value the preview can know without running anything. `items.value.length`
+      // is a number because the preview knows how many rows it is showing — which is zero.
+      const object = evaluate(expr.object, env);
+      if (object.kind === 'list') {
+        if (expr.name === 'length') return { kind: 'number', value: object.items.length };
+        if (expr.name === 'isEmpty') return { kind: 'bool', value: object.items.length === 0 };
+        if (expr.name === 'isNotEmpty') return { kind: 'bool', value: object.items.length > 0 };
+        if (expr.name === 'first') return object.items[0] ?? UNKNOWN(expr);
+        if (expr.name === 'last') return object.items[object.items.length - 1] ?? UNKNOWN(expr);
+      }
+      if (object.kind === 'string') {
+        if (expr.name === 'length') return { kind: 'number', value: object.value.length };
+        if (expr.name === 'isEmpty') return { kind: 'bool', value: object.value.length === 0 };
+        if (expr.name === 'isNotEmpty') return { kind: 'bool', value: object.value.length > 0 };
       }
       return UNKNOWN(expr);
     }
@@ -377,6 +394,7 @@ class HtmlEmitter {
     for (const param of screen.params) this.env.values.set(param.name, { kind: 'string', value: `{${param.name}}` });
     for (const state of screen.state) this.bindState(state);
     this.bindTasks(screen);
+    this.bindDerived(screen);
   }
 
   private navigates(screen: ScreenDecl): boolean {
@@ -527,6 +545,17 @@ class HtmlEmitter {
 
   private bindState(state: StateDecl): void {
     this.env.values.set(state.name, evaluate(state.init, this.env));
+  }
+
+  /**
+   * A derived value in the preview is a snapshot, not a getter: there is no runtime to recompute it
+   * when state changes, and state does not change in a static render anyway. Evaluating it in order
+   * is what makes `text "${total}"` show a number instead of nothing.
+   */
+  private bindDerived(decl: { derived: readonly DerivedDecl[]; state: readonly StateDecl[]; params: readonly Param[] }): void {
+    for (const item of decl.derived) {
+      this.env.values.set(item.name, evaluate(item.init, this.env));
+    }
   }
 
   // ---- nodes -------------------------------------------------------------------------------
@@ -1208,6 +1237,7 @@ class HtmlEmitter {
     });
 
     for (const state of decl.state) this.bindState(state);
+    this.bindDerived(decl);
 
     if (element.children.length > 0) this.slotRenderers.push(() => this.renderChildren(element.children));
     this.open('div', [['class', 'pui-component'], ['data-component', decl.name]], ['display: flex', 'flex-direction: column', 'gap: 0']);

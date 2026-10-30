@@ -218,6 +218,24 @@ export interface Arg {
 }
 
 /**
+ * `derived total = price * count` — a value computed from other values.
+ *
+ * A derived value is not storage: it is recomputed from what it reads, every time it is read. That
+ * makes it impossible to be stale, impossible to assign, and impossible to forget to update — which
+ * is the whole class of bug a "computed" field written by hand produces.
+ */
+export interface DerivedDecl {
+  readonly kind: 'Derived';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  /** Optional: without it the type is inferred from the expression. */
+  readonly typeText?: string;
+  readonly typeSpan?: Span;
+  readonly init: Expr;
+}
+
+/**
  * `task items: List<Todo> = loadTodos()` — an async value owned by the screen.
  *
  * A task is a value with three readable parts — `items.loading`, `items.error`, `items.value` — and
@@ -298,7 +316,7 @@ export interface SlotNode {
 
 /** Nodes may appear in a body. `State`/`Event` are only legal in specific positions and are
  *  checked by the validator rather than the parser, which keeps error messages semantic. */
-export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | TaskDecl | EventHandler;
+export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | TaskDecl | DerivedDecl | EventHandler;
 
 // ---------------------------------------------------------------------------------------------
 // Actions (event bodies)
@@ -353,6 +371,8 @@ export interface ScreenDecl {
   readonly params: readonly Param[];
   readonly state: readonly StateDecl[];
   readonly tasks: readonly TaskDecl[];
+  /** Computed values, in declaration order. */
+  readonly derived: readonly DerivedDecl[];
   readonly body: readonly Node[];
 }
 
@@ -364,6 +384,8 @@ export interface ComponentDecl {
   readonly params: readonly Param[];
   readonly state: readonly StateDecl[];
   readonly tasks: readonly TaskDecl[];
+  /** Computed values, in declaration order. */
+  readonly derived: readonly DerivedDecl[];
   readonly body: readonly Node[];
 }
 

@@ -370,7 +370,57 @@ screen Tasks:
   no longer current is dropped. Retrying a slow load therefore cannot end up showing the older
   answer, which is what would happen if the two attempts simply raced.
 
-### 3.6 Events
+### 3.6 Computed values
+
+A value that only needs to be read is declared with `derived`, not kept in `state` and updated by
+hand.
+
+```
+screen Counter:
+
+    state count: int = 0
+    state name: String = ""
+
+    derived doubled = count * 2
+    derived greeting = name == "" ? "Hello, stranger" : "Hello, ${name}"
+
+    text "${doubled}"
+    text greeting
+```
+
+* `derived <name> = <expression>` is only valid at the **top level** of a screen or component
+  (`PUI2352`), next to `state` and `task`, and it follows the same naming rules (`PUI2003`,
+  `PUI2012`).
+* **The value is computed on every read and never stored.** The Dart target lowers it to a getter
+  (`int get doubled => count * 2;`), which is exactly the guarantee: there is no field that could
+  hold a value older than the state it was computed from. The cost is one evaluation per read, so
+  keep hot-path expressions cheap; a cache is a separate, later decision (`docs/10-decisions.md` B1)
+  and it would have to name its dependencies explicitly.
+* The type is inferred from the expression (`PUI2353` if a declared type disagrees):
+
+  | Expression | Type |
+  | --- | --- |
+  | `count * 2`, `items.value.length` | `Int` |
+  | `count / step` (the `/` operator), `1.5` | `Float` |
+  | `count > step`, `items.loading` | `Bool` |
+  | `name + "!"`, `"${count}"` | `Text` |
+  | `[count, step]` | `List<Int>` |
+  | `name == "" ? "a" : "b"` | `Text` — both branches must agree |
+  | anything else, including a host call | `Dynamic` |
+
+* A derived value may read state, other derived values, tasks and parameters, in any declaration
+  order. Depending on itself is an error (`PUI2351`), transitively too — a cycle has no first
+  value to compute.
+* It cannot be assigned: `set doubled = 4` is `PUI2350`, and `on <event>: doubled = 4` says the same
+  thing. There is no second source of truth to write to.
+* It is read-only in expressions and in `${...}`, and it drives elements, styles, conditions and
+  loops like any other value.
+* A derived value that is never read is a warning (`PUI2411`), not an error: it is usually a
+  leftover.
+* The preview (`plainui preview`) evaluates derived values once, in declaration order, so a screen
+  built only from literals renders correctly without Dart.
+
+### 3.7 Events
 
 ```
 button "Sign In":
@@ -393,7 +443,7 @@ button "Retry":
 
 * The event name must be one the widget supports (`PUI2101`), either natively or through the
   generic event set: `tap`, `longTap`, `doubleTap`, `hover` on every element; `change`,
-  `focus`, `blur` on input-like widgets; `submit` on `form` (§3.7).
+  `focus`, `blur` on input-like widgets; `submit` on `form` (§3.8).
 * At most one handler per event per element (`PUI2103`).
 * A handler containing `await` is emitted as an `async` closure automatically.
 
@@ -436,7 +486,7 @@ screen Detail(id: String, title: String = "Task"):
 * A project that navigates also gets `plainui_routes.dart`: a map from screen name to widget, for
   host code that has a name (a deep link, a notification) and no import.
 
-### 3.7 Forms and validation
+### 3.8 Forms and validation
 
 ```
 form:

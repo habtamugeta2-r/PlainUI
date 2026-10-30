@@ -9,9 +9,9 @@ This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same
 `plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no
 acceptance criterion, an unknown size, or a phase that does not exist.
 
-**Now:** `derived` values (`derived`, M) — `derived total = count * 2` recomputes when its inputs change and never stores state; a widget test shows the derived value updating while an unrelated state change leaves it alone.
+**Now:** `effect on <state>` (`effect`, M) — An effect runs after a change to the states it names and not otherwise; the lowering is `didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use.
 
-## Flutter depth — 7/10
+## Flutter depth — 8/10
 
 *Gate to leave this phase:* A demo app — navigation, tokens, async, forms and keyed lists — written without dropping into Dart for anything routine.
 
@@ -24,8 +24,8 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 | ✔ | ~~Latest-wins task cancellation~~ | `S` | A retry during an in-flight load cannot be overwritten by the older result; a test with two differing delays proves the second result wins. |
 | ✔ | ~~Forms and validation~~ | `L` | Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; an invalid submission is impossible to express, not merely discouraged. |
 | ✔ | ~~Typed interop~~ | `M` | Host components and imports are declared with signatures, and calls to them are type-checked rather than passed through. |
-| ▸ | **`derived` values** | `M` | `derived total = count * 2` recomputes when its inputs change and never stores state; a widget test shows the derived value updating while an unrelated state change leaves it alone. |
-| · | `effect on <state>` | `M` | An effect runs after a change to the states it names and not otherwise; the lowering is `didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use. |
+| ✔ | ~~`derived` values~~ | `M` | `derived total = count * 2` recomputes when its inputs change and never stores state; a widget test shows the derived value updating while an unrelated state change leaves it alone. |
+| ▸ | **`effect on <state>`** | `M` | An effect runs after a change to the states it names and not otherwise; the lowering is `didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use. |
 | · | Phase gate: the demo app | `M` | One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples. |
 
 ## v2.0 architecture — 0/4

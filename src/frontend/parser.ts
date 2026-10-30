@@ -19,6 +19,7 @@ import type {
   CallArg,
   ComponentDecl,
   Decl,
+  DerivedDecl,
   ElementNode,
   EventHandler,
   Expr,
@@ -329,7 +330,7 @@ class Parser {
     }
     this.expectOp(':', 'to open the screen body');
     const body = this.parseNodeBody();
-    const { state, tasks, rest } = splitState(body);
+    const { state, tasks, derived, rest } = splitState(body);
     return {
       kind: 'Screen',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
@@ -338,6 +339,7 @@ class Parser {
       params,
       state,
       tasks,
+      derived,
       body: rest,
     };
   }
@@ -351,7 +353,7 @@ class Parser {
     }
     this.expectOp(':', 'to open the component body');
     const body = this.parseNodeBody();
-    const { state, tasks, rest } = splitState(body);
+    const { state, tasks, derived, rest } = splitState(body);
     return {
       kind: 'Component',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
@@ -360,6 +362,7 @@ class Parser {
       params,
       state,
       tasks,
+      derived,
       body: rest,
     };
   }
@@ -609,6 +612,11 @@ class Parser {
     // name for other things and the shape is unambiguous: `task` followed by a name.
     if (token.kind === 'ident' && token.value === 'task' && this.peek(1).kind === 'ident') {
       return this.parseTask();
+    }
+
+    // `derived total = price * count` — the same argument, and the same shape: a name follows.
+    if (token.kind === 'ident' && token.value === 'derived' && this.peek(1).kind === 'ident') {
+      return this.parseDerived();
     }
 
     if (token.kind === 'keyword') {
@@ -932,6 +940,57 @@ class Parser {
 
     return {
       kind: 'Task',
+      span: span(keyword.span.start, init.span.end),
+      name: nameToken.value,
+      nameSpan: nameToken.span,
+      ...(typeText === undefined ? {} : { typeText }),
+      ...(typeSpan === undefined ? {} : { typeSpan }),
+      init,
+    };
+  }
+
+  /**
+   * `derived total = price * count`, or `derived label: String = "…"` when inference is not enough.
+   *
+   * The type is optional on purpose: a derived value is not storage, so its type describes an
+   * expression the compiler can already type. Writing it is a way to pin the intent, and it is
+   * checked against the expression rather than trusted.
+   */
+  private parseDerived(): DerivedDecl {
+    const keyword = this.advance();
+    const nameToken = this.expectIdent('for the derived value');
+    let typeText: string | undefined;
+    let typeSpan: Span | undefined;
+
+    if (this.atOp(':')) {
+      this.advance();
+      const collected = this.collectTypeText(new Set(['=']));
+      typeText = collected.text;
+      typeSpan = collected.span;
+      if (typeText.length === 0) {
+        this.error('PUI1023', 'expected a type after ":"', nameToken.span, 'for example: derived total: int = count * 2');
+      }
+    }
+
+    if (!this.atOp('=')) {
+      this.error('PUI1023', `derived "${nameToken.value}" needs an expression`, this.peek().span, 'for example: derived total = count * 2');
+      this.skipLine();
+      return {
+        kind: 'Derived',
+        span: span(keyword.span.start, nameToken.span.end),
+        name: nameToken.value,
+        nameSpan: nameToken.span,
+        ...(typeText === undefined ? {} : { typeText }),
+        ...(typeSpan === undefined ? {} : { typeSpan }),
+        init: { kind: 'Null', span: nameToken.span },
+      };
+    }
+    this.advance();
+    const init = this.parseExpression();
+    this.expectNewline('after the derived declaration');
+
+    return {
+      kind: 'Derived',
       span: span(keyword.span.start, init.span.end),
       name: nameToken.value,
       nameSpan: nameToken.span,
@@ -1419,16 +1478,18 @@ function endOfBody(items: readonly { span: Span }[], fallback: number): number {
   return items.length === 0 ? fallback : items[items.length - 1]!.span.end;
 }
 
-function splitState(body: readonly Node[]): { state: StateDecl[]; tasks: TaskDecl[]; rest: Node[] } {
+function splitState(body: readonly Node[]): { state: StateDecl[]; tasks: TaskDecl[]; derived: DerivedDecl[]; rest: Node[] } {
   const state: StateDecl[] = [];
   const tasks: TaskDecl[] = [];
+  const derived: DerivedDecl[] = [];
   const rest: Node[] = [];
   for (const node of body) {
     if (node.kind === 'State') state.push(node);
     else if (node.kind === 'Task') tasks.push(node);
+    else if (node.kind === 'Derived') derived.push(node);
     else rest.push(node);
   }
-  return { state, tasks, rest };
+  return { state, tasks, derived, rest };
 }
 
 function propAsNode(prop: Prop): { span: Span } {

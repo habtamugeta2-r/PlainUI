@@ -16,6 +16,7 @@ import {
   DYNAMIC,
   DOUBLE,
   INT,
+  NUM,
   STRING,
   type Action,
   type CallExpr,
@@ -27,6 +28,7 @@ import {
   type HostDecl,
   type HostFn,
   type ImportDecl,
+  type DerivedDecl,
   type Node,
   type Param,
   type Program,
@@ -125,8 +127,9 @@ interface HostTarget {
 
 export interface VarInfo {
   readonly name: string;
-  readonly type: UiType;
-  readonly kind: 'state' | 'param' | 'loop' | 'token' | 'task';
+  /** Mutable so a `derived` value's type can be refined once the values it reads are typed. */
+  type: UiType;
+  readonly kind: 'state' | 'param' | 'loop' | 'token' | 'task' | 'derived';
   readonly nameSpan: Span;
   used: boolean;
 }
@@ -147,6 +150,8 @@ export interface Analysis {
   readonly loopTypes: ReadonlyMap<ForNode, ReadonlyMap<string, UiType>>;
   /** Value types of each screen/component's tasks, per declaration. */
   readonly taskTypes: ReadonlyMap<string, ReadonlyMap<string, UiType>>;
+  /** Types of each screen/component's `derived` values, in declaration order. */
+  readonly derivedTypes: ReadonlyMap<string, ReadonlyMap<string, UiType>>;
   /** Design tokens in scope in this file: its own `theme`, plus those of imported files. */
   readonly tokens: ReadonlyMap<string, TokenDecl>;
   /** This file's own `theme` declaration, when it has one. */
@@ -234,6 +239,7 @@ class Checker {
   readonly resolvedTags = new Map<ElementNode, ResolvedTag>();
   readonly stateTypes = new Map<string, Map<string, UiType>>();
   readonly taskTypes = new Map<string, Map<string, UiType>>();
+  readonly derivedTypes = new Map<string, Map<string, UiType>>();
   readonly paramTypes = new Map<string, Map<string, UiType>>();
   readonly componentHasSlot = new Map<string, boolean>();
   readonly loopTypes = new Map<ForNode, Map<string, UiType>>();
@@ -289,6 +295,7 @@ class Checker {
       resolvedTags: this.resolvedTags,
       stateTypes: this.stateTypes,
       taskTypes: this.taskTypes,
+      derivedTypes: this.derivedTypes,
       paramTypes: this.paramTypes,
       componentHasSlot: this.componentHasSlot,
       loopTypes: this.loopTypes,
@@ -551,6 +558,33 @@ class Checker {
       }
       this.taskTypes.set(decl.name, taskMap);
 
+      // `derived` values are registered here and typed later, once the scope exists: a derived
+      // expression can read state, parameters, tasks and other derived values, so the checker is
+      // the only thing that knows what its identifiers mean. What can be decided now is the name
+      // itself, and the one thing a computed value must never do: depend on its own result.
+      const derivedMap = new Map<string, UiType>();
+      const derivedByName = new Map<string, DerivedDecl>();
+      for (const item of decl.derived) {
+        if (derivedMap.has(item.name) || stateMap.has(item.name) || taskMap.has(item.name)) {
+          this.error('PUI2003', `duplicate value "${item.name}"`, item.nameSpan, 'a name is either state, a task or derived, once');
+          continue;
+        }
+        derivedByName.set(item.name, item);
+        if (item.typeText !== undefined) this.checkTypeSpelling(item.typeText, item.typeSpan ?? item.nameSpan);
+        if (this.tokens.has(item.name)) {
+          this.error('PUI2309', `derived "${item.name}" collides with the token of the same name`, item.nameSpan, 'rename one of them');
+        }
+        if (DART_RESERVED_WORDS.has(item.name)) {
+          this.error('PUI2012', `"${item.name}" is a reserved word in Dart`, item.nameSpan, 'choose a different name');
+        }
+        if (FLUTTER_TYPE_NAMES.has(item.name)) {
+          this.error('PUI2011', `derived "${item.name}" would shadow the Flutter type of the same name`, item.nameSpan, 'rename it');
+        }
+        derivedMap.set(item.name, item.typeText === undefined ? DYNAMIC : typeFromText(item.typeText));
+      }
+      this.checkDerivedCycles(decl, derivedByName);
+      this.derivedTypes.set(decl.name, derivedMap);
+
       // Screens and components both take parameters; a screen parameter is what `navigate` passes.
       const params = new Map<string, UiType>();
       for (const param of decl.params) {
@@ -631,6 +665,15 @@ class Checker {
       const type = this.paramTypes.get(decl.name)?.get(param.name) ?? DYNAMIC;
       scope.vars.set(param.name, { name: param.name, type, kind: 'param', nameSpan: param.nameSpan, used: false });
     }
+    for (const item of decl.derived) {
+      const declared = this.derivedTypes.get(decl.name)?.get(item.name) ?? DYNAMIC;
+      scope.vars.set(item.name, { name: item.name, type: declared, kind: 'derived', nameSpan: item.nameSpan, used: false });
+    }
+
+    // A derived value may read one declared further down the file, so its type is resolved in
+    // dependency order rather than declaration order: `derived total = count * price` where
+    // `price` is itself derived has to see `price`'s type, not its placeholder.
+    this.resolveDerivedTypes(decl, scope);
 
     const ctx: DeclContext = {
       decl,
@@ -656,6 +699,23 @@ class Checker {
       if (type !== undefined) this.checkHostAssign(type, this.taskTypes.get(decl.name)?.get(task.name), task.init.span, `task "${task.name}"`);
     }
 
+    for (const item of decl.derived) {
+      // Value position: a derived value is a pure expression, never an action.
+      this.checkExpr(item.init, scope, 'value', false);
+      if (item.typeText !== undefined) {
+        const expected = typeFromText(item.typeText);
+        const actual = this.typeOfExpression(item.init, scope);
+        if (!assignable(expected, actual)) {
+          this.error(
+            'PUI2353',
+            `derived "${item.name}" is declared ${typeName(expected)}`,
+            item.init.span,
+            `but the expression produces ${typeName(actual)}`,
+          );
+        }
+      }
+    }
+
     this.checkBody(decl.body, scope, ctx);
 
     // A component that renders `slot` necessarily uses its `children` parameter.
@@ -671,6 +731,8 @@ class Checker {
         this.warning('PUI2404', `state "${varInfo.name}" is never used`, varInfo.nameSpan, 'remove it, or use it');
       } else if (varInfo.kind === 'param') {
         this.warning('PUI2405', `parameter "${varInfo.name}" is never used`, varInfo.nameSpan, 'remove it, or use it');
+      } else if (varInfo.kind === 'derived') {
+        this.warning('PUI2411', `derived "${varInfo.name}" is never used`, varInfo.nameSpan, 'remove it, or read it');
       }
     }
 
@@ -694,6 +756,14 @@ class Checker {
           break;
         case 'Event':
           this.error('PUI1026', `"on ${node.name}" must be written directly inside an element`, node.span, 'move it into the block of the element it belongs to');
+          break;
+        case 'Derived':
+          this.error(
+            'PUI2352',
+            'derived may only be declared at the top level of a screen or component',
+            node.span,
+            'move it up next to the state it reads',
+          );
           break;
         case 'Slot':
           this.checkSlot(node.span, ctx);
@@ -837,6 +907,15 @@ class Checker {
     for (const child of el.children) {
       if (child.kind === 'State') {
         this.error('PUI2002', 'state may only be declared at the top level of a screen or component', child.span);
+        continue;
+      }
+      if (child.kind === 'Derived') {
+        this.error(
+          'PUI2352',
+          'derived may only be declared at the top level of a screen or component',
+          child.span,
+          'move it up next to the state it reads',
+        );
         continue;
       }
       if (child.kind === 'Event') {
@@ -1342,6 +1421,13 @@ class Checker {
               `"${action.target.name}" is a design token and cannot be assigned`,
               action.target.span,
               'tokens are compile-time values; keep mutable values in "state"',
+            );
+          } else if (varInfo.kind === 'derived') {
+            this.error(
+              'PUI2350',
+              `"${action.target.name}" is derived and cannot be assigned`,
+              action.target.span,
+              'it is computed from the values it reads — change one of those instead',
             );
           } else if (varInfo.kind === 'loop') {
             this.error('PUI2105', `"${action.target.name}" is a loop variable and cannot be assigned`, action.target.span, 'assign to state instead');
@@ -1873,6 +1959,102 @@ class Checker {
     }
   }
 
+  // ------------------------------------------------------------------------------------------
+  // Derived values
+  // ------------------------------------------------------------------------------------------
+
+  /** The derived names an expression reads, including through a string interpolation. */
+  private derivedDependencies(expr: Expr, known: ReadonlyMap<string, DerivedDecl>): Set<string> {
+    const found = new Set<string>();
+    const add = (name: string): void => {
+      if (known.has(name)) found.add(name);
+    };
+    walkExpr(expr, (inner) => {
+      if (inner.kind === 'Ident') add(inner.name);
+      // `${total}` is text to the lexer and an identifier to the compiler; a cycle through a string
+      // would be a stack overflow in the generated getter, so it has to be seen here.
+      if (inner.kind === 'String') {
+        for (const interpolation of inner.interpolations) {
+          const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)/.exec(interpolation.text);
+          if (match !== null) add(match[1]!);
+        }
+      }
+    });
+    return found;
+  }
+
+  /**
+   * A computed value that depends on its own result has no value: the generated getter would call
+   * itself until the stack ends. Reported once per cycle, at the declaration that closes it.
+   */
+  private checkDerivedCycles(decl: ScreenDecl | ComponentDecl, known: ReadonlyMap<string, DerivedDecl>): void {
+    const edges = new Map<string, Set<string>>();
+    for (const [name, item] of known) edges.set(name, this.derivedDependencies(item.init, known));
+
+    const state = new Map<string, 'visiting' | 'done'>();
+    const path: string[] = [];
+
+    const visit = (name: string): void => {
+      if (state.get(name) === 'done') return;
+      if (state.get(name) === 'visiting') {
+        const start = path.indexOf(name);
+        const cycle = [...path.slice(start === -1 ? 0 : start), name];
+        const item = known.get(name);
+        if (item !== undefined) {
+          this.error(
+            'PUI2351',
+            'derived value depends on itself',
+            item.nameSpan,
+            `${cycle.join(' → ')} — a computed value cannot read its own result`,
+          );
+        }
+        return;
+      }
+      state.set(name, 'visiting');
+      path.push(name);
+      for (const next of edges.get(name) ?? []) visit(next);
+      path.pop();
+      state.set(name, 'done');
+    };
+
+    for (const name of known.keys()) visit(name);
+    void decl;
+  }
+
+  /**
+   * Types for `derived` values, in dependency order.
+   *
+   * `derived total: int = count * 2` already knows its type; one without an annotation takes the
+   * type of its expression, which can only be computed once the values it reads have theirs. The
+   * map in `Analysis` is the same object, so generators see the resolved types.
+   */
+  private resolveDerivedTypes(decl: ScreenDecl | ComponentDecl, scope: Scope): void {
+    const types = this.derivedTypes.get(decl.name);
+    if (types === undefined || decl.derived.length === 0) return;
+    const known = new Map<string, DerivedDecl>();
+    for (const item of decl.derived) known.set(item.name, item);
+
+    const done = new Set<string>();
+    const resolving = new Set<string>();
+
+    const resolve = (name: string): void => {
+      if (done.has(name) || resolving.has(name)) return;
+      const item = known.get(name);
+      if (item === undefined) return;
+      resolving.add(name);
+      for (const dependency of this.derivedDependencies(item.init, known)) resolve(dependency);
+      resolving.delete(name);
+      done.add(name);
+      if (item.typeText !== undefined) return;
+      const type = this.typeOfExpression(item.init, scope);
+      const info = scope.vars.get(name);
+      if (info !== undefined) info.type = type;
+      types.set(name, type);
+    };
+
+    for (const item of decl.derived) resolve(item.name);
+  }
+
   private checkHostDeclShape(decl: HostDecl, module: HostModule): void {
     const capitalised = /^[A-Z]/.test(decl.name);
     if (decl.kind === 'HostWidget' && !capitalised) {
@@ -2074,28 +2256,96 @@ class Checker {
     );
   }
 
+  /**
+   * The type of an expression, as far as the language can know it.
+   *
+   * Literals were enough while the only question was "is this a string literal"; a `derived` value
+   * and a typed host call both need more, because `taps * step` is an `int` only if `taps` and
+   * `step` are. Anything genuinely unknown (a host object, a list element of an untyped list) stays
+   * `dynamic`, which every check treats as compatible rather than as a mismatch.
+   */
   private typeOfExpression(expr: Expr, scope: Scope): UiType {
-    if (expr.kind === 'Ident') {
-      const varInfo = this.resolve(expr.name, scope);
-      if (varInfo !== undefined) return varInfo.type;
-    }
-    if (expr.kind === 'Call') {
-      const target = this.hostTarget(expr, scope, false);
-      if (target !== undefined && target.decl.kind === 'HostFn' && target.decl.typeText !== undefined) {
-        return returnTypeFromText(target.decl.typeText).type;
+    switch (expr.kind) {
+      case 'Ident': {
+        const varInfo = this.resolve(expr.name, scope);
+        return varInfo?.type ?? DYNAMIC;
       }
-    }
-    if (expr.kind === 'Member' && expr.object.kind === 'Ident') {
-      const varInfo = this.resolve(expr.object.name, scope);
-      if (varInfo !== undefined && varInfo.type.kind === 'task') {
-        // A list-valued task reads with the list type: the compiler supplies an empty list until
-        // the first load completes, so `for item in items.value` needs no null handling.
-        if (expr.name === 'value') return varInfo.type.value;
-        if (expr.name === 'loading') return BOOL;
-        if (expr.name === 'error') return { kind: 'nullable', inner: STRING };
+      case 'Call': {
+        const target = this.hostTarget(expr, scope, false);
+        if (target !== undefined && target.decl.kind === 'HostFn' && target.decl.typeText !== undefined) {
+          return returnTypeFromText(target.decl.typeText).type;
+        }
+        return DYNAMIC;
       }
+      case 'Member': {
+        if (expr.object.kind === 'Ident') {
+          const varInfo = this.resolve(expr.object.name, scope);
+          if (varInfo !== undefined && varInfo.type.kind === 'task') {
+            // A list-valued task reads with the list type: the compiler supplies an empty list until
+            // the first load completes, so `for item in items.value` needs no null handling.
+            if (expr.name === 'value') return varInfo.type.value;
+            if (expr.name === 'loading') return BOOL;
+            if (expr.name === 'error') return { kind: 'nullable', inner: STRING };
+          }
+        }
+        // The handful of members whose type the language knows. Everything else is a host property,
+        // and stays `dynamic` rather than being guessed at.
+        const object = this.typeOfExpression(expr.object, scope);
+        if (object.kind === 'list' || object.kind === 'string') {
+          if (expr.name === 'length') return INT;
+          if (expr.name === 'isEmpty' || expr.name === 'isNotEmpty') return BOOL;
+          if (object.kind === 'list' && (expr.name === 'first' || expr.name === 'last')) return object.element;
+        }
+        return DYNAMIC;
+      }
+      case 'Paren':
+        return this.typeOfExpression(expr.inner, scope);
+      case 'Unary': {
+        if (expr.op === '!') return BOOL;
+        if (expr.op === 'await') return this.typeOfExpression(expr.operand, scope);
+        const operand = this.typeOfExpression(expr.operand, scope);
+        return isNumericType(operand) ? operand : DYNAMIC;
+      }
+      case 'Binary': {
+        if (['==', '!=', '<', '<=', '>', '>=', '&&', '||'].includes(expr.op)) return BOOL;
+        if (!['+', '-', '*', '/', '%'].includes(expr.op)) return DYNAMIC;
+        const left = this.typeOfExpression(expr.left, scope);
+        const right = this.typeOfExpression(expr.right, scope);
+        if (expr.op === '+') {
+          // `+` on strings concatenates; anything else is arithmetic.
+          if (isStringType(left) || isStringType(right)) {
+            return isStringType(left) || left.kind === 'dynamic' ? (isStringType(right) || right.kind === 'dynamic' ? STRING : DYNAMIC) : DYNAMIC;
+          }
+        }
+        // Dart's `/` is double division even between ints: `int / int` is a `double`.
+        if (expr.op === '/') {
+          if (isNumericType(left) && isNumericType(right)) return left.kind === 'num' || right.kind === 'num' ? NUM : DOUBLE;
+          return DYNAMIC;
+        }
+        return numericJoin(left, right);
+      }
+      case 'Ternary': {
+        const then = this.typeOfExpression(expr.then, scope);
+        const otherwise = this.typeOfExpression(expr.otherwise, scope);
+        if (then.kind === otherwise.kind) return then;
+        return numericJoin(then, otherwise);
+      }
+      case 'List': {
+        if (expr.items.length === 0) return { kind: 'list', element: DYNAMIC };
+        let element = this.typeOfExpression(expr.items[0]!, scope);
+        for (const item of expr.items.slice(1)) {
+          const next = this.typeOfExpression(item, scope);
+          if (next.kind !== element.kind) element = DYNAMIC;
+        }
+        return { kind: 'list', element };
+      }
+      case 'Index': {
+        const object = this.typeOfExpression(expr.object, scope);
+        return object.kind === 'list' ? object.element : DYNAMIC;
+      }
+      default:
+        return inferType(expr);
     }
-    return inferType(expr);
   }
 }
 
@@ -2233,6 +2483,15 @@ function assignable(expected: UiType, actual: UiType): boolean {
     default:
       return true;
   }
+}
+
+/** The type of an arithmetic result: `int + int` is `int`, `int / double` is `double`. */
+function numericJoin(left: UiType, right: UiType): UiType {
+  if (left.kind === 'double' || right.kind === 'double') return DOUBLE;
+  if (left.kind === 'int' && right.kind === 'int') return INT;
+  if (left.kind === 'num' && isNumericType(right)) return NUM;
+  if (right.kind === 'num' && isNumericType(left)) return NUM;
+  return DYNAMIC;
 }
 
 /** `../data.dart` → `data`; `../app_state.dart` → `appState`. */

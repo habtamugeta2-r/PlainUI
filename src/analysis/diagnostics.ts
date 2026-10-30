@@ -447,6 +447,33 @@ export const CODES = {
     description: 'submit() runs the form it is written in; there is nothing to pass it.',
     fix: 'Write submit() on its own.',
   },
+  PUI2350: {
+    severity: 'error',
+    title: 'Derived value assigned',
+    description:
+      'A derived value is computed from the values it reads; it has no storage to assign to, so `set` on it would have nothing to change.',
+    fix: 'Assign the state the derived value reads instead.',
+  },
+  PUI2351: {
+    severity: 'error',
+    title: 'Derived value depends on itself',
+    description:
+      'The value is defined in terms of its own result, directly or through other derived values, so computing it would never finish.',
+    fix: 'Compute one of the values in the cycle from state instead.',
+  },
+  PUI2352: {
+    severity: 'error',
+    title: 'Derived value in the wrong place',
+    description:
+      'A derived value is computed for the whole screen or component, so it is declared at the top level next to the state it reads.',
+    fix: 'Move it up to the top level of the screen or component.',
+  },
+  PUI2353: {
+    severity: 'error',
+    title: 'Derived type mismatch',
+    description: 'The declared type of a derived value does not match the type of its expression.',
+    fix: 'Correct the type, or the expression.',
+  },
   PUI2340: {
     severity: 'error',
     title: 'Host surface has no such name',
@@ -554,6 +581,12 @@ export const CODES = {
     title: 'Unused state',
     description: 'This state variable is declared but never read or written.',
     fix: 'Remove it, or use it.',
+  },
+  PUI2411: {
+    severity: 'warning',
+    title: 'Derived value never used',
+    description: 'Nothing reads this computed value, so it costs a computation per build and produces nothing.',
+    fix: 'Read it, or remove it.',
   },
   PUI2410: {
     severity: 'warning',
