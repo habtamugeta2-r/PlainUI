@@ -299,6 +299,7 @@ screen Products:
 | [`docs/09-vision.md`](docs/09-vision.md) | One language, many targets: tiers, type system, state model, sequencing |
 | [`docs/10-decisions.md`](docs/10-decisions.md) | Decision record: what was decided, why, and what would reopen it |
 | [`docs/11-todo.md`](docs/11-todo.md) | The roadmap as data (generated; also printed by `plainui next`) |
+| [`docs/12-implementation-plan.md`](docs/12-implementation-plan.md) | Detailed, checkbox-driven implementation plan by milestone/phase, with every roadmap item broken into concrete sub-tasks |
 
 ## Playground
 
