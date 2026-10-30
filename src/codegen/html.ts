@@ -101,6 +101,21 @@ function evaluate(expr: Expr, env: Env): Value {
           return part ?? UNKNOWN(expr);
         }
       }
+      // The members whose value the preview can know without running anything. `items.value.length`
+      // is a number because the preview knows how many rows it is showing — which is zero.
+      const object = evaluate(expr.object, env);
+      if (object.kind === 'list') {
+        if (expr.name === 'length') return { kind: 'number', value: object.items.length };
+        if (expr.name === 'isEmpty') return { kind: 'bool', value: object.items.length === 0 };
+        if (expr.name === 'isNotEmpty') return { kind: 'bool', value: object.items.length > 0 };
+        if (expr.name === 'first') return object.items[0] ?? UNKNOWN(expr);
+        if (expr.name === 'last') return object.items[object.items.length - 1] ?? UNKNOWN(expr);
+      }
+      if (object.kind === 'string') {
+        if (expr.name === 'length') return { kind: 'number', value: object.value.length };
+        if (expr.name === 'isEmpty') return { kind: 'bool', value: object.value.length === 0 };
+        if (expr.name === 'isNotEmpty') return { kind: 'bool', value: object.value.length > 0 };
+      }
       return UNKNOWN(expr);
     }
     case 'Index': {
