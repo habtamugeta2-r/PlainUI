@@ -6,12 +6,19 @@
  * See docs/04-cli.md for the full reference and exit codes.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { CODES, DiagnosticBag, formatDiagnostic, summarize, toJsonDiagnostic, type Diagnostic } from './diagnostics.ts';
 import { formatText } from './format.ts';
 import { describeTokens, tokenize } from './lexer.ts';
-import { ProjectCache, compileProject, type SourceInput } from './project.ts';
+import { ProjectCache, compileProject } from './project.ts';
+import {
+  discoverSources,
+  resolveProject as resolveProjectIn,
+  toInputs,
+  type Config,
+  type ResolvedProject,
+} from './workspace.ts';
 import { basename, extensionOf, normalizePath, relativePath } from './paths.ts';
 import { parse } from './parser.ts';
 import { renderAst } from './debug.ts';
@@ -117,132 +124,30 @@ function printDiagnostics(diagnostics: readonly Diagnostic[]): void {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Project discovery
-// ---------------------------------------------------------------------------------------------
-
-interface Config {
-  readonly srcDir: string;
-  readonly outDir: string;
-  readonly exclude: readonly string[];
-}
-
-const DEFAULT_CONFIG: Config = { srcDir: 'lib/ui', outDir: 'lib/generated', exclude: [] };
-
-function findConfigPath(start: string, explicit?: string): string | undefined {
-  if (explicit !== undefined) return resolve(explicit);
-  let directory = resolve(start);
-  for (let depth = 0; depth < 20; depth++) {
-    const candidate = join(directory, 'plainui.config.json');
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  return undefined;
-}
-
-function loadConfig(path: string | undefined): Config {
-  if (path === undefined || !existsSync(path)) return DEFAULT_CONFIG;
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<Config> & { target?: string };
-    if (raw.target !== undefined && raw.target !== 'flutter') {
-      throw new Error(`unsupported target "${raw.target}" (only "flutter" is implemented)`);
-    }
-    return {
-      srcDir: typeof raw.srcDir === 'string' ? raw.srcDir : DEFAULT_CONFIG.srcDir,
-      outDir: typeof raw.outDir === 'string' ? raw.outDir : DEFAULT_CONFIG.outDir,
-      exclude: Array.isArray(raw.exclude) ? raw.exclude.filter((x): x is string => typeof x === 'string') : [],
-    };
-  } catch (error) {
-    throw new Error(`invalid configuration in ${path}: ${(error as Error).message}`);
-  }
-}
-
-const SKIP_DIRECTORIES = new Set(['node_modules', '.git', '.dart_tool', 'build', 'dist', '.idea', '.vscode', 'ios', 'android', 'macos', 'windows', 'linux', 'web']);
-
-function discoverSources(roots: readonly string[], config: Config): string[] {
-  const found = new Set<string>();
-  const visit = (path: string): void => {
-    const stats = statSync(path);
-    if (stats.isDirectory()) {
-      const name = basename(path);
-      if (SKIP_DIRECTORIES.has(name)) return;
-      if (config.exclude.some((pattern) => path.includes(pattern))) return;
-      for (const entry of readdirSync(path)) visit(join(path, entry));
-      return;
-    }
-    if (extensionOf(path) === '.pui') found.add(path);
-  };
-  for (const root of roots) {
-    if (!existsSync(root)) {
-      warn(`plainui: no such file or directory: ${root}`);
-      continue;
-    }
-    visit(root);
-  }
-  return [...found].sort();
-}
-
-function toInputs(files: readonly string[], root: string): SourceInput[] {
-  return files.map((file) => ({
-    path: normalizePath(relativePath(normalizePath(root), normalizePath(file))),
-    text: readFileSync(file, 'utf8'),
-  }));
-}
-
-// ---------------------------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------------------------
 
-interface ResolvedProject {
-  readonly config: Config;
-  /** Directories or files to read sources from. */
-  readonly roots: string[];
-  /** Directory that project-relative paths are resolved against. */
-  readonly root: string;
+/** Source discovery with the CLI's warning for a root that does not exist. */
+function sourcesOf(roots: readonly string[], config: Config): string[] {
+  return discoverSources(roots, config, {
+    onMissingRoot: (root) => warn(`plainui: no such file or directory: ${root}`),
+  });
 }
 
-/**
- * Work out which project a command is operating on.
- *
- * The rules, in order:
- *   1. `--config` names the configuration file;
- *   2. otherwise the nearest `plainui.config.json` at or above the working directory wins, and
- *      its directory becomes the project root (so `plainui build` works from a subdirectory);
- *   3. with no configuration at all, the working directory is the root;
- *   4. a single explicit path that contains its own configuration is a project of its own, which
- *      is what makes `plainui build examples/counter` behave the way a reader expects.
- */
+/** Adapt the CLI's parsed flags to the workspace resolver. */
 function resolveProject(args: Args): ResolvedProject {
   const explicit = args.flags.get('--config');
-  const configPath = findConfigPath('.', typeof explicit === 'string' ? explicit : undefined);
-
-  let config = loadConfig(configPath);
-  let root = configPath === undefined ? resolve('.') : dirname(configPath);
-  const roots = args.paths.length > 0 ? args.paths.map((path) => resolve(path)) : [resolve(root, config.srcDir)];
-
-  if (args.paths.length === 1 && typeof explicit !== 'string') {
-    const target = roots[0]!;
-    const base = existsSync(target) && statSync(target).isDirectory() ? target : dirname(target);
-    const ownConfig = join(base, 'plainui.config.json');
-    if (ownConfig !== configPath && existsSync(ownConfig)) {
-      config = loadConfig(ownConfig);
-      root = base;
-    } else if (base !== root && !base.startsWith(root + sep)) {
-      // A path outside the project: treat it as its own root.
-      root = base;
-    }
-  }
-
-  const resolvedRoots = args.paths.length > 0 ? roots : [resolve(root, config.srcDir)];
-  return { config, roots: resolvedRoots, root };
+  return resolveProjectIn({
+    paths: args.paths,
+    ...(typeof explicit === 'string' ? { configPath: explicit } : {}),
+  });
 }
 
 async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
   const project = resolveProject(args);
   const outDir = typeof args.flags.get('--out') === 'string' ? (args.flags.get('--out') as string) : project.config.outDir;
   const { roots, root } = project;
-  const files = discoverSources(roots, project.config);
+  const files = sourcesOf(roots, project.config);
 
   if (files.length === 0) {
     fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
@@ -315,7 +220,7 @@ async function commandBuild(args: Args, cache?: ProjectCache): Promise<number> {
 
 async function commandCheck(args: Args): Promise<number> {
   const { config, roots, root } = resolveProject(args);
-  const files = discoverSources(roots, config);
+  const files = sourcesOf(roots, config);
   if (files.length === 0) {
     fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
     return 1;
@@ -328,7 +233,7 @@ async function commandCheck(args: Args): Promise<number> {
 
 async function commandFormat(args: Args): Promise<number> {
   const { config, roots } = resolveProject(args);
-  const files = discoverSources(roots, config);
+  const files = sourcesOf(roots, config);
   if (files.length === 0) {
     fail('PUI4001', `no .pui files found (looked in ${roots.join(', ')})`);
     return 1;
@@ -378,7 +283,7 @@ async function commandFormat(args: Args): Promise<number> {
 
 async function commandWatch(args: Args): Promise<number> {
   const { config, roots } = resolveProject(args);
-  const sourceCount = discoverSources(roots, config).length;
+  const sourceCount = sourcesOf(roots, config).length;
   // One cache for the whole session: a save recompiles the saved file, not the project.
   const cache = new ProjectCache();
 
