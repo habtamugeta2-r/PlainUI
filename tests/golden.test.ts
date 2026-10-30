@@ -103,3 +103,12 @@ test('every expected file belongs to a golden source', () => {
     assert.ok(stems.has(stem), `${EXPECTED_DIR}/${name} has no matching .pui source`);
   }
 });
+
+test('every golden source is already formatted', () => {
+  // A golden is read as an example of the language, so it has to be what the formatter writes.
+  const unformatted = goldenFiles.filter((name) => {
+    const path = join(GOLDEN_DIR, name);
+    return formatText(path, readFileSync(path, 'utf8')).changed;
+  });
+  assert.deepEqual(unformatted, [], 'these goldens need `plainui format`');
+});

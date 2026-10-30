@@ -11,6 +11,7 @@ import { test } from 'node:test';
 
 import { compileProject } from '../src/project/project.ts';
 import { basename, extensionOf } from '../src/project/paths.ts';
+import { formatText } from '../src/tooling/format.ts';
 import { checkDartStructure } from './dart-syntax.ts';
 
 const EXAMPLES = 'examples';
@@ -132,4 +133,16 @@ for (const project of projects) {
 test('generated example output is not committed', () => {
   const ignored = readFileSync('.gitignore', 'utf8');
   assert.match(ignored, /examples\/\*\*\/lib\/generated\//);
+});
+
+test('every example source is already formatted', () => {
+  // The examples are read as documentation, so they have to look the way `plainui format` writes
+  // them — otherwise the formatter and the docs disagree and nobody notices which one is right.
+  const unformatted: string[] = [];
+  for (const project of discover()) {
+    for (const source of sources(project)) {
+      if (formatText(source.path, source.text).changed) unformatted.push(`${project.name}/${source.path}`);
+    }
+  }
+  assert.deepEqual(unformatted, [], 'these files need `plainui format`');
 });
