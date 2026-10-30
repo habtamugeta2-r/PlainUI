@@ -276,6 +276,7 @@ screen Products:
 | [`docs/05-diagnostics.md`](docs/05-diagnostics.md) | Error code catalogue |
 | [`docs/06-roadmap.md`](docs/06-roadmap.md) | What is next, and the honest risks |
 | [`docs/07-reference.md`](docs/07-reference.md) | Widget + property reference (generated from the registry) |
+| [`docs/09-vision.md`](docs/09-vision.md) | One language, many targets: tiers, type system, state model, sequencing |
 
 ## Playground
 
