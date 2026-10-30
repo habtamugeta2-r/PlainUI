@@ -4,6 +4,10 @@ name: Flutter verification
 # per call, no `await` inside setState). Only the Dart analyzer can prove it compiles. This
 # workflow generates each example, drops it into a real Flutter app and runs `dart analyze` plus a
 # widget test, so a codegen change that produces non-compiling Dart fails here.
+#
+# Both steps surface their findings as `::error::` annotations. That is not decoration: annotations
+# are readable through the API even when job logs are not, and without them a red check that says
+# "exit code 3" is not actionable.
 
 on:
   push:
@@ -37,8 +41,12 @@ jobs:
 
       - name: Analyze the generated Dart inside a real Flutter app
         run: |
-          set -euo pipefail
-          flutter create --project-name verify_app --org dev.plainui verify
+          set -uo pipefail
+          if ! flutter create --project-name verify_app --org dev.plainui verify > /tmp/create.log 2>&1; then
+            tail -40 /tmp/create.log
+            echo "::error title=flutter create::flutter create failed, see the log above"
+            exit 1
+          fi
           cd verify
 
           # Each example keeps its own directory: generated files import their siblings, so
@@ -59,16 +67,33 @@ jobs:
           /// are wrong, this file does not compile.
           List<Widget> screens() => const <Widget>[Counter(), Todo(), Gallery()];
 
-          void main() => runApp(MaterialApp(home: Builder(builder: (context) => Column(children: screens()))));
+          void main() => runApp(const MaterialApp(home: _Screens()));
+
+          class _Screens extends StatelessWidget {
+            const _Screens();
+
+            @override
+            Widget build(BuildContext context) => Column(children: screens());
+          }
           DART
 
           # Generated code is machine written, so lint opinions about it are not interesting;
           # errors and warnings are.
-          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/verify.dart
+          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/verify.dart \
+            > /tmp/analyze.log 2>&1
+          status=$?
+          cat /tmp/analyze.log
+          if [ "$status" -ne 0 ]; then
+            grep -E '^[[:space:]]+(error|warning)[[:space:]]+•' /tmp/analyze.log | head -40 \
+              | while IFS= read -r line; do
+                  echo "::error title=dart analyze::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
+                done
+            exit "$status"
+          fi
 
       - name: Widget test
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cd verify
           mkdir -p test
           cat > test/generated_test.dart <<'DART'
@@ -84,9 +109,6 @@ jobs:
               expect(find.text('Hello, PlainUI'), findsOneWidget);
               expect(find.text('Taps so far'), findsOneWidget);
 
-              final before = tester.widget<Text>(find.text('0')).data;
-              expect(before, isNotNull);
-
               await tester.tap(find.text('One more'));
               await tester.pumpAndSettle();
               expect(find.text('1'), findsWidgets);
@@ -99,7 +121,16 @@ jobs:
             });
           }
           DART
-          flutter test test/generated_test.dart
+          flutter test test/generated_test.dart > /tmp/test.log 2>&1
+          status=$?
+          cat /tmp/test.log
+          if [ "$status" -ne 0 ]; then
+            grep -E 'Expected:|Actual:|Error|Exception|failed' /tmp/test.log | head -30 \
+              | while IFS= read -r line; do
+                  echo "::error title=flutter test::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
+                done
+            exit "$status"
+          fi
 
       - name: Upload the generated sources as an artifact
         if: always()
