@@ -53,7 +53,7 @@ const SPACED = new Set([
 const SPACED_EQ_FIRST = new Set(['state', 'set', 'task', 'derived', 'screen', 'component']);
 
 /** Theme token lines (`color brand = #2563eb`) are spaced too, but only in that exact shape. */
-const TOKEN_CATEGORIES = new Set(['color', 'space', 'spacing', 'radius']);
+const TOKEN_CATEGORIES = new Set(['color', 'space', 'spacing', 'radius', 'shadow']);
 
 /** Tokens after which an operator must be unary. */
 const OPERATOR_LIKE_KEYWORDS = new Set(['in', 'if', 'elif', 'else', 'for', 'on', 'set', 'slot', 'state', 'import']);

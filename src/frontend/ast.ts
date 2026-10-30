@@ -432,10 +432,11 @@ export interface StyleDecl {
 }
 
 /**
- * The three kinds of value a design token can hold. The category is what decides where the token
- * may be referenced: `color` where a colour is expected, `space` and `radius` where a number is.
+ * The kinds of value a design token can hold. The category is what decides where the token may be
+ * referenced: `color` where a colour is expected, `space` and `radius` where a number is, and
+ * `shadow` where a shadow is — a token's value shape and its legal slots are the same fact.
  */
-export type TokenCategory = 'color' | 'space' | 'radius';
+export type TokenCategory = 'color' | 'space' | 'radius' | 'shadow';
 
 export interface TokenDecl {
   readonly kind: 'Token';

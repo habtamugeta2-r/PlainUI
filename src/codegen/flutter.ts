@@ -45,7 +45,7 @@ import { FLUTTER_TARGET } from '../targets/index.ts';
 import { typeTextForTarget, typeToTargetText } from './types.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
-import { BUILTIN_STYLES } from '../analysis/styles.ts';
+import { BUILTIN_STYLES, hasTextProps, isSurfaceStyleProp, surfacePropValue } from '../analysis/styles.ts';
 import type { TaskDecl, ThemeDecl, TokenDecl } from '../frontend/ast.ts';
 import type { WidgetSpec } from '../analysis/widgets/registry.ts';
 import {
@@ -311,10 +311,13 @@ class FlutterGenerator {
     for (const token of theme.tokens) {
       const field = sanitizeName(token.name);
       const comment = `  /// \`${token.categoryText} ${token.name}\``;
+      const shadow = token.category === 'shadow' ? this.boxShadowCall(token.value) : undefined;
       const declaration =
         token.category === 'color'
           ? `  static const Color ${field} = ${this.color(token.value)};`
-          : `  static const double ${field} = ${this.num(token.value)};`;
+          : shadow !== undefined
+            ? `  static const BoxShadow ${field} = ${indentCode(shadow, 2)};`
+            : `  static const double ${field} = ${this.num(token.value)};`;
       fields.push(`${comment}\n${declaration}`);
     }
     if (fields.length === 0) return '';
@@ -382,6 +385,9 @@ class FlutterGenerator {
     const lines: string[] = [];
     for (const [name, decl] of this.analysis.styles) {
       if (!this.usedStyles.has(name)) continue;
+      // A style with no text properties has no TextStyle to emit: its surface properties are
+      // resolved into the elements that use it. An empty `const TextStyle()` would be dead weight.
+      if (!hasTextProps(decl)) continue;
       const id = this.styleIds.get(name)!;
       const args = this.textStyleArgsForStyleDecl(decl);
       lines.push(`const TextStyle ${id} = ${dartCall('TextStyle', args)};`);
@@ -1446,9 +1452,16 @@ class FlutterGenerator {
     const border = this.numOf(own('border'));
     const borderColor = this.colorOf(own('borderColor'));
     const margin = this.insetsOf(own('margin'));
-    if (background !== undefined || radius !== undefined || border !== undefined || margin !== undefined) {
+    const shadow = this.boxShadowOf(own('shadow'));
+    if (
+      background !== undefined ||
+      radius !== undefined ||
+      border !== undefined ||
+      margin !== undefined ||
+      shadow !== undefined
+    ) {
       const args: string[] = [];
-      if (radius !== undefined || border !== undefined) {
+      if (radius !== undefined || border !== undefined || shadow !== undefined) {
         const decoration: string[] = [];
         if (background !== undefined) decoration.push(`color: ${background}`);
         if (radius !== undefined) decoration.push(`borderRadius: BorderRadius.circular(${radius})`);
@@ -1457,6 +1470,7 @@ class FlutterGenerator {
             `border: Border.all(width: ${border}${borderColor === undefined ? '' : `, color: ${borderColor}`})`,
           );
         }
+        if (shadow !== undefined) decoration.push(shadow);
         args.push(`decoration: ${dartCall('BoxDecoration', decoration)}`);
       } else if (background !== undefined) {
         args.push(`color: ${background}`);
@@ -1693,8 +1707,21 @@ class FlutterGenerator {
   // Property access helpers
   // ------------------------------------------------------------------------------------------
 
+  /**
+   * A property of an element, resolving the `style=` fallback.
+   *
+   * Precedence, in one place: a property written on the element wins, then the property the
+   * element's style declares, then whatever the target does by default. Only *surface* properties
+   * fall through to the style — text properties are applied through `textStyle()`, which reads the
+   * style's `TextStyle` constant, so resolving them here too would apply them twice.
+   */
   private prop(el: ElementNode, name: string): Expr | undefined {
-    return el.props.find((prop) => prop.name === name)?.value;
+    const own = el.props.find((prop) => prop.name === name)?.value;
+    if (own !== undefined) return own;
+    if (!isSurfaceStyleProp(name)) return undefined;
+    const styleName = el.props.find((prop) => prop.name === 'style')?.value;
+    const decl = styleName?.kind === 'Ident' ? this.analysis.styles.get(styleName.name) : undefined;
+    return decl === undefined ? undefined : surfacePropValue(decl, name);
   }
 
   private argAt(el: ElementNode, index: number): Expr | undefined {
@@ -1746,6 +1773,32 @@ class FlutterGenerator {
   private colorOf(value: Expr | undefined): string | undefined {
     if (value === undefined) return undefined;
     return this.color(value);
+  }
+
+  /**
+   * The `boxShadow:` argument for a `shadow=` value — `[x, y, blur]`, `[x, y, blur, color]`, or a
+   * shadow token. The colour defaults to 12% black, which is what a shadow with no colour means.
+   */
+  private boxShadowOf(value: Expr | undefined): string | undefined {
+    if (value === undefined) return undefined;
+    const token = this.tokenOf(value);
+    const shape = token === undefined ? value : token.category === 'shadow' ? token.value : undefined;
+    if (shape === undefined) return undefined;
+    const call = this.boxShadowCall(shape);
+    return call === undefined ? undefined : `boxShadow: [${call}]`;
+  }
+
+  /** `BoxShadow(...)` for the list a shadow is written as; also used for the token constant. */
+  private boxShadowCall(shape: Expr): string | undefined {
+    if (shape.kind !== 'List') return undefined;
+    const [x, y, blur, color] = shape.items;
+    if (x === undefined || y === undefined || blur === undefined) return undefined;
+    const parts = [
+      `color: ${color === undefined ? 'Color(0x1F000000)' : this.color(color)}`,
+      `offset: ${dartCall('Offset', [this.num(x), this.num(y)])}`,
+      `blurRadius: ${this.num(blur)}`,
+    ];
+    return dartCall('BoxShadow', parts);
   }
 
   private insetsProp(el: ElementNode, name: string): string | undefined {
@@ -1803,10 +1856,11 @@ class FlutterGenerator {
     let nullable = false;
     if (styleName !== undefined) {
       const custom = this.styleIds.get(styleName);
-      if (custom !== undefined) {
+      const customDecl = this.analysis.styles.get(styleName);
+      if (custom !== undefined && customDecl !== undefined && hasTextProps(customDecl)) {
         this.usedStyles.add(styleName);
         base = custom;
-      } else if (BUILTIN_STYLES.includes(styleName)) {
+      } else if (customDecl === undefined && BUILTIN_STYLES.includes(styleName)) {
         const theme = THEME_STYLES[styleName] ?? { style: 'bodyMedium' };
         base = `Theme.of(context).textTheme.${theme.style}`;
         nullable = true;

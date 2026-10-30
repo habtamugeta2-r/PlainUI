@@ -55,6 +55,7 @@ export const THEME_CATEGORIES: Readonly<Record<string, TokenCategory>> = {
   space: 'space',
   spacing: 'space',
   radius: 'radius',
+  shadow: 'shadow',
 };
 import { type Token, tokenize } from './lexer.ts';
 import { booleanPropNames } from '../analysis/widgets/registry.ts';

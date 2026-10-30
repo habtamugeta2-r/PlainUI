@@ -241,9 +241,28 @@ test('nested state is rejected', () => {
 });
 
 test('style prop errors and unknown styles', () => {
-  assert.ok(errorsOf(['style big:', '    padding=16', '', 'screen Home:', '    text "x"', ''].join('\n')).includes('PUI2301'));
+  // Structure is not stylable: `main` arranges a layout, it does not paint one.
+  assert.ok(errorsOf(['style big:', '    main=center', '', 'screen Home:', '    text "x"', ''].join('\n')).includes('PUI2301'));
+  // Surface properties are.
+  assert.deepEqual(errorsOf(['style card1:', '    padding=16', '    shadow=[0, 2, 8]', '', 'screen Home:', '    card style=card1:', '        text "x"', ''].join('\n')), []);
   const d = diagnosticFor(['screen Home:', '    text "x" style=headng', ''].join('\n'), 'PUI2302');
   assert.match(d.hint ?? '', /heading/);
+});
+
+test('a style with text properties only applies to elements that draw text', () => {
+  const source = ['style price:', '    size=20', '    weight=bold', '', 'screen Home:', '    column style=price:', '        text "x"', ''].join('\n');
+  const d = diagnosticFor(source, 'PUI2373');
+  assert.match(d.message, /"column" does not draw text/);
+  // The same style on a text element is fine, and a surface-only style works on a column.
+  assert.deepEqual(errorsOf(['style price:', '    size=20', '', 'screen Home:', '    text "x" style=price', ''].join('\n')), []);
+  assert.deepEqual(errorsOf(['style box:', '    padding=8', '', 'screen Home:', '    column style=box:', '        text "x"', ''].join('\n')), []);
+});
+
+test('a shadow is three numbers and an optional colour, as a literal or a token', () => {
+  const ok = ['theme App:', '    shadow soft = [0, 2, 8, #1f000000]', '', 'screen Home:', '    card shadow=soft:', '        text "x"', ''].join('\n');
+  assert.deepEqual(errorsOf(ok), []);
+  assert.ok(errorsOf(['theme App:', '    shadow bad = [0, 2]', '', 'screen Home:', '    text "x"', ''].join('\n')).includes('PUI2306'));
+  assert.ok(errorsOf(['screen Home:', '    card shadow=[0, 2, 8, 4]:', '        text "x"', ''].join('\n')).includes('PUI2306'));
 });
 
 test('names that would shadow Flutter types or reserved words are rejected', () => {

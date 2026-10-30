@@ -128,6 +128,10 @@ export const FLUTTER_TARGET: Target = {
       level: 'full',
       note: 'Declared signatures are checked at every call site and the module is imported into the generated file.',
     },
+    styles: {
+      level: 'full',
+      note: 'Surface properties become wrapping widgets and a BoxDecoration; text properties become a TextStyle.',
+    },
     themes: { level: 'full', note: 'Tokens are resolved at compile time and also emitted as `ThemeData` for Flutter’s own widgets.' },
     'list-identity': { level: 'full', note: '`key=` becomes a `KeyedSubtree` key, so a rebuilt list keeps its element state.' },
   },
