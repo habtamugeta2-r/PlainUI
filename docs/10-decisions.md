@@ -80,18 +80,30 @@ design that does not survive four targets.
 **Revisit when:** a real app shows a `derived` in a hot path (a long list rebuilt per frame). Then
 memoise *with* explicit dependencies, never with implicit ones.
 
-### B2 — `effect on <state>` names its dependencies — *decided*
+### B2 — `effect on <state>` names its dependencies — *implemented*
 
 ```
 effect on query:
     set results = search(query)
 ```
 
-The effect runs after a change to the states it names, and not otherwise.
+The effect runs once after the screen mounts and again whenever one of the states it names changes,
+and at no other time.
 
-**Why:** it is the only spelling that lowers to `useEffect([query])`, `LaunchedEffect(query)` and
-`didUpdateWidget` with the same meaning. "Run after every change" is a re-render loop waiting to
+**Why:** it is the only spelling that lowers to `useEffect([query])`, `LaunchedEffect(query)` and a
+Flutter comparison with the same meaning. "Run after every change" is a re-render loop waiting to
 happen; implicit tracking cannot be expressed in Flutter at all.
+
+**Correction to the original lowering.** This record said `didUpdateWidget` with a key comparison.
+That hook fires when a parent rebuilds the widget, not when the screen's own `setState` runs, so it
+would have produced an effect that never reacts to the state it names. The lowering is a nullable
+snapshot field compared at the top of `build`, with the body in an `addPostFrameCallback` — the same
+"compare the dependencies, then run after the frame" that `useEffect` performs, written out. The
+naive alternative, a `setState` that runs the effect inline, is exactly the shape Dart forbids.
+
+**Also decided:** an effect runs on mount. `useEffect` runs after the first commit and
+`LaunchedEffect` runs when it enters composition, so "only on later changes" would be a third
+semantic for the same word. Nullable snapshots give the mount run for free.
 
 **Revisit when:** an effect needs to depend on a *derived* value, which is common enough to be
 expected. The answer is to allow `effect on <derived>` and document the recomputation cost, not to

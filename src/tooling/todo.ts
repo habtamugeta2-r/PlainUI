@@ -158,10 +158,11 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: '`effect on <state>`',
     size: 'M',
-    status: 'next',
+    status: 'done',
     acceptance:
-      'An effect runs after a change to the states it names and not otherwise; the lowering is ' +
-      '`didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use.',
+      'An effect runs on mount and after a change to the states it names, and not on an unrelated ' +
+      'state change; the lowering compares a snapshot of those states in `build` and runs the body ' +
+      'after the frame, which is the shape `useEffect` and `LaunchedEffect` share.',
     touches: ['src/frontend/parser.ts', 'src/analysis/check.ts', 'src/codegen/flutter.ts'],
   },
   {
@@ -169,7 +170,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Phase gate: the demo app',
     size: 'M',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond ' +
       '`main.dart`, and is verified in CI like the other examples.',

@@ -161,7 +161,8 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | Forms: `form`, typed validators on `input`, `submit()` behind the validation gate | ✅ |
 | Host surfaces: declared signatures on an import, calls checked against them | ✅ |
 | `derived` — computed values, lowered to getters so they cannot go stale | ✅ |
-| `effect on <state>` | 🧭 next — `plainui next` prints the current item |
+| `effect on <state>` — runs on mount and when a named state changes, never otherwise | ✅ |
+| The phase gate: a demo app built from `.pui` alone | 🧭 next — `plainui next` prints the current item |
 | Compose / React generators | 🧭 roadmap — [`docs/09-vision.md`](docs/09-vision.md) names Compose as the second target |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`

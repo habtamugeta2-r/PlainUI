@@ -8,6 +8,31 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **Effects (`effect on <state>`).** The other half of the state model: actions that belong to a
+  moment rather than to a click.
+
+  ```
+  effect on query:
+      set busy = true
+  ```
+
+  The header names the states the effect depends on, and those are the only ones that trigger it: it
+  runs once after the screen mounts (as `useEffect` runs after the first commit) and again whenever
+  one of them changes, and not for a rebuild caused by an unrelated state. The Flutter target keeps a
+  nullable snapshot per watched state, compares it at the top of `build` and schedules the body with
+  `addPostFrameCallback` — state can change from a handler, a controller, a task or a form submit, so
+  a comparison covers all of them, and the post-frame callback keeps the effect's own `setState` out
+  of the build that noticed the change. That is also why it is not `didUpdateWidget`: that hook fires
+  when a *parent* rebuilds, not when the screen's own state changes.
+
+  What the checker refuses: watching anything but state (`PUI2360` — a task, a parameter and a derived
+  value have no change this target can name, so a task's result is copied into state and that state is
+  watched), an empty effect (`PUI2361`), an effect inside an element (`PUI2362`), writing a state the
+  effect watches (`PUI2363`, a loop by construction) and a name that is not declared, with a
+  suggestion (`PUI2364`). `tests/golden/effect.pui` covers the shapes, and `flutter-verify.yml` taps
+  the counter and types into its field to assert the effect runs on mount, runs on a change to the
+  state it names, and stays put on a change to one it does not.
+
 - **Computed values (`derived`).** A screen can now name a value instead of maintaining it:
 
   ```

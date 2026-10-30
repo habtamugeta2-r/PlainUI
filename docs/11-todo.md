@@ -9,9 +9,9 @@ This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same
 `plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no
 acceptance criterion, an unknown size, or a phase that does not exist.
 
-**Now:** `effect on <state>` (`effect`, M) — An effect runs after a change to the states it names and not otherwise; the lowering is `didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use.
+**Now:** Phase gate: the demo app (`phase-gate-demo`, M) — One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples.
 
-## Flutter depth — 8/10
+## Flutter depth — 9/10
 
 *Gate to leave this phase:* A demo app — navigation, tokens, async, forms and keyed lists — written without dropping into Dart for anything routine.
 
@@ -25,8 +25,8 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 | ✔ | ~~Forms and validation~~ | `L` | Typed validators (required, min, max, pattern, email) on `input`; a `form` scope gates `submit`; an invalid submission is impossible to express, not merely discouraged. |
 | ✔ | ~~Typed interop~~ | `M` | Host components and imports are declared with signatures, and calls to them are type-checked rather than passed through. |
 | ✔ | ~~`derived` values~~ | `M` | `derived total = count * 2` recomputes when its inputs change and never stores state; a widget test shows the derived value updating while an unrelated state change leaves it alone. |
-| ▸ | **`effect on <state>`** | `M` | An effect runs after a change to the states it names and not otherwise; the lowering is `didUpdateWidget` with the same key comparison `useEffect` and `LaunchedEffect` will use. |
-| · | Phase gate: the demo app | `M` | One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples. |
+| ✔ | ~~`effect on <state>`~~ | `M` | An effect runs on mount and after a change to the states it names, and not on an unrelated state change; the lowering compares a snapshot of those states in `build` and runs the body after the frame, which is the shape `useEffect` and `LaunchedEffect` share. |
+| ▸ | **Phase gate: the demo app** | `M` | One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples. |
 
 ## v2.0 architecture — 0/4
 
