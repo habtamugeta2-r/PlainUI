@@ -243,6 +243,20 @@ for index, product in products:
 The single-name form binds each element; the two-name form binds `index, value` and requires an
 `Iterable` (`PUI2402` says so if the compiler can prove otherwise from a literal).
 
+`key=` names each row's identity, which is what keeps widget state attached to the right row when
+the list changes:
+
+```
+for product in products key=product.id:
+    ProductRow(product)
+```
+
+Without a key, a framework reuses widgets by position: delete row 2 and row 3 inherits its scroll
+offset, its text field, its animation. The key is a value expression, checked in the loop's scope, so
+`key=product.id` and `key=index` are both legal — the first is almost always what you want. Keys lower
+to `KeyedSubtree(key: ValueKey(...))` around the row in Flutter; the HTML preview has no
+reconciliation, so it ignores them.
+
 ### 3.4 State
 
 ```

@@ -313,3 +313,25 @@ test('icon names are translated to the Material spelling', () => {
   assert.match(code, /^import 'package:flutter\/material\.dart';$/m);
   assert.doesNotMatch(code, /services\.dart/, 'material.dart already provides TextInputType');
 });
+
+test('a loop key becomes a ValueKey around the whole row', () => {
+  // Keying the row, not its first child, is what makes a key survive the row growing a wrapper.
+  const code = generate(
+    ['screen Home:', '    state items: List<String> = []', '    column:', '        for item in items key=item:', '            text item', '            text "!"', ''].join('\n'),
+  );
+  assert.match(code, /KeyedSubtree\(\s*key: ValueKey\(item\),\s*child: Column\(/);
+
+  const unkeyed = generate(['screen Home:', '    state items: List<String> = []', '    column:', '        for item in items:', '            text item', ''].join('\n'));
+  assert.doesNotMatch(unkeyed, /KeyedSubtree/);
+});
+
+test('a loop key is checked in the loop scope', () => {
+  const result = compileSource(
+    ['screen Home:', '    state items: List<String> = []', '    column:', '        for item in items key=missing:', '            text item', ''].join('\n'),
+  );
+  assert.deepEqual(
+    result.diagnostics.filter((d) => d.severity === 'error').map((d) => d.code),
+    ['PUI2005'],
+    'the key must resolve against the loop variable, not against nothing',
+  );
+});

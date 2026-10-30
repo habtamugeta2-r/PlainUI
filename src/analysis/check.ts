@@ -678,6 +678,7 @@ class Checker {
           });
           types.set(node.itemName, elementType);
           this.loopTypes.set(node, types);
+          if (node.key !== undefined) this.checkExpr(node.key, loopScope, 'value', false);
           this.checkBody(node.body, loopScope, ctx);
           break;
         }

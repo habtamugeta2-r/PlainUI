@@ -28,6 +28,10 @@ All notable changes to PlainUI are recorded here. The format follows
   (`PUI2312`). The new `examples/async` project is analyzed and widget-tested in CI against a real
   `Future`.
 
+- **List identity.** `for item in items key=item.id:` gives each row a stable identity, lowered to
+  `KeyedSubtree(key: ValueKey(...))` around the row. Without it a framework reuses widgets by
+  position, which is how a deleted row's scroll offset or text field state ends up on its neighbour.
+
 ### Fixed
 
 - **`icon` names are translated to Material's spelling.** `icon heart` used to emit `Icons.heart`,

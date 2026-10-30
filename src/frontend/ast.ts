@@ -243,6 +243,14 @@ export interface ForNode {
   readonly indexName?: string;
   readonly indexSpan?: Span;
   readonly iterable: Expr;
+  /**
+   * `for item in items key=item.id:` — the identity of each row.
+   *
+   * Without a key, Flutter reuses widget state by position, so removing row 2 makes row 3 look like
+   * row 2: the classic "the text field kept the wrong text" bug. Supplying a key is how a `.pui`
+   * file says what a row *is*.
+   */
+  readonly key?: Expr;
   readonly body: readonly Node[];
 }
 

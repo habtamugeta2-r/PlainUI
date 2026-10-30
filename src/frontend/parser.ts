@@ -785,16 +785,25 @@ class Parser {
     }
 
     const iterable = this.parseExpression();
+    // `key=<expr>` names the row's identity; it is parsed after the iterable because it refers to
+    // the loop variable, which only exists from here on.
+    let key: Expr | undefined;
+    if (this.at('ident') && this.peek().value === 'key' && this.peek(1).value === '=') {
+      this.advance(); // key
+      this.advance(); // =
+      key = this.parseExpression();
+    }
     this.expectOp(':', 'to open the loop body');
     const body = this.parseNodeBody();
 
     return {
       kind: 'For',
-      span: span(keyword.span.start, endOfBody(body, iterable.span.end)),
+      span: span(keyword.span.start, endOfBody(body, (key ?? iterable).span.end)),
       itemName,
       itemSpan,
       ...(indexName === undefined || indexSpan === undefined ? {} : { indexName, indexSpan }),
       iterable,
+      ...(key === undefined ? {} : { key }),
       body,
     };
   }

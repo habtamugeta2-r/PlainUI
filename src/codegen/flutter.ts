@@ -752,7 +752,11 @@ class FlutterGenerator {
       this.scope.set(node.indexName, { emittedName: node.indexName, type: types?.get(node.indexName) ?? INT });
     }
     this.scope.set(node.itemName, { emittedName: node.itemName, type: types?.get(node.itemName) ?? DYNAMIC });
-    const body = this.emitBodySingle(node.body);
+    const key = node.key === undefined ? undefined : this.expr(node.key);
+    const emitted = this.emitBodySingle(node.body);
+    // A key wraps the row rather than decorating whatever widget happens to be first inside it, so
+    // `for … key=item.id:` works the same whether the row is one element or five.
+    const body = key === undefined ? emitted : dartCall('KeyedSubtree', [`key: ValueKey(${key})`, `child: ${emitted}`]);
     this.scope = savedScope;
     return `${header}\n${indentAll(body, 2)}`;
   }
