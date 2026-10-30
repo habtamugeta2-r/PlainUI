@@ -78,6 +78,24 @@ test('await is hoisted out of setState', () => {
   assert.doesNotMatch(code, /await[^;]*\n\s*\}\);/);
 });
 
+test('a loop variable used only inside a string keeps its name', () => {
+  const code = generate(
+    [
+      'screen Home:',
+      '    state items: List<String> = []',
+      '',
+      '    column:',
+      '        for item in items:',
+      '            text "$item"',
+      '        for unused in items:',
+      '            text "x"',
+      '',
+    ].join('\n'),
+  );
+  assert.match(code, /for \(final item in items\)/);
+  assert.match(code, /for \(final _ in items\)/);
+});
+
 test('universal layout properties wrap the element in a deterministic order', () => {
   const code = generate([
     'screen Home:',

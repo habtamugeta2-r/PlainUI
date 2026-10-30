@@ -144,6 +144,30 @@ test('children supplied to a component without a slot are rejected', () => {
   assert.ok(errorsOf(text).includes('PUI2203'));
 });
 
+test('a parameter used only through short interpolation counts as used', () => {
+  const text = [
+    'component Price(label: String):',
+    '    text "$label"',
+    '',
+    'screen Home:',
+    '    column:',
+    '        Price("Total")',
+    '',
+  ].join('\n');
+  assert.deepEqual(warningsOf(text), []);
+  assert.deepEqual(errorsOf(text), []);
+});
+
+test('a typo in a short interpolation is an unknown identifier', () => {
+  const text = ['screen Home:', '    text "$conut"', ''].join('\n');
+  assert.deepEqual(errorsOf(text), ['PUI2005']);
+});
+
+test('escaped and non-identifier dollars are left alone', () => {
+  const text = ['screen Home:', '    column:', '        text "\\$5 and \\$name"', '        text "$5"', ''].join('\n');
+  assert.deepEqual(run(text).bag.diagnostics.map((d) => d.code), []);
+});
+
 test('missing required component parameter is reported at the call site', () => {
   const text = ['component Card2(label: String, size: int = 12):', '    text label', '', 'screen Home:', '    Card2()', ''].join('\n');
   const d = diagnosticFor(text, 'PUI2201');

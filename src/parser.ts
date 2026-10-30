@@ -1032,6 +1032,16 @@ class Parser {
         index += 2;
         continue;
       }
+      if (ch === '$' && value[index + 1] !== '{' && /[A-Za-z_]/.test(value[index + 1] ?? '')) {
+        // The short form `"$name"` is an interpolation too: record it so the checker can mark the
+        // name as used (and reject a typo) exactly as it does for `"${name}"`.
+        const start = index + 1;
+        let i = start + 1;
+        while (i < value.length && /[A-Za-z0-9_]/.test(value[i]!)) i += 1;
+        interpolations.push({ text: value.slice(start, i), span: span(token.span.start + 1 + start, token.span.start + 1 + i) });
+        index = i;
+        continue;
+      }
       if (ch === '$' && value[index + 1] === '{') {
         const start = index + 2;
         let braces = 1;
