@@ -17,6 +17,7 @@ import type {
   ComponentDecl,
   Decl,
   DerivedDecl,
+  ElementNode,
   Expr,
   IfNode,
   Node,
@@ -25,12 +26,14 @@ import type {
   ForNode,
   Param,
   StateDecl,
+  StyleDecl,
   TaskDecl,
   TokenDecl,
 } from '../frontend/ast.ts';
 import { navigationName, type Analysis } from '../analysis/check.ts';
 import { describeExpr } from '../tooling/debug.ts';
 import { widgetSpec } from '../analysis/widgets/registry.ts';
+import { isSurfaceStyleProp, surfacePropValue } from '../analysis/styles.ts';
 import { walkActions } from '../frontend/ast.ts';
 
 // ---------------------------------------------------------------------------------------------
@@ -330,6 +333,8 @@ class HtmlEmitter {
   private readonly env: Env = { values: new Map(), tasks: new Map() };
   private readonly components = new Map<string, ComponentDecl>();
   private readonly styles = new Map<string, TextStyle>();
+  /** The declared styles themselves, for the properties that decorate an element. */
+  private readonly styleDecls = new Map<string, StyleDecl>();
   private depth = 0;
   private readonly out: string[] = [];
   /** Call-site children for each component call currently being expanded. */
@@ -354,7 +359,10 @@ class HtmlEmitter {
     this.options = options;
     for (const decl of analysis.program.decls) {
       if (decl.kind === 'Component') this.components.set(decl.name, decl);
-      if (decl.kind === 'Style') this.styles.set(decl.name, propsToTextStyle(decl.props, analysis.tokens));
+      if (decl.kind === 'Style') {
+        this.styles.set(decl.name, propsToTextStyle(decl.props, analysis.tokens));
+        this.styleDecls.set(decl.name, decl);
+      }
     }
     // Design tokens are compile-time values, so the preview resolves them like literals. They are
     // also emitted as CSS custom properties on `:root`, so hand-written CSS around the preview can
@@ -684,11 +692,23 @@ class HtmlEmitter {
 
   // ---- props -------------------------------------------------------------------------------
 
-  private prop(element: { props: readonly Prop[] }, name: string): Expr | undefined {
-    return element.props.find((prop) => prop.name === name)?.value;
+  /**
+   * A property of an element, resolving the `style=` fallback.
+   *
+   * Same precedence as the Flutter generator: the element's own property wins, then the surface
+   * property its style declares, then the element's built-in default. Text properties do not fall
+   * through here — `textStyleFor` reads them from the style as typography.
+   */
+  private prop(element: ElementNode, name: string): Expr | undefined {
+    const own = element.props.find((prop) => prop.name === name)?.value;
+    if (own !== undefined) return own;
+    if (!isSurfaceStyleProp(name)) return undefined;
+    const styleName = element.props.find((prop) => prop.name === 'style')?.value;
+    const decl = styleName?.kind === 'Ident' ? this.styleDecls.get(styleName.name) : undefined;
+    return decl === undefined ? undefined : surfacePropValue(decl, name);
   }
 
-  private value(element: { props: readonly Prop[] }, name: string): Value | undefined {
+  private value(element: ElementNode, name: string): Value | undefined {
     const expr = this.prop(element, name);
     return expr === undefined ? undefined : evaluate(expr, this.env);
   }
@@ -703,7 +723,7 @@ class HtmlEmitter {
    * The literal name a property refers to. `style=heading` and `main=between` are identifiers,
    * not expressions, so they must be read as names rather than evaluated as variables.
    */
-  private name(element: { props: readonly Prop[] }, property: string): string | undefined {
+  private name(element: ElementNode, property: string): string | undefined {
     const expr = this.prop(element, property);
     if (expr === undefined) return undefined;
     if (expr.kind === 'Ident') return expr.name;
@@ -711,7 +731,7 @@ class HtmlEmitter {
     return value.kind === 'unknown' ? undefined : asText(value);
   }
 
-  private number(element: { props: readonly Prop[] }, name: string): number | undefined {
+  private number(element: ElementNode, name: string): number | undefined {
     const value = this.value(element, name);
     if (value === undefined) return undefined;
     if (value.kind === 'number') return value.value;
@@ -719,12 +739,12 @@ class HtmlEmitter {
     return undefined;
   }
 
-  private bool(element: { props: readonly Prop[] }, name: string): boolean {
+  private bool(element: ElementNode, name: string): boolean {
     const value = this.value(element, name);
     return value !== undefined && truthy(value) === true;
   }
 
-  private colour(element: { props: readonly Prop[] }, ...names: readonly string[]): string | undefined {
+  private colour(element: ElementNode, ...names: readonly string[]): string | undefined {
     for (const name of names) {
       const value = this.value(element, name);
       if (value !== undefined && value.kind === 'color') return value.css;
@@ -734,7 +754,7 @@ class HtmlEmitter {
   }
 
   /** Universal props, in the same order the Flutter generator wraps them. */
-  private universalStyles(element: { props: readonly Prop[] }, extra: readonly string[] = [], skip: readonly string[] = []): string[] {
+  private universalStyles(element: ElementNode, extra: readonly string[] = [], skip: readonly string[] = []): string[] {
     const styles: string[] = [...extra];
     const padding = this.number(element, 'padding');
     if (padding !== undefined && !skip.includes('padding')) styles.push(`padding: ${padding}px`);
@@ -744,7 +764,9 @@ class HtmlEmitter {
     if (width !== undefined) styles.push(`width: ${width}px`, 'flex: none');
     const height = this.number(element, 'height');
     if (height !== undefined) styles.push(`height: ${height}px`);
-    const size = this.number(element, 'size');
+    // `size` is a font size on elements that draw text and a width×height elsewhere, so the
+    // element's own vocabulary decides which reading applies.
+    const size = this.declaresProp(element, 'size') ? undefined : this.number(element, 'size');
     if (size !== undefined) styles.push(`width: ${size}px`, `height: ${size}px`, 'flex: none');
     const opacity = this.number(element, 'opacity');
     if (opacity !== undefined) styles.push(`opacity: ${opacity}`);
@@ -755,6 +777,8 @@ class HtmlEmitter {
     const borderColor = this.colour(element, 'borderColor');
     const border = this.number(element, 'border');
     if (border !== undefined) styles.push(`border: ${border}px solid ${borderColor ?? 'currentColor'}`);
+    const shadow = this.shadowCss(element, 'shadow');
+    if (shadow !== undefined) styles.push(`box-shadow: ${shadow}`);
     const flex = this.number(element, 'flex');
     if (flex !== undefined) styles.push(`flex: ${flex}`);
     const align = this.name(element, 'align');
@@ -762,23 +786,64 @@ class HtmlEmitter {
     return styles;
   }
 
-  private gap(element: { props: readonly Prop[] }, fallback: string): string {
+  /** `box-shadow` for a `shadow=` value, resolving a shadow token to the list it holds. */
+  private shadowCss(element: ElementNode, name: string): string | undefined {
+    const expr = this.prop(element, name);
+    if (expr === undefined) return undefined;
+    const token = expr.kind === 'Ident' ? this.analysis.tokens.get(expr.name) : undefined;
+    const shape = token === undefined ? expr : token.category === 'shadow' ? token.value : undefined;
+    if (shape === undefined || shape.kind !== 'List') return undefined;
+    const [x, y, blur, color] = shape.items;
+    const offsetX = this.shadowNumber(x);
+    const offsetY = this.shadowNumber(y);
+    const radius = this.shadowNumber(blur);
+    if (offsetX === undefined || offsetY === undefined || radius === undefined) return undefined;
+    return `${offsetX}px ${offsetY}px ${radius}px ${this.shadowColor(color)}`;
+  }
+
+  private shadowNumber(expr: Expr | undefined): number | undefined {
+    if (expr === undefined) return undefined;
+    if (expr.kind === 'Number') return expr.value;
+    const token = expr.kind === 'Ident' ? this.analysis.tokens.get(expr.name) : undefined;
+    if (token !== undefined && token.value.kind === 'Number') return token.value.value;
+    const value = evaluate(expr, this.env);
+    return value.kind === 'number' ? value.value : undefined;
+  }
+
+  private shadowColor(expr: Expr | undefined): string {
+    const fallback = 'rgba(15, 23, 42, 0.12)';
+    if (expr === undefined) return fallback;
+    if (expr.kind === 'Color') return cssColor(expr.raw);
+    const token = expr.kind === 'Ident' ? this.analysis.tokens.get(expr.name) : undefined;
+    if (token !== undefined && token.value.kind === 'Color') return cssColor(token.value.raw);
+    const value = evaluate(expr, this.env);
+    if (value.kind === 'color') return value.css;
+    return value.kind === 'string' ? value.value : fallback;
+  }
+
+  /** True when the element's own registry entry declares this property. */
+  private declaresProp(element: ElementNode, name: string): boolean {
+    const spec = widgetSpec(element.tag);
+    return spec !== undefined && spec.props.some((prop) => prop.name === name);
+  }
+
+  private gap(element: ElementNode, fallback: string): string {
     const gap = this.number(element, 'gap');
     return gap === undefined ? fallback : `${gap}px`;
   }
 
-  private justify(element: { props: readonly Prop[] }): string | undefined {
+  private justify(element: ElementNode): string | undefined {
     const main = this.name(element, 'main');
     return main === undefined ? undefined : JUSTIFY[main];
   }
 
-  private alignItems(element: { props: readonly Prop[] }): string | undefined {
+  private alignItems(element: ElementNode): string | undefined {
     const cross = this.name(element, 'cross');
     return cross === undefined ? undefined : ALIGN[cross];
   }
 
-  private textStyleFor(element: { props: readonly Prop[] }): string[] {
-    const styles: string[] = ['white-space: pre-wrap'];
+  private textStyleFor(element: ElementNode): string[] {
+    const styles: string[] = [];
     const styleName = this.name(element, 'style');
     const base = styleName === undefined ? undefined : this.styles.get(styleName) ?? THEME_STYLES[styleName];
     if (base !== undefined) {
@@ -802,7 +867,9 @@ class HtmlEmitter {
     if (this.bool(element, 'underline')) styles.push('text-decoration: underline');
     const align = this.name(element, 'textAlign');
     if (align !== undefined && TEXT_ALIGN[align] !== undefined) styles.push(`text-align: ${TEXT_ALIGN[align]}`);
-    const maxLines = this.number(element, 'maxLines');
+    // Line clamping is a typography rule for drawn text. On an input, `maxLines` counts visible
+    // lines of the control, and the control itself does the scrolling.
+    const maxLines = element.tag === 'text' ? this.number(element, 'maxLines') : undefined;
     if (maxLines !== undefined) {
       styles.push('overflow: hidden', 'display: -webkit-box', `-webkit-line-clamp: ${maxLines}`, '-webkit-box-orient: vertical');
     }
@@ -848,7 +915,7 @@ class HtmlEmitter {
         this.inline(
           'span',
           [['class', 'pui-text']],
-          [...this.textStyleFor(element), ...this.universalStyles(element)],
+          ['white-space: pre-wrap', ...this.textStyleFor(element), ...this.universalStyles(element)],
           this.argumentText(element),
         );
         return;
@@ -989,7 +1056,13 @@ class HtmlEmitter {
           `background: ${this.colour(element, 'background') ?? '#ffffff'}`,
           `border-radius: ${this.number(element, 'radius') ?? 12}px`,
           `padding: ${this.number(element, 'padding') ?? 16}px`,
-          `box-shadow: 0 ${this.number(element, 'elevation') ?? 1}px ${(this.number(element, 'elevation') ?? 1) * 4}px rgba(15, 23, 42, 0.10)`,
+          // `elevation` is the card's shorthand; a `shadow` — written on the card or in its style —
+          // is the explicit value and replaces it rather than stacking a second declaration.
+          ...(this.shadowCss(element, 'shadow') !== undefined
+            ? []
+            : [
+                `box-shadow: 0 ${this.number(element, 'elevation') ?? 1}px ${(this.number(element, 'elevation') ?? 1) * 4}px rgba(15, 23, 42, 0.10)`,
+              ]),
           ...this.universalStyles(element, [], ['padding', 'radius', 'background', 'bg']),
         ]);
         this.renderChildren(element.children);
@@ -1033,11 +1106,14 @@ class HtmlEmitter {
           href === undefined
             ? [['class', 'pui-button'], ['type', 'button'], ['data-event', this.eventNames(element)]]
             : [['class', 'pui-button'], ['href', href], ['data-event', this.eventNames(element)]];
+        // The tag writer keeps the first declaration for each property, so order is precedence:
+        // explicit properties and text styles first, then the element's defaults, then the variant.
         this.open(tag, attributes, [
           'font: inherit',
           ...(href === undefined ? [] : ['display: inline-block', 'text-decoration: none', 'text-align: center']),
-          'border-radius: 10px',
-          'padding: 10px 18px',
+          ...(this.number(element, 'radius') === undefined ? ['border-radius: 10px'] : []),
+          ...(this.number(element, 'padding') === undefined ? ['padding: 10px 18px'] : []),
+          ...this.textStyleFor(element),
           'font-weight: 600',
           ...BUTTON_VARIANTS[variant ?? 'filled'] ?? BUTTON_VARIANTS['filled']!,
           ...(this.bool(element, 'fullWidth') ? ['width: 100%'] : []),
@@ -1109,6 +1185,7 @@ class HtmlEmitter {
             'border: 1px solid rgba(15, 23, 42, 0.16)',
             'border-radius: 10px',
             'background: #ffffff',
+            ...this.textStyleFor(element),
           ]);
           this.line(escapeHtml(value));
           this.close('textarea');
@@ -1131,6 +1208,7 @@ class HtmlEmitter {
             'border: 1px solid rgba(15, 23, 42, 0.16)',
             'border-radius: 10px',
             'background: #ffffff',
+            ...this.textStyleFor(element),
           ]);
         }
         const helper = this.name(element, 'helper');
@@ -1222,13 +1300,13 @@ class HtmlEmitter {
     return evaluate(expr, this.env);
   }
 
-  private mainAxis(element: { props: readonly Prop[] }): string[] {
+  private mainAxis(element: ElementNode): string[] {
     const main = this.name(element, 'main');
     const value = main === undefined ? undefined : JUSTIFY[main];
     return value === undefined ? [] : [`justify-content: ${value}`];
   }
 
-  private crossAxis(element: { props: readonly Prop[] }): string[] {
+  private crossAxis(element: ElementNode): string[] {
     const cross = this.name(element, 'cross');
     const value = cross === undefined ? undefined : ALIGN[cross];
     return value === undefined ? [] : [`align-items: ${value}`];
@@ -1279,7 +1357,12 @@ class HtmlEmitter {
     this.bindDerived(decl);
 
     if (element.children.length > 0) this.slotRenderers.push(() => this.renderChildren(element.children));
-    this.open('div', [['class', 'pui-component'], ['data-component', decl.name]], ['display: flex', 'flex-direction: column', 'gap: 0']);
+    this.open('div', [['class', 'pui-component'], ['data-component', decl.name]], [
+      ...this.universalStyles(element),
+      'display: flex',
+      'flex-direction: column',
+      'gap: 0',
+    ]);
     this.renderChildren(decl.body);
     this.close('div');
     if (element.children.length > 0) this.slotRenderers.pop();

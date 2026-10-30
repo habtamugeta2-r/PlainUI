@@ -80,6 +80,10 @@ export const HTML_TARGET: Target = {
       level: 'none',
       note: 'There is no Dart runtime, so a host call cannot run and a host widget renders as a placeholder.',
     },
+    styles: {
+      level: 'full',
+      note: 'Surface properties become CSS declarations on the element, text properties become its typography.',
+    },
     themes: { level: 'full', note: 'Tokens are published as CSS custom properties and used by the generated styles.' },
     'list-identity': {
       level: 'partial',

@@ -9,6 +9,7 @@ theme Gallery:
     color danger = #dc2626
     color surface = #ffffff
     color ink = #0f172a
+    color line = #14000000
 
     space xs = 4
     space sm = 8
@@ -16,10 +17,33 @@ theme Gallery:
     space lg = 24
 
     radius card = 12
+    radius pill = 999
+
+    shadow soft = [0, 2, 8, #1f000000]
+    shadow lifted = [0, 8, 24, #24000000]
+
+// A style is a bundle of properties. `panel` is surface only, so it works on anything that renders
+// a box; `mono` and `emphasis` set text properties, so they only apply where text is drawn.
+style panel:
+    background=surface
+    radius=card
+    padding=md
+    shadow=soft
+    border=1
+    borderColor=line
+
+style lifted:
+    padding=md
+    shadow=lifted
 
 style mono:
-    fontFamily=monospace
+    fontFamily="monospace"
     size=13
+
+style emphasis:
+    size=20
+    weight=bold
+    color=brand
 
 screen Gallery:
 
@@ -48,28 +72,28 @@ screen Gallery:
 
                 text "Layout" style=heading
 
-                row gap=8 main=between:
+                row gap=sm main=between:
                     text "spaceBetween"
                     text "row"
 
-                wrap gap=6:
+                wrap gap=xs:
                     text "wrap"
                     text "wraps"
                     text "children"
 
-                grid columns=3 gap=8:
-                    card padding=8:
+                grid columns=3 gap=sm:
+                    card style=panel padding=sm:
                         center:
                             text "1"
-                    card padding=8:
+                    card style=panel padding=sm:
                         center:
                             text "2"
-                    card padding=8:
+                    card style=panel padding=sm:
                         center:
                             text "3"
 
                 stack:
-                    card padding=24:
+                    card style=lifted padding=lg:
                         text "stack"
                     text "over" style=caption
 
@@ -92,12 +116,12 @@ screen Gallery:
 
                 text "Actions" style=heading
 
-                row gap=8:
+                row gap=sm:
                     button "Filled"
                     button "Outlined" variant=outlined
                     button "Text" variant=text
 
-                row gap=8:
+                row gap=sm:
                     button "Full width" fullWidth
                     button "Disabled" disabled
 
@@ -116,7 +140,7 @@ screen Gallery:
                 progress value=0.6
                 progress color=accent
 
-                row gap=12 cross=center:
+                row gap=md cross=center:
                     progress
                     text "loading…" style=caption
 
@@ -132,3 +156,21 @@ screen Gallery:
                         text "accent" color=surface
                     card padding=md background=danger radius=card:
                         text "danger" color=surface
+
+                divider
+
+                text "Styles" style=heading
+                text "a style decorates any element; a text style only decorates text" style=caption
+
+                // Surface only: works on a column, a card, a button.
+                column style=panel gap=sm:
+                    text "panel style on a column"
+                    text "padding, background, radius, border and shadow, from one declaration" style=caption
+
+                row gap=sm:
+                    card style=lifted:
+                        text "lifted" style=caption
+                    // An explicit property wins over the style it is combined with.
+                    card style=panel background=accent:
+                        text "override" style=caption color=surface
+                    button "emphasis" style=emphasis

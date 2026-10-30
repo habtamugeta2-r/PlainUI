@@ -1,0 +1,53 @@
+// Styles and shadows: a surface style on every kind of element, a text style applied where text is
+// drawn, an explicit property overriding the style, and a component call carrying the same style.
+
+theme StyleDemo:
+
+    color surface = #ffffff
+    color ink = #0f172a
+    color brand = #2563eb
+    color line = #14000000
+
+    space sm = 8
+    space md = 16
+
+    radius card = 12
+
+    shadow soft = [0, 2, 8, #1f000000]
+
+style panel:
+    background=surface
+    radius=card
+    padding=md
+    shadow=soft
+    border=1
+    borderColor=line
+
+style price:
+    size=20
+    weight=bold
+    color=ink
+
+component Badge(label: Text):
+
+    text label style=caption
+
+screen StyleDemo:
+
+    column padding=md gap=sm:
+
+        card style=panel:
+            text "Panel" style=price
+
+        // An explicit property wins over the style it is combined with.
+        card style=panel background=brand:
+            text "Override" color=surface
+
+        button "Buy" style=price
+
+        // A surface style wraps a component call in the same way it wraps a built-in.
+        Badge("new") style=panel
+
+        // A shadow can be written inline, without a token.
+        card shadow=[0, 4, 12, #33000000]:
+            text "Inline shadow"

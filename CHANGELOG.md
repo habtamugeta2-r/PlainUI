@@ -8,6 +8,61 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **Styles are bundles that apply to any element.** `style=<name>` is now a universal property, and
+  a `style` block carries two kinds of property:
+
+  - **text properties** (`size`, `weight`, `color`, …) — still what they always were, and still only
+    meaningful where text is drawn. Applying one to an element that draws no text is `PUI2373`, not
+    a silent no-op.
+  - **surface properties** (`padding`, `margin`, `width`, `height`, `opacity`, `background`/`bg`,
+    `radius`, `border`, `borderColor`, `shadow`) — applied by wrapping the element, so they work on
+    built-ins, component call sites and host widgets alike.
+
+  ```plainui
+  style panel:
+      background=surface
+      radius=card
+      padding=md
+      shadow=soft
+
+  screen Home:
+      column style=panel:
+          card style=panel background=brand:    // the explicit property wins
+              text "Brand panel" style=price
+  ```
+
+  Precedence is one rule — element property > style > target default — with no cascade, no
+  inheritance and no specificity. Structural properties (`main`, `cross`, `gap`, `align`, `expand`,
+  `flex`) are not stylable (`PUI2301`): a style describes an appearance, not a layout. `size` in a
+  style is a font size only, so boxes are sized with `width`/`height`. Both targets implement the
+  same rule: Flutter emits a `TextStyle` constant plus wrapping decorators, the preview emits
+  typography and declarations on the element. `styles` is a declared capability on both.
+
+- **`shadow` — a universal property and a token category.** `shadow=[x, y, blur]`,
+  `shadow=[x, y, blur, color]`, or `shadow=<token>`, with
+
+  ```plainui
+  theme App:
+      shadow soft = [0, 2, 8, #1f000000]
+      shadow lifted = [0, 8, 24, #24000000]
+  ```
+
+  Flutter lowers it to `BoxShadow` in a `BoxDecoration` and to a `BoxShadow` constant in the token
+  class (`AppTokens.soft`); the preview emits `box-shadow`. A shadow with no colour is 12% black; a
+  shadow token with the wrong shape is `PUI2306`, a colour token in a shadow slot is `PUI2304`.
+
+- **`PUI2373`** — a style that sets text properties was applied to an element that draws no text,
+  with a hint naming the elements that do. Approved in the diagnostic catalogue and in
+  `docs/05-diagnostics.md`.
+
+### Fixed
+
+- The preview now applies text styles to `button` and `input`, and no longer applies a text
+  element's `size` as a width and height. A button's default padding and radius yield to explicit
+  values, and a card's default elevation shadow is replaced — not duplicated — by a `shadow`.
+- A component call site honours universal properties (and therefore `style=`) in the preview, as it
+  already did in Flutter.
+
 - **`"targets"` in `plainui.config.json` — portability as a checked promise.** One entry (the
   default) is a Flutter project. Two asks the compiler to keep every file portable to both:
 

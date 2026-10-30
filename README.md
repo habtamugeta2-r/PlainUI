@@ -152,6 +152,7 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | PlainUI-native types (`Text`, `Int`, `Float`, `Bool`, `Optional<T>`), legacy-alias warnings and `plainui migrate` | ✅ A1/A2 semantics and target-owned Flutter/HTML maps; aliases scheduled for removal in v2.0.0 |
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
 | Design tokens (`theme` blocks, shared by import, lowered per target) | ✅ |
+| Styles (`style` bundles of text + surface properties, applied to any element) and `shadow` tokens | ✅ [`docs/13`](docs/13-styling.md) |
 | `task` — async values with `loading` / `error` / `value` / `retry()` | ✅ |
 | CLI: `build`, `check`, `format`, `migrate`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets`, `next` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
@@ -303,6 +304,7 @@ screen Products:
 | [`docs/10-decisions.md`](docs/10-decisions.md) | Decision record: what was decided, why, and what would reopen it |
 | [`docs/11-todo.md`](docs/11-todo.md) | The roadmap as data (generated; also printed by `plainui next`) |
 | [`docs/12-implementation-plan.md`](docs/12-implementation-plan.md) | Detailed, checkbox-driven implementation plan by milestone/phase, with every roadmap item broken into concrete sub-tasks |
+| [`docs/13-styling.md`](docs/13-styling.md) | Styles, surfaces and shadows: the rules, the lowerings, and what is deliberately missing |
 
 ## Playground
 

@@ -38,6 +38,7 @@ export const CAPABILITIES = [
   'navigation',
   'host-surfaces',
   'themes',
+  'styles',
   'list-identity',
 ] as const;
 

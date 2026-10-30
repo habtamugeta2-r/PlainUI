@@ -53,7 +53,7 @@ import { DiagnosticBag } from './diagnostics.ts';
 import { VALUE_PARAM_NAME, eventValueType } from './events.ts';
 import { type SourceFile, type Span } from '../frontend/source.ts';
 import { didYouMean, listOf, suggest } from './suggest.ts';
-import { BUILTIN_STYLES, STYLE_PROPS } from './styles.ts';
+import { BUILTIN_STYLES, STYLE_ALL_PROPS, STYLE_PROPS, STYLE_SURFACE_PROPS, hasTextProps } from './styles.ts';
 import { DEFAULT_TARGET, supports, type Capability, type Target } from '../targets/index.ts';
 import {
   GENERIC_EVENTS,
@@ -453,6 +453,8 @@ class Checker {
       if (token.value.kind !== 'Color') {
         this.error('PUI2306', `${label} needs a colour`, token.value.span, 'write it as #RRGGBB, for example: color brand = #2563eb');
       }
+    } else if (token.category === 'shadow') {
+      this.checkShadowValue(token.value, label);
     } else if (token.value.kind !== 'Number') {
       this.error(
         'PUI2306',
@@ -463,6 +465,31 @@ class Checker {
     }
     if (this.target.reservedWords.has(token.name)) {
       this.error('PUI2012', `"${token.name}" is a reserved word in ${this.target.language}`, token.nameSpan, 'choose a different name');
+    }
+  }
+
+  /**
+   * A shadow is drawn from three numbers and an optional colour, written as a list:
+   * `[x, y, blur]` or `[x, y, blur, #RRGGBB]`. One shape for literals and for tokens, so a token
+   * cannot hold something a property would reject.
+   */
+  private checkShadowValue(value: Expr, label: string): void {
+    const hint = 'write [x, y, blur] or [x, y, blur, color], for example shadow soft = [0, 2, 8, #0000001f]';
+    if (value.kind !== 'List') {
+      this.error('PUI2306', `${label} needs a shadow`, value.span, hint);
+      return;
+    }
+    if (value.items.length !== 3 && value.items.length !== 4) {
+      this.error('PUI2306', `${label} takes 3 or 4 values`, value.span, hint);
+      return;
+    }
+    if (!value.items.slice(0, 3).every((item) => isNumericLiteral(item))) {
+      this.error('PUI2306', `${label} needs numbers for x, y and blur`, value.span, hint);
+      return;
+    }
+    const last = value.items[3];
+    if (last !== undefined && last.kind !== 'Color') {
+      this.error('PUI2306', `${label} needs a colour as its last value`, last.span, 'for example [0, 2, 8, #0000001f]');
     }
   }
 
@@ -490,6 +517,8 @@ class Checker {
       case 'edge':
       case 'size':
         return ['space', 'radius'];
+      case 'shadow':
+        return ['shadow'];
       default:
         return undefined;
     }
@@ -680,35 +709,83 @@ class Checker {
     }
   }
 
+  /**
+   * The registry spec for a property used inside a `style` block.
+   *
+   * A style body is checked with the same machinery an element property is, so a style cannot hold
+   * a value the property would reject at the call site: the shape (`PUI2110`) and the token
+   * category (`PUI2304`) rules are shared, not re-implemented.
+   */
+  private stylePropSpec(name: string): PropSpec | ArgSpec | undefined {
+    const universal = UNIVERSAL_PROPS.find((prop) => prop.name === name);
+    if (universal !== undefined) return universal;
+    const text = widgetSpec('text');
+    return text === undefined ? undefined : findProp(text, name);
+  }
+
+  /** True when an element draws text, which is what makes a text style meaningful on it. */
+  private drawsText(spec: WidgetSpec): boolean {
+    return spec.props.some((prop) => prop.name === 'style');
+  }
+
   private validateStyles(): void {
     const known = new Set([...BUILTIN_STYLES, ...this.styles.keys()]);
+    const textElements = new Set(['text', 'input', 'button']);
     for (const style of this.styles.values()) {
+      this.requireCapability('style', 'styles', style.nameSpan);
       for (const prop of style.props) {
-        if (!STYLE_PROPS.includes(prop.name)) {
+        if (!STYLE_ALL_PROPS.includes(prop.name)) {
           this.error(
             'PUI2301',
-            `"${prop.name}" is not a text style property`,
+            `"${prop.name}" is not a style property`,
             prop.nameSpan,
-            didYouMean(prop.name, STYLE_PROPS) ?? `use one of: ${STYLE_PROPS.join(', ')}`,
+            didYouMean(prop.name, STYLE_ALL_PROPS) ??
+              `text properties: ${STYLE_PROPS.join(', ')}  ·  surface properties: ${STYLE_SURFACE_PROPS.join(', ')}`,
           );
+          continue;
         }
+        const spec = this.stylePropSpec(prop.name);
+        if (spec === undefined) continue;
+        this.checkValueShape(spec, prop.value, prop.name);
+        this.checkTokenUses(spec, prop.value, prop.name);
+        // `weight=bold` names an enum value rather than referencing a variable; everything else in
+        // a style body is a literal or a token.
+        if (spec.kind !== 'enum') this.checkExpr(prop.value, this.tokenScope(), 'value', false);
       }
     }
+
     // Style references from any prop named `style`.
     walkNodes(
       this.program.decls.flatMap((decl) => (decl.kind === 'Style' || decl.kind === 'Theme' ? [] : decl.body)),
       (node) => {
         if (node.kind !== 'Element') return;
+        const spec = widgetSpec(node.tag);
         for (const prop of node.props) {
           if (prop.name !== 'style') continue;
           const value = literalName(prop.value);
-          if (value === undefined) continue;
+          if (value === undefined) {
+            this.error('PUI2313', 'a style name must be written as a bare name', prop.value.span, `for example style=${BUILTIN_STYLES[1]}`);
+            continue;
+          }
           if (!known.has(value)) {
             this.error(
               'PUI2302',
               `unknown style "${value}"`,
               prop.value.span,
               didYouMean(value, known) ?? `declare it with "style ${value}:" or use one of: ${BUILTIN_STYLES.join(', ')}`,
+            );
+            continue;
+          }
+          // A built-in style is a text style by definition; a declared one may be either, or both.
+          const decl = this.styles.get(value);
+          const carriesText = decl === undefined ? true : hasTextProps(decl);
+          if (!carriesText || spec === undefined || textElements.has(spec.tag)) continue;
+          if (!this.drawsText(spec)) {
+            this.error(
+              'PUI2373',
+              `style "${value}" sets text properties, and "${spec.tag}" does not draw text`,
+              prop.value.span,
+              `use it on ${[...textElements].join(', ')}, or keep only surface properties in it — ${STYLE_SURFACE_PROPS.slice(0, 6).join(', ')}, and so on`,
             );
           }
         }
@@ -1272,6 +1349,8 @@ class Checker {
         );
       }
     }
+    // A style name names a declaration; it does not reference a state variable.
+    if (prop.name === 'style' && prop.value.kind === 'Ident') return;
     this.checkExpr(prop.value, scope, 'value', false);
   }
 
@@ -1407,6 +1486,22 @@ class Checker {
                 : `accepted values: ${values.join(', ')}`;
           this.error('PUI2111', `"${literal}" is not a valid value for "${name}"`, value.span, hint);
         }
+        break;
+      }
+      case 'shadow': {
+        if (value.kind === 'Ident') {
+          const token = this.tokens.get(value.name);
+          // A token of another category is `PUI2304`'s to report, with the better message.
+          if (token !== undefined) break;
+          this.error(
+            'PUI2110',
+            `"${name}" takes a shadow`,
+            value.span,
+            'write [x, y, blur] or [x, y, blur, color], or use a shadow token — a shadow cannot be a variable',
+          );
+          break;
+        }
+        this.checkShadowValue(value, name);
         break;
       }
       case 'styleName':

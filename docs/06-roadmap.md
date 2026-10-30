@@ -162,8 +162,10 @@ arranged the way it is. Ideas worth testing:
 - **Should components accept callbacks?** Today a component that needs to report an event takes a
   `VoidCallback` from Dart or re-renders from shared state. Passing an inline handler would need
   closures in the parameter list; syntax exists (`onTap: VoidCallback`), semantics do not.
-- **Theming.** Styles currently drive text only. A token file (colours, spacing, radii) is the
-  obvious next step and the least risky: it is data, not syntax.
+- **Theming.** Answered for V1: token files exist (colours, spacing, radii, shadows), and styles
+  are bundles of text and surface properties that apply to any element — see
+  [`13-styling.md`](13-styling.md) and decision record C1–C4. What is still open is a *second* token
+  set (dark mode) and typography tokens, both deferred with their conditions recorded there.
 
 ## Risks
 

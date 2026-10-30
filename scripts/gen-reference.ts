@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { CODES } from '../src/analysis/diagnostics.ts';
 import { PHASES, TODO, progressOf, type TodoItem, type TodoStatus } from '../src/tooling/todo.ts';
-import { BUILTIN_STYLES, STYLE_PROPS } from '../src/analysis/styles.ts';
+import { BUILTIN_STYLES, STYLE_PROPS, STYLE_SURFACE_PROPS } from '../src/analysis/styles.ts';
 import {
   GENERIC_EVENTS,
   UNIVERSAL_PROPS,
@@ -109,26 +109,41 @@ export function renderReference(): string {
     for (const spec of group.specs) lines.push(widgetSection(spec));
   }
 
-  lines.push('## Text styles');
+  lines.push('## Styles');
   lines.push('');
-  lines.push(`Built in: ${BUILTIN_STYLES.map((name) => `\`${name}\``).join(', ')}.`);
+  lines.push(`Built-in text styles: ${BUILTIN_STYLES.map((name) => `\`${name}\``).join(', ')}.`);
   lines.push('');
-  lines.push('A `style` declaration adds one of your own:');
+  lines.push('A `style` declaration bundles properties, and `style=` applies it to any element:');
   lines.push('');
   lines.push('```plainui');
+  lines.push('style panel:');
+  lines.push('    background=surface');
+  lines.push('    radius=card');
+  lines.push('    padding=md');
+  lines.push('    shadow=soft');
+  lines.push('');
   lines.push('style price:');
   lines.push('    size=20');
   lines.push('    weight=bold');
-  lines.push('    color=#1d4ed8');
   lines.push('');
   lines.push('screen Home:');
-  lines.push('    text "10 ETB" style=price');
+  lines.push('    card style=panel:');
+  lines.push('        text "10 ETB" style=price');
   lines.push('```');
   lines.push('');
-  lines.push(`Properties allowed in a style declaration: ${STYLE_PROPS.map((name) => `\`${name}\``).join(', ')}.`);
+  lines.push(`**Text properties** — how drawn text looks: ${STYLE_PROPS.map((name) => `\`${name}\``).join(', ')}.`);
+  lines.push('They only mean something on `text`, `button` and `input`; applying a style that sets them to any');
+  lines.push('other element is an error (`PUI2373`).');
   lines.push('');
-  lines.push('`text`, `button` and `style` declarations all accept the same text properties, so a style can be');
-  lines.push('overridden at the point of use: `text "x" style=price size=12`.');
+  lines.push(`**Surface properties** — how the element itself is painted and spaced: ${STYLE_SURFACE_PROPS.map((name) => `\`${name}\``).join(', ')}.`);
+  lines.push('These work on every element, because the language applies them by wrapping the element.');
+  lines.push('');
+  lines.push('**Not stylable:** `main`, `cross`, `gap`, `align`, `expand` and `flex`. Those describe how a');
+  lines.push('layout is arranged, not how it looks; a style that rearranged a layout would be a breakpoint by');
+  lines.push('another name (§ responsive composition).');
+  lines.push('');
+  lines.push('Precedence is one line: **property on the element > property from the style > target default**.');
+  lines.push('There is no cascade and no inheritance — `text "x" style=price size=12` overrides the style.');
   lines.push('');
 
   return lines.join('\n');

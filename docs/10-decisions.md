@@ -12,6 +12,64 @@ Status legend: **decided** (act on it), **provisional** (act on it, cheap to rev
 
 ---
 
+## C. Design surface
+
+### C1 — A style is a bundle with two halves, and no cascade — *decided*
+
+`style=<name>` applies to **any** element. Text properties (`size`, `weight`, `color`, …) only mean
+something where text is drawn and are refused elsewhere (`PUI2373`); surface properties (`padding`,
+`background`, `radius`, `border`, `shadow`, …) decorate any element and are applied by wrapping it.
+
+**Why:** the language already had two vocabularies for "how does this look" — text styles that were
+symbolic and universal properties that were structural — with no way to name a combination. The two
+halves keep `style=heading` meaning what it always meant while making a card, a column and a
+component call stylable. Precedence stays one line (element > style > default) because a cascade is
+the thing that makes CSS hard to reason about, and a design language should not reproduce it.
+
+**Revisit when:** a real project needs one style to derive from another (a "compact panel" that
+specialises "panel"). That is inheritance, and it is only worth adding if the naive alternative —
+two declarations — is genuinely painful in an example we ship.
+
+### C2 — `size` in a style is a font size, never a box size — *provisional*
+
+`size` is overloaded by the element vocabulary: on `text` it is a font size, in the universal
+property list it is a square width and height. A style cannot know which one the author meant, so it
+means the text one, and boxes are sized with `width`/`height`.
+
+**Why:** silently picking the other reading would make `text "x" style=price` render a 20px-wide
+text box. A rule that is sometimes wrong is worse than a rule that is narrow.
+
+**Revisit when:** styles can be scoped to element kinds, so a style could declare its target and
+`size` becomes unambiguous again.
+
+### C3 — A shadow is a list, not a new literal syntax — *decided*
+
+`shadow=[x, y, blur]`, `shadow=[x, y, blur, color]`, and `shadow <name> = [x, y, blur, color]` for a
+token. No new lexical form, no key=value object.
+
+**Why:** the language already reads brackets as an ordered value (`padding=[vertical, horizontal]`),
+and a shadow is exactly three numbers and a colour in a fixed order. A dedicated literal would buy
+nothing and would need its own escape hatch as soon as spread radius arrived.
+
+**Revisit when:** a shadow needs something the list cannot express (inside shadows, multiple stacked
+shadows per element, spread radius). Then it becomes a structured value, and the list form is kept
+as shorthand.
+
+### C4 — Design tokens grow by category, not by generality — *decided*
+
+A token belongs to a category (`color`, `space`, `radius`, `shadow`), and the category decides both
+the value's shape and the slots it may fill. There is no general "variable" token.
+
+**Why:** `PUI2304` — a token in the wrong slot — is only possible because categories exist. A
+general token would push that error to the target's compiler, where the message names Dart rather
+than the design.
+
+**Revisit when:** a category's values are structurally the same as another's and the split produces
+more confusion than it prevents (e.g. `space` and `radius` are both plain numbers and are kept apart
+only because they read differently).
+
+---
+
 ## A. Identity
 
 ### A1 — PlainUI owns its type system — *provisional, lands in v2.0*

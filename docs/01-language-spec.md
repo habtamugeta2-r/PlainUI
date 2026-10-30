@@ -140,19 +140,59 @@ component ProfileCard(user: User, compact: Bool = false):
 
 ### 2.3 Styles
 
-A named text style, referenced with `style=<name>` on `text`, `input` and `button`.
+A style is a **named bundle of properties**, applied with `style=<name>` on **any** element.
 
 ```
-style heading:
-    size=32
+style panel:
+    background=surface
+    radius=card
+    padding=md
+    shadow=soft
+    border=1
+    borderColor=line
+
+style price:
+    size=20
     weight=bold
-    color=#111111
+    color=ink
 ```
 
-Styles accept the text properties `size`, `weight`, `color`, `family`, `letterSpacing`,
-`lineHeight`, `italic`. Unknown properties are errors (`PUI2301`). Built-in style names —
-`display`, `heading`, `subheading`, `body`, `caption`, `label`, `secondary` — may be used without
-declaring anything and are overridable.
+A style has two halves, and the difference decides where it may be used:
+
+* **Text properties** — `size`, `weight`, `color`, `fontFamily`, `letterSpacing`, `lineHeight`,
+  `italic`. They change how *drawn text* looks, so they only mean something on `text`, `input` and
+  `button`. Applying a style that sets them to an element that draws no text is an error
+  (`PUI2373`), not a silent no-op.
+* **Surface properties** — `padding`, `margin`, `width`, `height`, `opacity`, `background`/`bg`,
+  `radius`, `border`, `borderColor`, `shadow`. They decorate whatever the element renders and work
+  on **every** built-in element and component call site, for the same reason universal properties
+  do: the language applies them by wrapping the element (§4.1). A host widget is a constructor call
+  and takes its own parameters, so it is not stylable — that boundary stays where it was.
+
+`size` belongs to the text half only. On an element that draws text it is a font size, so a style
+that set it would mean two things; sizing a box uses `width` and `height`.
+
+**Structure is not stylable.** `main`, `cross`, `gap`, `align`, `expand` and `flex` arrange a
+layout rather than painting one, and a style that rearranged a layout would be responsive
+composition with no way to say which breakpoint it meant. A style using one is `PUI2301`.
+
+**Precedence is one rule:** a property written on the element wins over the same property in its
+style, and the style wins over the target's default. There is no cascade, no inheritance and no
+specificity:
+
+```
+text "10 ETB" style=price size=12     // size 12, not 20
+card style=panel background=brand     // brand, not surface
+```
+
+Values inside a style are checked with the same machinery an element property uses, so a style
+cannot hold a shape the property would reject (`PUI2110`) or a token of the wrong category
+(`PUI2304`). Unknown properties are errors (`PUI2301`).
+
+Built-in text style names — `display`, `heading`, `subheading`, `body`, `caption`, `label`,
+`secondary` — may be used without declaring anything, and a declared style of the same name
+overrides one. Because they are text styles they follow the same rule: they apply where text is
+drawn.
 
 ### 2.4 Themes and design tokens
 
@@ -166,17 +206,30 @@ theme App:
     color surface = #ffffff
     color ink = #0f172a
     color danger = #dc2626
+    color line = #14000000
 
     space sm = 8
     space md = 16
     space lg = 24
 
     radius card = 12
+
+    shadow soft = [0, 2, 8, #1f000000]
 ```
 
-* Three categories: `color`, `space` (`spacing` is accepted as a spelling of the same thing) and
-  `radius`. A colour token takes a colour literal (`PUI2306`); a space or radius token takes a
-  number (`PUI2306`).
+* Four categories: `color`, `space` (`spacing` is accepted as a spelling of the same thing),
+  `radius`, and `shadow`. A colour token takes a colour literal (`PUI2306`); a space or radius
+  token takes a number (`PUI2306`); a shadow token takes a list of three numbers and an optional
+  colour — `[x, y, blur]` or `[x, y, blur, color]` — the same shape the `shadow` property accepts
+  (`PUI2306`, §4.1).
+
+  ```
+  shadow soft = [0, 2, 8, #1f000000]      // x, y, blur, colour
+  card shadow=soft:
+  ```
+
+  The colour is written as `#AARRGGBB` when it has an alpha channel, so `#1f000000` is 12% black.
+  With no colour the shadow is 12% black.
 * One theme per file (`PUI2307`); duplicate token names are errors (`PUI2305`), including against a
   token from an imported theme.
 * Tokens are in scope for the whole file — including `style` declarations written above the theme —
@@ -190,8 +243,9 @@ theme App:
 Tokens are resolved by the compiler, not at run time. `padding=md` becomes `16` in the generated
 code, which keeps generated widget trees `const` and makes every target produce the same values from
 the same source. The Flutter target additionally emits the palette as data — `AppTokens.brand` — and
-a `ThemeData` (`AppTheme.light`) built from it, so Flutter's own widgets use the design; the HTML
-target publishes the same values as CSS custom properties (`--pui-brand`). Runtime theming, such as
+a `ThemeData` (`AppTheme.light`) built from it, so Flutter's own widgets use the design; a shadow
+token becomes a `BoxShadow` constant (`AppTokens.soft`). The HTML target publishes the same values
+as CSS custom properties (`--pui-brand`). Runtime theming, such as
 switching to a dark token set, is a separate feature and is not part of this one.
 
 ### 2.5 Host surfaces
@@ -607,13 +661,15 @@ element rather than by being passed to it.
 | `radius` | number | Rounded corners |
 | `border` | number | Border width (needs `borderColor`) |
 | `borderColor` | colour | Border colour |
+| `shadow` | `[x, y, blur]` or `[x, y, blur, color]`, or a `shadow` token | Drop shadow |
+| `style` | a style name | Apply a declared (or built-in) style, §2.3 |
 | `align` | `topLeft … bottomRight`, `center` | Alignment within available space |
 | `main` | `start`, `end`, `center`, `between`, `around`, `evenly` | Main-axis distribution of `column`/`row` children |
 | `cross` | `start`, `end`, `center`, `stretch`, `baseline` | Cross-axis alignment of children |
 | `gap` | number | Space inserted **between** children of `column`, `row`, `wrap`, `list` |
 
 Wrapping order is deterministic. Read from the element outwards: `padding`, then size
-(`width`/`height`/`size`), then `background`/`radius`/`border`/`margin`, then `opacity`, then
+(`width`/`height`/`size`), then `background`/`radius`/`border`/`shadow`/`margin`, then `opacity`, then
 `expand`/`flex`, then `align`, then any generic gesture or hover handler. In generated code that
 reads outside-in as `gestures → Align → Expanded/Flexible → Opacity → Container → SizedBox →
 Padding → element`.

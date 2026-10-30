@@ -20,6 +20,8 @@ export type PropKind =
   | 'enum'
   | 'styleName'
   | 'iconName'
+  /** A drop shadow: `[x, y, blur]` or `[x, y, blur, color]`, or a `shadow` design token. */
+  | 'shadow'
   | 'expr'
   /** A validator or list of validators (`required`, `min(8)`); checked by the form checker. */
   | 'validators';
@@ -95,10 +97,17 @@ export const UNIVERSAL_PROPS: readonly PropSpec[] = [
   { name: 'radius', kind: 'number', summary: 'Corner radius in logical pixels.', mapsTo: 'BorderRadius.circular' },
   { name: 'border', kind: 'number', summary: 'Border width; needs borderColor.', mapsTo: 'Border.all' },
   { name: 'borderColor', kind: 'color', summary: 'Border colour.' },
+  { name: 'shadow', kind: 'shadow', summary: 'Drop shadow: [x, y, blur] or [x, y, blur, color], or a shadow token.', mapsTo: 'BoxShadow' },
   { name: 'align', kind: 'enum', values: ALIGNMENT, summary: 'Place the element within the space it is given.', mapsTo: 'Align' },
   { name: 'main', kind: 'enum', values: MAIN_AXIS, summary: 'Main-axis distribution (column, row, scroll, list, wrap).', mapsTo: 'MainAxisAlignment' },
   { name: 'cross', kind: 'enum', values: CROSS_AXIS, summary: 'Cross-axis alignment of children (column, row, wrap).', mapsTo: 'CrossAxisAlignment' },
   { name: 'gap', kind: 'number', summary: 'Space between children (column, row, wrap, list, scroll).' },
+  {
+    name: 'style',
+    kind: 'styleName',
+    summary: 'A named style: text properties, surface properties, or both. Works on every element.',
+    mapsTo: 'TextStyle + decorators',
+  },
 ];
 
 /** Gesture events every element supports through a wrapper. */

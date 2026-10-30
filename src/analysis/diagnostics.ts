@@ -345,6 +345,13 @@ export const CODES = {
     description: 'orElse takes exactly one positional fallback whose type matches the Optional value.',
     fix: 'Write value.orElse(fallback) with one compatible fallback.',
   },
+  PUI2373: {
+    severity: 'error',
+    title: 'Text style applied to an element that does not draw text',
+    description:
+      'The style sets text properties (size, weight, color, …), so it only means something on an element that draws text. Surface properties alone are fine on any element.',
+    fix: 'Apply the style to text, input or button, or split the text properties into a second style used there.',
+  },
   PUI2368: {
     severity: 'error',
     title: 'Optional needs a type argument',
@@ -378,8 +385,9 @@ export const CODES = {
   PUI2301: {
     severity: 'error',
     title: 'Unknown style property',
-    description: 'A style block only accepts text properties.',
-    fix: 'Use size, weight, color, family, letterSpacing, lineHeight or italic.',
+    description:
+      'A style block accepts text properties (how text is drawn) and surface properties (how the element is painted and spaced). Structural properties are not stylable: a style describes an appearance, not a layout.',
+    fix: 'Use a text property (size, weight, color, …) or a surface property (padding, background, radius, border, shadow, opacity, width, height, margin).',
   },
   PUI2302: {
     severity: 'error',
