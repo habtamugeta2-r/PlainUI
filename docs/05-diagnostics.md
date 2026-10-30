@@ -108,6 +108,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2405`](#pui2405) | warning | Unused component parameter |
 | [`PUI2406`](#pui2406) | info | External host widget |
 | [`PUI2407`](#pui2407) | warning | Anonymous use of a screen |
+| [`PUI2501`](#pui2501) | error | Construct not supported by this target |
 | [`PUI3001`](#pui3001) | error | Import not found |
 | [`PUI3003`](#pui3003) | error | Write failed |
 | [`PUI3101`](#pui3101) | error | Duplicate declaration across the project |
@@ -904,6 +905,16 @@ The capitalised element is not a known component, so it is emitted as a host Dar
 A screen is an entry point and is normally used as a route, not nested inside another screen.
 
 *Fix:* Use a component for reusable pieces of UI.
+
+## Other
+
+### PUI2501
+
+**Construct not supported by this target** — error
+
+This construct is part of PlainUI, but the selected target has no way to express it. Compiling it anyway would produce output that looks finished and silently does nothing.
+
+*Fix:* Compile for a target that supports it, or remove the construct.
 
 ## Project
 

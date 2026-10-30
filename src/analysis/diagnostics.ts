@@ -661,6 +661,15 @@ export const CODES = {
     fix: 'Use a component for reusable pieces of UI.',
   },
 
+  // ---------------------------------------------------------------- targets
+  PUI2501: {
+    severity: 'error',
+    title: 'Construct not supported by this target',
+    description:
+      'This construct is part of PlainUI, but the selected target has no way to express it. Compiling it anyway would produce output that looks finished and silently does nothing.',
+    fix: 'Compile for a target that supports it, or remove the construct.',
+  },
+
   // ---------------------------------------------------------------- project / codegen
   PUI3001: {
     severity: 'error',

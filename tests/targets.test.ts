@@ -136,6 +136,43 @@ test('an enum alias hint comes from the target', () => {
   assert.equal(messagesOf(source, FLUTTER_TARGET).includes('between'), true);
 });
 
+// ---------------------------------------------------------------------------------------------
+// Refusing what a target cannot run
+// ---------------------------------------------------------------------------------------------
+
+test('an effect is refused by a target with no frames', () => {
+  const source = [
+    'screen Cart:',
+    '',
+    '    state total: int = 0',
+    '',
+    '    effect on total:',
+    '        print("changed")',
+    '',
+    '    text "Total: ${total}"',
+    '',
+  ].join('\n');
+  assert.equal(codesOf(source, FLUTTER_TARGET).includes('PUI2501'), false);
+  const html = messagesOf(source, HTML_TARGET);
+  assert.match(html, /PUI2501 .*"effect" needs effects, which HTML preview does not have/);
+  // The hint is the target's own sentence, so a reader learns *why* rather than just "no".
+  assert.match(html, /static page has no frames/);
+});
+
+test('a host surface is refused by a target with no runtime', () => {
+  const source = [
+    'import "../data.dart" as data:',
+    '    load(): List<String>',
+    '',
+    'screen Cart:',
+    '',
+    '    text "Hi"',
+    '',
+  ].join('\n');
+  assert.equal(codesOf(source, FLUTTER_TARGET).includes('PUI2501'), false);
+  assert.match(messagesOf(source, HTML_TARGET), /PUI2501 .*host surface.* HTML preview does not have/);
+});
+
 test('the pipeline dispatches on the target', () => {
   const source = ['screen Hello:', '', '    text "Hi"', ''].join('\n');
   const dart = compileSource(source);

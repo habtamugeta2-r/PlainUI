@@ -54,7 +54,7 @@ import { VALUE_PARAM_NAME, eventValueType } from './events.ts';
 import { type SourceFile, type Span } from '../frontend/source.ts';
 import { didYouMean, listOf, suggest } from './suggest.ts';
 import { BUILTIN_STYLES, STYLE_PROPS } from './styles.ts';
-import { DEFAULT_TARGET, type Target } from '../targets/index.ts';
+import { DEFAULT_TARGET, supports, type Capability, type Target } from '../targets/index.ts';
 import {
   GENERIC_EVENTS,
   UNIVERSAL_PROPS,
@@ -247,6 +247,25 @@ class Checker {
   /** The output being compiled for. Everything framework-shaped in this file asks it. */
   private get target(): Target {
     return this.options.target ?? DEFAULT_TARGET;
+  }
+
+  /**
+   * Refuse a construct the target cannot run at all.
+   *
+   * Only `none` is an error here. `partial` is a promise about *fidelity* — a preview renders the
+   * shape of a task or a form and says so in the target's note — but a missing capability would
+   * mean emitting output that looks finished and silently does nothing, and a named diagnostic is
+   * worth more than a page that lies.
+   */
+  private requireCapability(construct: string, capability: Capability, span: Span): boolean {
+    if (supports(this.target, capability)) return true;
+    this.error(
+      'PUI2501',
+      `"${construct}" needs ${capability}, which ${this.target.label} does not have`,
+      span,
+      this.target.capabilities[capability].note,
+    );
+    return false;
   }
 
   // ------------------------------------------------------------------------------------------
@@ -1938,6 +1957,7 @@ class Checker {
         this.error('PUI2346', `\"${imp.alias}\" is already the name of another import`, imp.aliasSpan ?? imp.pathSpan, 'rename one of them');
         continue;
       }
+      if (!this.requireCapability('a host surface', 'host-surfaces', imp.aliasSpan ?? imp.pathSpan)) continue;
       this.hostAliases.add(imp.alias);
       if (this.components.has(imp.alias) || this.screens.has(imp.alias)) {
         this.error(
@@ -1989,6 +2009,7 @@ class Checker {
    * that the list is legal and that the body does not feed the trigger.
    */
   private checkEffect(effect: EffectDecl, decl: ScreenDecl | ComponentDecl, scope: Scope): void {
+    if (!this.requireCapability('effect', 'effects', effect.span)) return;
     if (effect.body.length === 0) {
       this.error('PUI2361', 'this effect has no actions', effect.span, 'add the action it should run');
     }
