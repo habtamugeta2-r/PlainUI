@@ -116,7 +116,8 @@ jobs:
 
           void main() {
             testWidgets('the counter renders and reacts to a tap', (tester) async {
-              await tester.pumpWidget(const MaterialApp(home: counter.Counter()));
+              // `MaterialApp` alone is not a Material ancestor; TextField says so loudly.
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: counter.Counter())));
               // The screen renders `text "Hello, ${name}"` with name starting as "PlainUI".
               expect(find.text('Hello, PlainUI'), findsOneWidget);
               expect(find.text('Taps so far'), findsOneWidget);
@@ -127,7 +128,7 @@ jobs:
             });
 
             testWidgets('the todo screen renders its list', (tester) async {
-              await tester.pumpWidget(const MaterialApp(home: todo.Todo()));
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: todo.Todo())));
               expect(find.text('Today'), findsOneWidget);
               expect(find.text('Write the spec'), findsOneWidget);
             });
