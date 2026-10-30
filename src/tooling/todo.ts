@@ -102,7 +102,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Navigation',
     size: 'L',
-    status: 'next',
+    status: 'done',
     acceptance:
       '`screen Detail(id: String)` takes parameters; `navigate Detail(id=x)` and `back()` are checked ' +
       'against the target screen; a project-level route table is generated; an example taps through and ' +
@@ -114,7 +114,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'flutter-depth',
     title: 'Latest-wins task cancellation',
     size: 'S',
-    status: 'todo',
+    status: 'next',
     acceptance:
       'A retry during an in-flight load cannot be overwritten by the older result; a test with two ' +
       'differing delays proves the second result wins.',

@@ -102,8 +102,23 @@ screen Login:
     <body>
 ```
 
-A screen is an entry point: the generator emits a public widget class with the screen's name.
-A screen has no parameters and must contain at least one element (`PUI2010`).
+A screen is an entry point: the generator emits a public widget class with the screen's name and
+must contain at least one element (`PUI2010`).
+
+A screen may take parameters, which is what makes it a destination:
+
+```
+screen Detail(id: String, title: String = "Task"):
+    <body>
+```
+
+The parameter forms are the component's: `name`, `name: Type`, `name: Type = default`. A parameter
+without a default is required at every `navigate` to that screen (`PUI2322`). Inside the body a
+parameter reads like any other value; inside `state` it is written without qualification and is
+emitted through the widget (`widget.id`).
+
+Parameters are declared, not implicit: a screen that needs nothing takes nothing, and the
+parameterless form stays the common one.
 
 ### 2.2 Components
 
@@ -345,10 +360,36 @@ button "Retry":
 | `set x = expr` | Assign to a state variable and trigger a rebuild. |
 | `set x += expr` | Compound assignment; `+= -= *= /=` are supported. |
 | `f(a, b)` | Call a host function or an expression statement. |
+| `navigate Screen(name: value)` | Open a screen (`PUI2320`, `PUI2322`). |
+| `back()` | Close the current screen (`PUI2323`). |
 | `if cond:` … `else:` | Conditional actions. |
 
 `set` may only target a state variable declared in the enclosing screen or component
 (`PUI2104`); component parameters are read-only (`PUI2105`).
+
+#### Navigation
+
+```
+screen Home:
+    button "Open":
+        on tap: navigate Detail(id: "42", title: "Item 42")
+
+screen Detail(id: String, title: String = "Task"):
+    text title
+    button "Back":
+        on tap: back()
+```
+
+* `navigate` names a screen that this file declares or imports. Navigation follows imports for the
+  same reason components do: the generated code has to import the file it constructs, so a screen
+  you cannot import is a screen you cannot reach.
+* Arguments are named. A parameter with a default may be omitted; one without must be supplied, and
+  an unknown name is an error — the call is checked against the target's parameter list, not turned
+  into a string route name.
+* `navigate` and `back` are actions: inside a handler, never in a value position (`PUI2321`).
+  `back()` takes no arguments (`PUI2323`).
+* A project that navigates also gets `plainui_routes.dart`: a map from screen name to widget, for
+  host code that has a name (a deep link, a notification) and no import.
 
 ---
 
@@ -460,7 +501,7 @@ inside expressions.
 Visible names inside expressions:
 
 1. `state` variables of the enclosing screen/component,
-2. parameters of the enclosing component,
+2. parameters of the enclosing screen or component,
 3. loop variables of enclosing `for` nodes,
 4. `true`, `false`, `null`.
 
@@ -473,7 +514,16 @@ root `appState` is imported.
 
 ---
 
-## 7. Generated-code contract
+## 7. Navigation order
+
+Screens are pushed onto the platform's own navigation stack, in the order the user pushes them.
+A screen is constructed from its parameters, so each entry in the stack owns its own state — two
+`Detail` screens with different ids are two widgets, not one widget whose fields changed.
+
+`back()` closes the current screen and does nothing when there is nothing to close, so a screen can
+be the app's entry point and call `back()` without a guard.
+
+## 8. Generated-code contract
 
 For the Flutter target the compiler guarantees:
 
@@ -497,7 +547,7 @@ exactly like a hand-written widget.
 
 ---
 
-## 8. Versioning
+## 9. Versioning
 
 * The language is versioned in the spec, not in files; the compiler accepts the syntax defined
   here and reports `PUI1100` for syntax it recognises from a future version.

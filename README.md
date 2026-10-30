@@ -152,12 +152,13 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
 | Design tokens (`theme` blocks, shared by import, lowered per target) | ✅ |
 | `task` — async values with `loading` / `error` / `value` / `retry()` | ✅ |
-| CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
+| CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets`, `next` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
 | Examples (`examples/`), golden files, generated docs | ✅ |
 | Language server (`plainui lsp`) | ✅ diagnostics, formatting, hover |
 | Library API (`@plainui/compiler`) | ✅ compile, format, inspect, with type declarations |
-| Navigation, list identity, forms, typed interop | 🧭 next — see `docs/06-roadmap.md` |
+| Screen parameters, `navigate` / `back()`, generated route table | ✅ |
+| Forms and validation, typed interop, `derived`, `effect on <state>` | 🧭 next — `plainui next` prints the current item |
 | Compose / React generators | 🧭 roadmap — [`docs/09-vision.md`](docs/09-vision.md) names Compose as the second target |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`
@@ -320,10 +321,11 @@ src/
   project/        paths.ts · workspace.ts · project.ts (multi-file + cache) · compile.ts · hash.ts
   tooling/        cli.ts · format.ts · watch.ts · lsp.ts · debug.ts
 tests/            unit, registry, docs, golden (tests/golden) and end-to-end tests
-examples/         three runnable projects (counter, todo, gallery) with their Dart host
+examples/         runnable projects (counter, todo, gallery, async, navigation) with their Dart host
 web/              browser playground (the same compiler, bundled for the browser)
 scripts/          CLI bundle, playground server, docs generator
-docs/             research, specification, architecture, codegen, CLI, diagnostics, roadmap, MVP
+docs/             research, specification, architecture, codegen, CLI, diagnostics,
+                  roadmap, MVP, vision, decisions, todo
 ```
 
 ## Design principles
