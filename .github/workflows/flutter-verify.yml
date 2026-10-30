@@ -137,10 +137,16 @@ jobs:
           flutter test test/generated_test.dart > /tmp/test.log 2>&1 || status=$?
           cat /tmp/test.log
           if [ "$status" -ne 0 ]; then
-            grep -E 'Expected:|Actual:|Error|Exception|failed' /tmp/test.log | head -30 \
+            # Same reasoning as the analyzer step: a failing widget test has to say why. The
+            # exception block is the part worth reading, and the head of the log when there is no
+            # exception block at all (a compile error in the test file, for instance).
+            sed -n '/EXCEPTION CAUGHT BY/,/^$/p' /tmp/test.log | head -30 \
               | while IFS= read -r line; do
                   echo "::error title=flutter test::$(echo "$line" | sed -e 's/^[[:space:]]*//')"
                 done
+            head -40 /tmp/test.log | while IFS= read -r line; do
+              echo "::error title=flutter test log::${line}"
+            done
             exit "$status"
           fi
 
