@@ -36,10 +36,11 @@ import {
   isStringType,
   rootIdentifiers,
   walkExpr,
+  walkNodes,
   typeToText,
   walkExpressions,
 } from '../frontend/ast.ts';
-import type { Analysis } from '../analysis/check.ts';
+import { isSubmitCall, type Analysis } from '../analysis/check.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
 import { BUILTIN_STYLES } from '../analysis/targets.ts';
@@ -224,6 +225,12 @@ class FlutterGenerator {
 
   /** Controllers needed by the declaration currently being emitted. */
   private controllers = new Map<string, string>();
+  /** `GlobalKey<FormState>` fields needed by the declaration currently being emitted. */
+  private formKeys: string[] = [];
+  /** Forms enclosing the handler currently being emitted, innermost last. */
+  private formStack: { readonly key: string; readonly actions: readonly Action[] }[] = [];
+  /** Whether any generated validator uses the email pattern, which is emitted once per file. */
+  private usesEmailPattern = false;
   private readonly styleIds = new Map<string, string>();
   private readonly usedStyles = new Set<string>();
 
@@ -249,6 +256,12 @@ class FlutterGenerator {
 
     const themeSection = this.emitTheme();
     if (themeSection.length > 0) sections.push(themeSection);
+    if (this.usesEmailPattern) {
+      sections.push(
+        '/// The email check used by generated form validators.\n' +
+          "final RegExp _puiEmailPattern = RegExp(r'^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');",
+      );
+    }
     const styleSection = this.emitStyles();
     if (styleSection.length > 0) sections.push(styleSection);
     sections.push(...declSections);
@@ -417,7 +430,9 @@ class FlutterGenerator {
 
     this.declName = decl.name;
     const isComponent = decl.kind === 'Component';
-    const hasState = decl.state.length > 0 || decl.tasks.length > 0;
+    // A form owns a `GlobalKey<FormState>`, which is state: a screen that contains one is built as a
+    // StatefulWidget even when it declares no `state` of its own.
+    const hasState = decl.state.length > 0 || decl.tasks.length > 0 || containsForm(decl);
     const stateClassName = `_${decl.name}State`;
 
     // Parameters are fields on the widget; inside a State they are reached through `widget.`.
@@ -436,9 +451,10 @@ class FlutterGenerator {
       this.scope.set(task.name, { emittedName: this.taskField(task.name, 'value'), type: { kind: 'task', value } });
     }
 
-    // Build the tree first: emitting it records controller requirements.
+    // Build the tree first: emitting it records controller and form-key requirements.
     const body = this.emitBody(decl.body);
     const controllers = [...this.controllers.entries()];
+    const formKeys = [...this.formKeys];
 
     const sourceLine = positionAt(this.file, decl.span.start).line;
     const marker = `// ${decl.kind.toLowerCase()} ${decl.name} — ${this.options.sourcePath}:${sourceLine}`;
@@ -447,13 +463,15 @@ class FlutterGenerator {
     if (hasState) {
       classLines.push(...this.widgetClassWithState(decl, stateClassName));
       classLines.push('');
-      classLines.push(...this.stateClass(decl, stateClassName, controllers, body));
+      classLines.push(...this.stateClass(decl, stateClassName, controllers, formKeys, body));
     } else {
       classLines.push(...this.statelessClass(decl, body));
     }
 
     this.scope = savedScope;
     this.controllers = savedControllers;
+    this.formKeys = [];
+    this.formStack = [];
     return classLines.join('\n');
   }
 
@@ -523,6 +541,7 @@ class FlutterGenerator {
     decl: ScreenDecl | ComponentDecl,
     stateClassName: string,
     controllers: readonly (readonly [string, string])[],
+    formKeys: readonly string[],
     body: string,
   ): string[] {
     const lines: string[] = [];
@@ -534,6 +553,9 @@ class FlutterGenerator {
     for (const field of this.taskFields(decl)) lines.push(field);
     for (const [stateName, controllerName] of controllers) {
       lines.push(`  late final TextEditingController ${controllerName} = TextEditingController(text: ${stateName});`);
+    }
+    for (const key of formKeys) {
+      lines.push(`  /// The validation state of one form in this screen.\n  final GlobalKey<FormState> ${key} = GlobalKey<FormState>();`);
     }
     lines.push('');
 
@@ -846,6 +868,8 @@ class FlutterGenerator {
         return this.emitButton(el);
       case 'input':
         return this.emitInput(el);
+      case 'form':
+        return this.emitForm(el);
       case 'toggle':
         return this.emitToggle(el);
       case 'checkbox':
@@ -1048,6 +1072,87 @@ class FlutterGenerator {
     return code;
   }
 
+  /**
+   * `form:` becomes a `Form` with one generated key, and the key is the whole point: `submit()`
+   * calls `validate()` on it, so the gate is Flutter's own and the handler cannot be reached while
+   * a field is invalid.
+   *
+   * The `on submit:` body is not emitted here — it is inlined at each `submit()` call site, because
+   * a `Form` has no submit callback to give it to.
+   */
+  private emitForm(el: ElementNode): string {
+    const key = this.formKeys.length === 0 ? '_puiFormKey' : `_puiFormKey${this.formKeys.length + 1}`;
+    this.formKeys.push(key);
+    const handler = el.events.find((event) => event.name === 'submit');
+    this.formStack.push({ key, actions: handler?.actions ?? [] });
+    const child = this.emitBodySingle(el.children);
+    this.formStack.pop();
+    return dartCall('Form', [`key: ${key}`, `child: ${child}`]);
+  }
+
+  /**
+   * The `validator:` closure for an input inside a form, or nothing.
+   *
+   * Two rules make the generated validator behave like a hand-written one: an empty value stops at
+   * `required` (or passes, when the field is optional) so `min(8)` never rejects an untouched
+   * field, and every message is a sentence the design can read.
+   */
+  private validatorFor(el: ElementNode): string | undefined {
+    if (this.formStack.length === 0) return undefined;
+    const prop = el.props.find((candidate) => candidate.name === 'validate');
+    if (prop === undefined) return undefined;
+    const items = prop.value.kind === 'List' ? prop.value.items : [prop.value];
+
+    const validators = items.map((item) => {
+      const name = item.kind === 'Ident' ? item.name : item.kind === 'Call' && item.callee.kind === 'Ident' ? item.callee.name : undefined;
+      if (name === undefined) return undefined;
+      // Arguments are kept as AST nodes: a number validator renders its argument as Dart, but a
+      // pattern needs the *text* of the string, not the Dart literal that spells it.
+      return { name, args: item.kind === 'Call' ? item.args : [] };
+    });
+    const required = validators.some((validator) => validator?.name === 'required');
+
+    const lines: string[] = [];
+    lines.push('(value) {');
+    lines.push("  final text = (value ?? '').trim();");
+    lines.push('  if (text.isEmpty) {');
+    lines.push(required ? "    return 'This field is required';" : '    return null;');
+    lines.push('  }');
+    for (const validator of validators) {
+      if (validator === undefined) continue;
+      const { name, args } = validator;
+      if (name === 'required') continue;
+      if (name === 'email') {
+        this.usesEmailPattern = true;
+        lines.push("  if (!_puiEmailPattern.hasMatch(text)) {\n    return 'Enter a valid email address';\n  }");
+      } else if (name === 'min') {
+        const bound = args[0] === undefined ? '0' : this.expr(args[0].value);
+        lines.push(`  if (text.length < ${bound}) {\n    return 'Use at least ${bound} characters';\n  }`);
+      } else if (name === 'max') {
+        const bound = args[0] === undefined ? '0' : this.expr(args[0].value);
+        lines.push(`  if (text.length > ${bound}) {\n    return 'Use at most ${bound} characters';\n  }`);
+      } else if (name === 'pattern') {
+        const argument = args[0]?.value;
+        const text = argument?.kind === 'String' ? argument.value : argument === undefined ? '' : this.expr(argument).replace(/^["']|["']$/g, '');
+        lines.push(`  if (!RegExp(${this.patternLiteral(text)}).hasMatch(text)) {\n    return 'Enter a value in the expected format';\n  }`);
+      }
+    }
+    lines.push('  return null;');
+    lines.push('}');
+    return lines.join('\n');
+  }
+
+  /**
+   * A validator pattern as a Dart raw string, escaped for whichever quote it needs. Raw strings keep
+   * the regular expression readable; the quote is chosen so a pattern can contain the other one.
+   */
+  private patternLiteral(expr: string | undefined): string {
+    const text = expr ?? '';
+    if (!text.includes("'")) return `r'${text}'`;
+    if (!text.includes('"')) return `r"${text}"`;
+    return `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  }
+
   private emitInput(el: ElementNode): string {
     const bind = this.prop(el, 'bind');
     const bindName = bind !== undefined && bind.kind === 'Ident' ? bind.name : undefined;
@@ -1075,7 +1180,8 @@ class FlutterGenerator {
     const multiline = this.boolProp(el, 'multiline') === 'true';
     const maxLines = this.numProp(el, 'maxLines') ?? (multiline ? 'null' : '1');
 
-    return dartCall('TextField', [
+    const validator = this.validatorFor(el);
+    return dartCall(validator === undefined ? 'TextField' : 'TextFormField', [
       ...arg('controller', controllerName),
       ...(decoration.length > 0 ? [`decoration: ${dartCall('InputDecoration', decoration)}`] : []),
       ...arg('obscureText', this.boolProp(el, 'secret')),
@@ -1083,6 +1189,7 @@ class FlutterGenerator {
       ...arg('keyboardType', keyboard),
       ...arg('autofocus', this.boolProp(el, 'autofocus')),
       ...handlers,
+      ...(validator === undefined ? [] : [`validator: ${validator}`]),
     ]);
   }
 
@@ -1349,6 +1456,12 @@ class FlutterGenerator {
       }
 
       if (action.kind === 'Call') {
+        const submit = isSubmitCall(action.expr) ? this.submitStatement() : undefined;
+        if (submit !== undefined) {
+          lines.push(submit);
+          index += 1;
+          continue;
+        }
         const navigation = this.navigationStatement(action.expr);
         if (navigation !== undefined) {
           lines.push(navigation);
@@ -1377,6 +1490,21 @@ class FlutterGenerator {
     if (receiver.kind !== 'Ident') return false;
     const states = this.analysis.stateTypes.get(this.currentDeclName());
     return states !== undefined && states.has(receiver.name);
+  }
+
+  /**
+   * `submit()` expands to "validate this form, then run its `on submit:` body".
+   *
+   * The body is inlined rather than delegated, because the gate has to wrap it: generating a method
+   * and calling it after `validate()` would let a future edit call the method directly.
+   */
+  private submitStatement(): string | undefined {
+    const form = this.formStack[this.formStack.length - 1];
+    if (form === undefined) return undefined;
+    const body = this.emitActions(form.actions);
+    const gate = `if (${form.key}.currentState!.validate()) {`;
+    if (body.length === 0) return `${gate}\n}`;
+    return `${gate}\n${body.map((line) => indentAll(line, 2)).join('\n')}\n}`;
   }
 
   /**
@@ -1763,6 +1891,15 @@ class FlutterGenerator {
  * interpolation such as `navigate Detail(id: "${index}")`. Missing that case emitted `_` for a
  * variable the body used, and the generated Dart then referenced a name that did not exist.
  */
+/** Whether a screen or component contains a `form`, which needs a `GlobalKey<FormState>` field. */
+function containsForm(decl: ScreenDecl | ComponentDecl): boolean {
+  let found = false;
+  walkNodes(decl.body, (node) => {
+    if (node.kind === 'Element' && node.tag === 'form' && !node.callStyle) found = true;
+  });
+  return found;
+}
+
 function nameUsedInBody(name: string, nodes: readonly Node[]): boolean {
   let used = false;
   const pattern = new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`);
