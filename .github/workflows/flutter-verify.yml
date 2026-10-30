@@ -51,7 +51,7 @@ jobs:
 
           # Each example keeps its own directory: generated files import their siblings, so
           # they must stay together.
-          mkdir -p lib/counter lib/todo lib/gallery lib/async lib/navigation lib/forms
+          mkdir -p lib/counter lib/todo lib/gallery lib/async lib/navigation lib/forms lib/demo lib/model
           cp ../examples/counter/lib/generated/*.dart lib/counter/
           cp ../examples/todo/lib/generated/*.dart lib/todo/
           cp ../examples/gallery/lib/generated/*.dart lib/gallery/
@@ -63,6 +63,11 @@ jobs:
           # `../data.dart`, so the host module lands one level up from the generated file.
           cp ../examples/async/lib/generated/*.dart lib/async/
           cp ../examples/async/lib/data.dart lib/data.dart
+          # The demo is the phase gate: every screen, the theme, the loads, the forms and the
+          # navigation are `.pui`. Its host module owns a model class, so it lives in `lib/model`
+          # and the generated files reach it as `../model/data.dart`.
+          cp ../examples/demo/lib/generated/*.dart lib/demo/
+          cp ../examples/demo/lib/model/data.dart lib/model/data.dart
 
           cat > lib/verify.dart <<'DART'
           import 'package:flutter/material.dart';
@@ -76,6 +81,9 @@ jobs:
           import 'navigation/home.pui.dart' as navigation_home;
           import 'forms/signup.pui.dart' as forms_signup;
           import 'forms/profile.pui.dart' as forms_profile;
+          import 'demo/inbox.pui.dart' as demo_inbox;
+          import 'demo/detail.pui.dart' as demo_detail;
+          import 'demo/new_issue.pui.dart' as demo_new_issue;
 
           /// Instantiates every generated screen. If the generated constructors or widget trees
           /// are wrong, this file does not compile.
@@ -90,6 +98,9 @@ jobs:
                 const navigation_detail.Detail(id: '1'),
                 const forms_signup.Signup(),
                 const forms_profile.Profile(),
+                const demo_inbox.Inbox(),
+                const demo_detail.Detail(id: 'pui-1'),
+                const demo_new_issue.NewIssue(),
               ];
 
           void main() => runApp(const MaterialApp(home: _Screens()));
@@ -107,7 +118,7 @@ jobs:
           # `run:` steps execute with `bash -e`, so a non-zero exit would end the step before the
           # findings could be captured. `|| status=$?` keeps the status and the output.
           status=0
-          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/async lib/navigation lib/forms lib/data.dart lib/verify.dart \
+          dart analyze --fatal-warnings lib/counter lib/todo lib/gallery lib/async lib/navigation lib/forms lib/demo lib/data.dart lib/model/data.dart lib/verify.dart \
             > /tmp/analyze.log 2>&1 || status=$?
           cat /tmp/analyze.log
           if [ "$status" -ne 0 ]; then
@@ -144,6 +155,9 @@ jobs:
           import 'package:verify_app/async/race.pui.dart' as race_example;
           import 'package:verify_app/forms/signup.pui.dart' as forms_signup;
           import 'package:verify_app/forms/profile.pui.dart' as forms_profile;
+          import 'package:verify_app/demo/inbox.pui.dart' as demo_inbox;
+          import 'package:verify_app/demo/detail.pui.dart' as demo_detail;
+          import 'package:verify_app/demo/new_issue.pui.dart' as demo_new_issue;
 
           void main() {
             testWidgets('the counter renders and reacts to a tap', (tester) async {
@@ -294,6 +308,73 @@ jobs:
               await tester.tap(find.text('Save'));
               await tester.pumpAndSettle();
               expect(find.text('Enter a value in the expected format'), findsOneWidget);
+            });
+
+            testWidgets('the demo loads a keyed list and filters it through an effect', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: demo_inbox.Inbox())));
+
+              // `task issues: List<Issue> = data.loadIssues(filter)` — the list arrives on its own.
+              await tester.pump(const Duration(milliseconds: 200));
+              await tester.pump();
+              expect(find.text('4 issues'), findsOneWidget);
+              expect(find.text('Derive instead of storing'), findsOneWidget);
+              expect(find.text('Validate before the handler runs'), findsOneWidget);
+
+              // Typing changes `filter`; `effect on filter: issues.retry()` re-runs the load, and the
+              // older request in flight is dropped rather than allowed to answer last.
+              await tester.enterText(find.byType(TextField), 'deriv');
+              await tester.pump(); // the effect is scheduled after this frame
+              await tester.pump(const Duration(milliseconds: 200)); // the retry's delay
+              await tester.pump();
+
+              expect(find.text('1 matching'), findsOneWidget);
+              expect(find.text('Derive instead of storing'), findsOneWidget);
+              expect(find.text('Validate before the handler runs'), findsNothing);
+            });
+
+            testWidgets('the demo opens a detail screen and gates its comment form', (tester) async {
+              await tester.pumpWidget(const MaterialApp(
+                home: Scaffold(body: demo_detail.Detail(id: 'pui-1', title: 'Derive instead of storing')),
+              ));
+              await tester.pump(const Duration(milliseconds: 200));
+              await tester.pump();
+
+              expect(find.text('2 comments'), findsOneWidget);
+              expect(find.text('Computed, so it cannot be stale.'), findsOneWidget);
+
+              // An empty comment: submit() validates, fails, and the handler is skipped.
+              await tester.tap(find.text('Post'));
+              await tester.pumpAndSettle();
+              expect(find.text('Posted'), findsNothing);
+              expect(find.text('This field is required'), findsOneWidget);
+
+              await tester.enterText(find.byType(TextFormField), 'Seconded');
+              await tester.tap(find.text('Post'));
+              await tester.pumpAndSettle();
+              await tester.pump(const Duration(milliseconds: 200)); // `await addComment(id, note)`
+              await tester.pump(const Duration(milliseconds: 200)); // `comments.retry()`
+              await tester.pump();
+
+              expect(find.text('Posted'), findsOneWidget);
+              expect(find.text('Seconded'), findsOneWidget);
+            });
+
+            testWidgets('the demo creates an issue and lands back on the list', (tester) async {
+              await tester.pumpWidget(const MaterialApp(home: Scaffold(body: demo_new_issue.NewIssue())));
+
+              await tester.tap(find.text('Create'));
+              await tester.pumpAndSettle();
+              expect(find.text('This field is required'), findsOneWidget);
+
+              await tester.enterText(find.byType(TextFormField).at(0), 'Ship the demo');
+              await tester.tap(find.text('Create'));
+              await tester.pumpAndSettle();
+              await tester.pump(const Duration(milliseconds: 200)); // `await createIssue(...)`
+              await tester.pumpAndSettle();
+              await tester.pump(const Duration(milliseconds: 200)); // the new Inbox loads
+              await tester.pump();
+
+              expect(find.text('Ship the demo'), findsOneWidget);
             });
 
             testWidgets('the route table opens a screen by name', (tester) async {
