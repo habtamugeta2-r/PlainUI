@@ -1,0 +1,31 @@
+{
+  "name": "@plainui/compiler",
+  "version": "1.0.0",
+  "description": "PlainUI: a small indentation-scoped language for describing user interfaces, compiled to ordinary Flutter/Dart.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "plainui": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "build": "node scripts/build-cli.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "docs:ref": "node --experimental-strip-types scripts/gen-reference.ts",
+    "playground": "node --experimental-strip-types scripts/playground.ts",
+    "verify": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.2"
+  }
+}
