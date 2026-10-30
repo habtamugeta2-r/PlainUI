@@ -499,22 +499,109 @@ export const NUM: UiType = { kind: 'num' };
 export const BOOL: UiType = { kind: 'bool' };
 export const DYNAMIC: UiType = { kind: 'dynamic' };
 
+/**
+ * PlainUI's own type vocabulary (decision A1, `docs/09-vision.md` "The type system is ours").
+ *
+ * `.pui` files write `Text`/`Int`/`Float`/`Bool`/`Optional<T>`; each target maps them to its own
+ * spellings (Dart: `String`/`int`/`double`/`bool`/`T?`). The Dart spellings below are accepted as
+ * deprecated aliases during 1.x (`docs/10-decisions.md` A1) — both parse to the same `UiType`, so
+ * nothing downstream of `typeFromText` needs to know which one a `.pui` file used. This map is
+ * also what a future deprecation diagnostic (todo item 2.2) and `plainui migrate` (2.5) read from.
+ */
+export const PLAINUI_TYPE_ALIASES: ReadonlyMap<string, string> = new Map([
+  ['Text', 'String'],
+  ['Int', 'int'],
+  ['Float', 'double'],
+  ['Bool', 'bool'],
+]);
+
 /** Parse a host type annotation into the small type model used for checking. */
 export function typeFromText(text: string): UiType {
   const trimmed = text.trim();
   if (trimmed.endsWith('?')) return { kind: 'nullable', inner: typeFromText(trimmed.slice(0, -1)) };
-  if (trimmed === 'String') return STRING;
-  if (trimmed === 'int') return INT;
-  if (trimmed === 'double') return DOUBLE;
+  if (trimmed === 'String' || trimmed === 'Text') return STRING;
+  if (trimmed === 'int' || trimmed === 'Int') return INT;
+  if (trimmed === 'double' || trimmed === 'Float') return DOUBLE;
   if (trimmed === 'num') return NUM;
-  if (trimmed === 'bool') return BOOL;
+  if (trimmed === 'bool' || trimmed === 'Bool') return BOOL;
   if (trimmed === 'dynamic' || trimmed === 'Object' || trimmed === 'var') return DYNAMIC;
+  if (trimmed === 'Optional') return { kind: 'nullable', inner: DYNAMIC };
+  const optionalMatch = /^Optional\s*<\s*(.+)\s*>$/.exec(trimmed);
+  if (optionalMatch !== null) return { kind: 'nullable', inner: typeFromText(optionalMatch[1]!) };
   const listMatch = /^(?:List|Iterable|Set|IList)\s*<\s*(.+)\s*>$/.exec(trimmed);
   if (listMatch !== null) return { kind: 'list', element: typeFromText(listMatch[1]!) };
   const plainList = /^(?:List|Iterable|Set)$/.exec(trimmed);
   if (plainList !== null) return { kind: 'list', element: DYNAMIC };
   if (/^Map\s*</.test(trimmed)) return { kind: 'map' };
   return { kind: 'named', name: trimmed };
+}
+
+/** Whole-word occurrences of PlainUI's primitive type names, so e.g. `FloatValue` is untouched. */
+const PLAINUI_PRIMITIVE_TOKEN = /\b(?:Text|Int|Float|Bool)\b/g;
+
+/** Replace one whole-word PlainUI primitive token with its Dart spelling; anything else is left as-is. */
+function dartPrimitiveFor(token: string): string {
+  switch (token) {
+    case 'Text':
+      return 'String';
+    case 'Int':
+      return 'int';
+    case 'Float':
+      return 'double';
+    case 'Bool':
+      return 'bool';
+    default:
+      return token;
+  }
+}
+
+/**
+ * Unwrap every `Optional<...>` in a type annotation into Dart's trailing `?`, however deeply it is
+ * nested (`List<Optional<Int>>` -> `List<int?>`, not `List<Optional<int>>`). Brackets are matched by
+ * depth rather than by a greedy regex, because the content of an `Optional<...>` can itself contain
+ * `<`/`>` from its own type arguments.
+ */
+function unwrapOptionals(text: string): string {
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    const openTag = /^Optional\s*</.exec(text.slice(i));
+    if (openTag === null) {
+      result += text[i];
+      i += 1;
+      continue;
+    }
+    const openIndex = i + openTag[0].length - 1; // index of the '<'
+    let depth = 1;
+    let j = openIndex + 1;
+    while (j < text.length && depth > 0) {
+      if (text[j] === '<') depth += 1;
+      else if (text[j] === '>') depth -= 1;
+      j += 1;
+    }
+    const inner = text.slice(openIndex + 1, depth === 0 ? j - 1 : j);
+    result += `${unwrapOptionals(inner)}?`;
+    i = j;
+  }
+  return result;
+}
+
+/**
+ * Rewrite a user-written type annotation into the Dart text a generator can splice straight into
+ * source: `Text` -> `String`, `Int` -> `int`, `Float` -> `double`, `Bool` -> `bool`,
+ * `Optional<T>` -> `T?` (recursively). Everything else — custom class names, `List`/`Iterable`/
+ * `Set`/`Map` and their type arguments, an existing trailing `?` — passes through untouched.
+ *
+ * `typeFromText` turns an annotation into the semantic `UiType` the checker reasons about;
+ * `typeToText` turns a *semantic* type back into Dart text, which is lossy for anything the model
+ * does not keep (an `Iterable<T>` round-trips as `List<T>`, a `Map<K, V>` loses its arguments). This
+ * function is for the one place neither applies: a raw annotation that is already Dart-legal text
+ * apart from PlainUI's own spellings, and needs to stay exactly that text otherwise.
+ */
+export function toDartTypeText(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed === 'Optional') return 'dynamic?';
+  return unwrapOptionals(trimmed).replace(PLAINUI_PRIMITIVE_TOKEN, dartPrimitiveFor);
 }
 
 /**

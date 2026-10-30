@@ -1,0 +1,36 @@
+// PlainUI's own type vocabulary (decision A1): `Text`/`Int`/`Float`/`Bool`/`Optional<T>`.
+
+component Badge(label: Text, count: Optional<Int>):
+
+    row gap=4:
+        text label style=caption
+        text "${count}"
+
+screen Types:
+
+    state name: Text = "PlainUI"
+    state count: Int = 0
+    state ratio: Float = 0.5
+    state ready: Bool = true
+    state note: Optional<Text> = null
+
+    task items: List<Text> = loadItems()
+
+    derived total: Int = count * 2
+    derived label: Text = "${name} (${total})"
+
+    column padding=16 gap=8:
+
+        text label style=heading
+        text "${ratio}"
+        text "${ready}"
+        text "${note}"
+
+        Badge(name, count)
+
+        for index, item in items.value key=item:
+
+            text "${index + 1}. ${item}"
+
+        button "Add":
+            on tap: set count += 1

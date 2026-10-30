@@ -38,13 +38,17 @@ const SHADOWED_TYPES: ReadonlySet<string> = new Set([
   'Theme', 'Visibility', 'Widget', 'Wrap', 'CircularProgressIndicator',
 ]);
 
-/** Dart core types that people write in another language's capitalisation by mistake. */
+/**
+ * Dart core types that people write in another language's capitalisation by mistake.
+ *
+ * `Int`/`Float`/`Bool`/`Text` are deliberately absent: decision A1 (`docs/10-decisions.md`) makes
+ * them PlainUI's own type vocabulary, not a mistake to correct — `typeFromText` in
+ * `src/frontend/ast.ts` accepts them alongside the Dart spellings they alias. What is left here is
+ * genuinely unsupported: capitalisations from languages PlainUI does not spell types after.
+ */
 const TYPE_SPELLINGS: Readonly<Record<string, string>> = {
-  Int: 'int',
   Integer: 'int',
   Double: 'double',
-  Float: 'double',
-  Bool: 'bool',
   Boolean: 'bool',
   Num: 'num',
   Number: 'num',
