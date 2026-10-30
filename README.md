@@ -91,24 +91,53 @@ projects adopt it one screen at a time.
 | CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
 | Examples (`examples/`), golden files, generated docs | ✅ |
+| Language server (`plainui lsp`) | ✅ diagnostics, formatting, hover |
+| Library API (`@plainui/compiler`) | ✅ compile, format, inspect, with type declarations |
 | Compose / React generators | 🧭 roadmap (the AST seam exists; see `docs/06-roadmap.md`) |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`
 over the generated output requires the Flutter SDK; `tests/golden` are also compiled by the CI
 workflow `flutter-verify.yml` on machines that have it.
 
-## Quick start
+## Install
+
+PlainUI is not published to npm yet; the MVP ships from this repository. Node 22.6+ is the only
+requirement — a Flutter SDK is needed only to compile what it generates.
 
 ```bash
-npm install            # dev toolchain (TypeScript, esbuild)
-npm run build          # compile the CLI to dist/
-npm test               # lexer, parser, checker, codegen, formatter, CLI, playground, docs
+git clone https://github.com/habtamugeta2-r/PlainUI && cd PlainUI
+npm ci && npm run build
+npm pack                               # -> plainui-compiler-1.0.0.tgz
+npm install -g ./plainui-compiler-1.0.0.tgz
+
+plainui --version
+plainui init                           # in a Flutter app: config + lib/ui/home.pui
+```
+
+Use it as a library instead:
+
+```ts
+import { compileOne } from '@plainui/compiler';
+
+const result = compileOne('lib/ui/home.pui', source);
+console.log(result.code, result.diagnostics);
+```
+
+Scope, acceptance criteria and the verification log are in [`docs/08-mvp.md`](docs/08-mvp.md).
+
+## Quick start (working on the compiler)
+
+```bash
+npm ci                 # dev toolchain (TypeScript, esbuild, jsdom)
+npm run build          # dist/cli.js + dist/index.js + dist/types
+npm test               # lexer, parser, checker, codegen, formatter, CLI, LSP, docs
 
 node dist/cli.js build examples/counter   # .pui -> lib/generated/*.pui.dart
-node dist/cli.js watch examples/counter   # rebuild on save
+node dist/cli.js watch examples/counter   # rebuild on save, incrementally
 node dist/cli.js check .                  # validate only
 node dist/cli.js format .                 # canonical formatting
 node dist/cli.js widgets                  # what the language accepts
+node dist/cli.js lsp                      # language server (stdio)
 ```
 
 `npm run playground` opens the browser playground, `npm run goldens` refreshes the golden files,
@@ -119,8 +148,9 @@ Or drive it from an existing Flutter app:
 
 ```bash
 cd my_app
-npx plainui init            # writes plainui.config.json + lib/ui/home.pui
-npx plainui build           # -> lib/generated/home.pui.dart
+plainui init                # writes plainui.config.json + lib/ui/home.pui
+plainui build               # -> lib/generated/home.pui.dart
+plainui watch               # rebuild on save
 ```
 
 ```dart
@@ -214,7 +244,7 @@ tests/            unit, registry, docs, golden (tests/golden) and end-to-end tes
 examples/         three runnable projects (counter, todo, gallery) with their Dart host
 web/              browser playground (the same compiler, bundled for the browser)
 scripts/          CLI bundle, playground server, docs generator
-docs/             research, specification, architecture, codegen, CLI, diagnostics, roadmap
+docs/             research, specification, architecture, codegen, CLI, diagnostics, roadmap, MVP
 ```
 
 ## Design principles
