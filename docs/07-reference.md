@@ -30,10 +30,12 @@ These are implemented by wrapping the element, so they work on both built-ins an
 | `radius` | `number` | Corner radius in logical pixels. → `BorderRadius.circular` |
 | `border` | `number` | Border width; needs borderColor. → `Border.all` |
 | `borderColor` | `color` | Border colour. |
+| `shadow` | `shadow` | Drop shadow: [x, y, blur] or [x, y, blur, color], or a shadow token. → `BoxShadow` |
 | `align` | one of `topLeft`, `topCenter`, `topRight`, `centerLeft`, `center`, `centerRight`, `bottomLeft`, `bottomCenter`, `bottomRight` | Place the element within the space it is given. → `Align` |
 | `main` | one of `start`, `end`, `center`, `between`, `around`, `evenly` | Main-axis distribution (column, row, scroll, list, wrap). → `MainAxisAlignment` |
 | `cross` | one of `start`, `end`, `center`, `stretch`, `baseline` | Cross-axis alignment of children (column, row, wrap). → `CrossAxisAlignment` |
 | `gap` | `number` | Space between children (column, row, wrap, list, scroll). |
+| `style` | `styleName` | A named style: text properties, surface properties, or both. Works on every element. → `TextStyle + decorators` |
 
 ## Gestures every element accepts
 
@@ -504,23 +506,38 @@ A progress indicator, determinate or spinning.
 progress indeterminate
 ```
 
-## Text styles
+## Styles
 
-Built in: `display`, `heading`, `subheading`, `body`, `caption`, `label`, `secondary`.
+Built-in text styles: `display`, `heading`, `subheading`, `body`, `caption`, `label`, `secondary`.
 
-A `style` declaration adds one of your own:
+A `style` declaration bundles properties, and `style=` applies it to any element:
 
 ```plainui
+style panel:
+    background=surface
+    radius=card
+    padding=md
+    shadow=soft
+
 style price:
     size=20
     weight=bold
-    color=#1d4ed8
 
 screen Home:
-    text "10 ETB" style=price
+    card style=panel:
+        text "10 ETB" style=price
 ```
 
-Properties allowed in a style declaration: `size`, `weight`, `color`, `fontFamily`, `letterSpacing`, `lineHeight`, `italic`.
+**Text properties** — how drawn text looks: `size`, `weight`, `color`, `fontFamily`, `letterSpacing`, `lineHeight`, `italic`.
+They only mean something on `text`, `button` and `input`; applying a style that sets them to any
+other element is an error (`PUI2373`).
 
-`text`, `button` and `style` declarations all accept the same text properties, so a style can be
-overridden at the point of use: `text "x" style=price size=12`.
+**Surface properties** — how the element itself is painted and spaced: `padding`, `margin`, `width`, `height`, `opacity`, `background`, `bg`, `radius`, `border`, `borderColor`, `shadow`.
+These work on every element, because the language applies them by wrapping the element.
+
+**Not stylable:** `main`, `cross`, `gap`, `align`, `expand` and `flex`. Those describe how a
+layout is arranged, not how it looks; a style that rearranged a layout would be a breakpoint by
+another name (§ responsive composition).
+
+Precedence is one line: **property on the element > property from the style > target default**.
+There is no cascade and no inheritance — `text "x" style=price size=12` overrides the style.

@@ -4,6 +4,12 @@
 prompt, grounded in this repository as it actually stands on `main` today. It is written to be used
 as the brief for the next implementation pass: paste it, or point an agent at it.
 
+**Status (2026-10-31).** P1 has landed in part: element styles (text + surface halves),
+`shadow` as a universal property and token category, the `styles` capability, both lowerings,
+goldens, `docs/13-styling.md` and the decision record C1–C4. Still open in P1: typography tokens
+(`font`, `weight`), `duration`/`curve` tokens (they need P2's consumers), and compile-time theme
+modes. P2–P6 are untouched.
+
 **One-line change from the original.** The original asked for a language to be built from nothing.
 This repository already contains that language — a working compiler, checker, CLI, formatter,
 language server, two generators, a playground, 7 example projects and 439 passing tests. So the

@@ -60,6 +60,7 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2365`](#pui2365) | error | Optional value needs handling |
 | [`PUI2366`](#pui2366) | error | Unsupported Optional operation |
 | [`PUI2367`](#pui2367) | error | Invalid Optional fallback |
+| [`PUI2373`](#pui2373) | error | Text style applied to an element that does not draw text |
 | [`PUI2368`](#pui2368) | error | Optional needs a type argument |
 | [`PUI2205`](#pui2205) | error | slot outside a component |
 | [`PUI2201`](#pui2201) | error | Missing required parameter |
@@ -526,6 +527,14 @@ orElse takes exactly one positional fallback whose type matches the Optional val
 
 *Fix:* Write value.orElse(fallback) with one compatible fallback.
 
+### PUI2373
+
+**Text style applied to an element that does not draw text** — error
+
+The style sets text properties (size, weight, color, …), so it only means something on an element that draws text. Surface properties alone are fine on any element.
+
+*Fix:* Apply the style to text, input or button, or split the text properties into a second style used there.
+
 ### PUI2368
 
 **Optional needs a type argument** — error
@@ -574,9 +583,9 @@ A component that uses "slot" must accept the children it renders.
 
 **Unknown style property** — error
 
-A style block only accepts text properties.
+A style block accepts text properties (how text is drawn) and surface properties (how the element is painted and spaced). Structural properties are not stylable: a style describes an appearance, not a layout.
 
-*Fix:* Use size, weight, color, family, letterSpacing, lineHeight or italic.
+*Fix:* Use a text property (size, weight, color, …) or a surface property (padding, background, radius, border, shadow, opacity, width, height, margin).
 
 ### PUI2302
 
