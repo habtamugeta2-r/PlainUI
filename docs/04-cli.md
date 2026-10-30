@@ -158,7 +158,7 @@ criterion or with two items marked `next`. An unknown `--phase` exits `2`.
 {
   "srcDir": "lib/ui",
   "outDir": "lib/generated",
-  "target": "flutter",
+  "targets": ["flutter"],
   "exclude": ["legacy/"]
 }
 ```
@@ -167,8 +167,28 @@ criterion or with two items marked `next`. An unknown `--phase` exits `2`.
 | --- | --- | --- |
 | `srcDir` | `lib/ui` | Where sources live when no path is given. |
 | `outDir` | `lib/generated` | Where generated Dart goes (project-relative). |
-| `target` | `flutter` | Code generator to use. Only `flutter` is implemented. |
+| `targets` | `["flutter"]` | Targets every file must **port** to. Two entries makes the syntax a diet — see below. |
 | `exclude` | `[]` | Path substrings to skip while discovering sources. |
+
+The older single `"target": "flutter"` is still read, as a one-entry `targets`.
+
+### `targets`, the portability promise
+
+`plainui build` writes Flutter today. `targets` is a different question: which targets this project
+promises every file will also be able to become. One entry (the default) is a Flutter project and
+changes nothing. Two entries turn the config into a promise the compiler enforces per file:
+
+```
+error[PUI2502]: "effect" is not portable: HTML preview does not support effects
+  hint: An effect runs after a frame; a static page has no frames. The initial state is what you see.
+        Drop "html" from "targets", or keep this in a file the portable build skips
+```
+
+A construct a promised target delivers *partly* is an error too — `tasks`, `forms`, `navigation` and
+`list-identity` are `partial` for a static page — because porting it would silently lose behaviour.
+`PUI2501` is the other half: the construct the **build** target cannot express at all. An unknown
+name in `targets` fails at load with the list of known targets, rather than as a diagnostic six
+screens later. `examples/gallery` is the one example that names two targets and still builds.
 
 ### Which file is the project?
 

@@ -160,7 +160,7 @@ so a second target would have meant a second checker. The extraction was mechani
 the constants became `Target` fields, each use became `this.target.…`, and no rule changed shape.
 See C5 for the parts that were not mechanical (capabilities, message wording).
 
-### C2 — Portability is a project setting, checked per file — *provisional*
+### C2 — Portability is a project setting, checked per file — *implemented*
 
 `plainui.config.json` declares the project's targets (`"targets": ["flutter", "compose"]`). The
 compiler fails a file that uses a construct outside the intersection, naming the file, the construct
@@ -172,6 +172,14 @@ is invisible in the repository. The config is the only place that is both checke
 **Revisit when:** a project legitimately mixes (a Flutter-only admin screen next to portable
 screens). Then a per-file override is justified — as an exception the config allows, not as the
 default.
+
+**Outcome (v2.0):** `"targets"` is read from the config, validated at load (an unknown id fails
+with the list of known targets), and threaded into the checker as a set of `Target` records. Each
+capability site asks twice: can the **build** target express this (`PUI2501`), and can every
+**promised** target keep up (`PUI2502`, `partial` included — a construct that ports with different
+behaviour is exactly what the setting exists to catch). `tests/matrix.test.ts` compiles every
+example for Flutter *and* the HTML preview and asserts the resulting table, so a construct that
+gains a lowering has to update the table on purpose.
 
 ### C3 — "Verified" means compiled — *decided*
 

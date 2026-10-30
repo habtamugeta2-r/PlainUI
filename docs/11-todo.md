@@ -9,7 +9,7 @@ This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same
 `plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no
 acceptance criterion, an unknown size, or a phase that does not exist.
 
-**Now:** Capability matrix and its test (`capability-matrix`, M) — Every example is compiled for every target; the test asserts which files port and which fail with a code that names the alternative.
+**Now:** PlainUI type system (`plainui-types`, XL) — `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and `plainui migrate` rewrites existing projects.
 
 ## Flutter depth — 10/10
 
@@ -28,15 +28,15 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 | ✔ | ~~`effect on <state>`~~ | `M` | An effect runs on mount and after a change to the states it names, and not on an unrelated state change; the lowering compares a snapshot of those states in `build` and runs the body after the frame, which is the shape `useEffect` and `LaunchedEffect` share. |
 | ✔ | ~~Phase gate: the demo app~~ | `M` | One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples. |
 
-## v2.0 architecture — 1/4
+## v2.0 architecture — 2/4
 
 *Gate to leave this phase:* One `.pui` project compiles to Flutter and Jetpack Compose, both verified in CI, with a test that asserts which files port and which fail with a named code.
 
 | | Item | Size | Acceptance |
 | --- | --- | --- | --- |
 | ✔ | ~~The `Target` contract~~ | `L` | Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind one interface per target; the front end no longer names a framework. |
-| ▸ | **Capability matrix and its test** | `M` | Every example is compiled for every target; the test asserts which files port and which fail with a code that names the alternative. |
-| · | PlainUI type system | `XL` | `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and `plainui migrate` rewrites existing projects. |
+| ✔ | ~~Capability matrix and its test~~ | `M` | Every example is compiled for every target; the test asserts which files port and which fail with a code that names the alternative. |
+| ▸ | **PlainUI type system** | `XL` | `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and `plainui migrate` rewrites existing projects. |
 | · | Jetpack Compose target | `XL` | A `.pui` project generates Kotlin that compiles under Gradle in CI; `state`, `derived` and `task` lower to `remember`, `derivedStateOf` and `produceState` without special cases. |
 
 ## Adoption surface — 1/3

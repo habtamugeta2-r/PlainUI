@@ -8,6 +8,25 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **`"targets"` in `plainui.config.json` — portability as a checked promise.** One entry (the
+  default) is a Flutter project. Two asks the compiler to keep every file portable to both:
+
+  ```json
+  { "targets": ["flutter", "html"] }
+  ```
+
+  ```
+  error[PUI2502]: "effect" is not portable: HTML preview does not support effects
+    hint: An effect runs after a frame; a static page has no frames. …
+  ```
+
+  `PUI2502` fires when a *promised* target cannot keep up, `PUI2501` when the *build* target cannot
+  express the construct at all; `partial` capabilities count as failures here, because porting a
+  construct with different behaviour is exactly what the setting exists to catch. An unknown id
+  fails at load with the list of known targets. `examples/gallery` is the one example that names two
+  targets and still builds; `tests/matrix.test.ts` compiles all seven examples for both targets and
+  asserts the table of what ports and what does not.
+
 - **The `Target` contract (`src/targets/`).** What the front end needs to know about an output
   language, in one interface per target: reserved words, types a name must not shadow, wrong type
   spellings and enum aliases, plus a nine-entry capability record. The checker asks

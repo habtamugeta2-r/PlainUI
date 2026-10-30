@@ -670,6 +670,14 @@ export const CODES = {
     fix: 'Compile for a target that supports it, or remove the construct.',
   },
 
+  PUI2502: {
+    severity: 'error',
+    title: 'Not portable to a target the project promises',
+    description:
+      '"targets" in plainui.config.json is a promise that every file ports. This construct is delivered only partly (or not at all) by one of those targets, so the file would compile today and quietly lose behaviour there.',
+    fix: 'Drop the target from "targets", or move the construct into a file that is not part of the portable set.',
+  },
+
   // ---------------------------------------------------------------- project / codegen
   PUI3001: {
     severity: 'error',

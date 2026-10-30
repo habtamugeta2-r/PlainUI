@@ -119,10 +119,12 @@ target and not for another. `PUI2501` refuses a construct whose capability is `n
 preview's capability table is the honest answer to "what does a static page actually do?"
 ([`02-architecture.md`](02-architecture.md#targets), [C5](10-decisions.md)).
 
-What is still missing before Compose: the **capability matrix** as a project setting (C2 — a
-`targets` list in `plainui.config.json`, checked per file against the intersection), output paths
-per target, and `plainui build` writing a tree for anything other than Flutter (it refuses
-explicitly today rather than writing Dart into an `html` build).
+The **capability matrix** is now a project setting (C2): `"targets": ["flutter", "html"]` in
+`plainui.config.json` makes portability a per-file promise, enforced by `PUI2502` and asserted by
+`tests/matrix.test.ts`, which compiles all seven examples for both targets and records which ones
+port. What still stands between that and Compose: output paths per target, `plainui build` writing a
+tree for anything other than Flutter (it refuses explicitly today), and a second generator that is
+not a preview.
 
 **Jetpack Compose is the second target**, chosen because it is the closest mapping to Flutter and
 therefore the sharpest test of the state model: if `derived` lowers to `derivedStateOf` and `task`

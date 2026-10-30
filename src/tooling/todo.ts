@@ -195,7 +195,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'architecture',
     title: 'Capability matrix and its test',
     size: 'M',
-    status: 'next',
+    status: 'done',
     acceptance:
       'Every example is compiled for every target; the test asserts which files port and which fail with ' +
       'a code that names the alternative.',
@@ -206,7 +206,7 @@ export const TODO: readonly TodoItem[] = [
     phase: 'architecture',
     title: 'PlainUI type system',
     size: 'XL',
-    status: 'todo',
+    status: 'next',
     acceptance:
       '`Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and ' +
       '`plainui migrate` rewrites existing projects.',
