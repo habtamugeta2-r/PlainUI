@@ -1,0 +1,28 @@
+// `navigate` and `back()`, with parameters on the screen being opened.
+
+screen Detail(id: String, title: String="Task"):
+
+    column padding=16 gap=12:
+
+        column gap=4:
+            text title style=heading
+            text "Item ${id}" style=caption
+
+        button "Back" variant=text:
+            on tap: back()
+
+screen Home:
+
+    state items: List<String> = ["Write the spec", "Ship it"]
+
+    column padding=16 gap=12:
+
+        text "Tasks" style=heading
+
+        for index, item in items key=item:
+            card padding=12:
+                on tap: navigate Detail(id: "${index}", title=item)
+                text item
+
+        button "Open the first":
+            on tap: navigate Detail(id: "0")
