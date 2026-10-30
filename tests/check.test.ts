@@ -144,6 +144,21 @@ test('children supplied to a component without a slot are rejected', () => {
   assert.ok(errorsOf(text).includes('PUI2203'));
 });
 
+test('a host widget that is one letter away from a component says so', () => {
+  const text = [
+    'component Card2(label: String):',
+    '    text label',
+    '',
+    'screen Home:',
+    '    column:',
+    '        Card2x("x")',
+    '',
+  ].join('\n');
+  const diagnostic = run(text).bag.diagnostics.find((d) => d.code === 'PUI2406');
+  assert.ok(diagnostic, 'expected the host widget note');
+  assert.match(diagnostic.hint ?? '', /did you mean `Card2`\?/);
+});
+
 test('Flutter enum spellings suggest the shorter PlainUI name', () => {
   const text = ['screen Home:', '    row main=spaceBetween:', '        text "a"', ''].join('\n');
   const diagnostic = run(text).bag.diagnostics.find((d) => d.code === 'PUI2111');

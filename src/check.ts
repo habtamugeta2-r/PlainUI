@@ -543,16 +543,27 @@ class Checker {
         this.checkComponentCall(el, resolved.decl, scope, resolved.external);
         this.checkEvents(el, GENERIC_EVENTS, scope, undefined, true);
         break;
-      case 'host':
+      case 'host': {
+        // A capitalised tag is a host widget by design, which makes a typo in a component name
+        // indistinguishable from a deliberate escape hatch — except that one of them is a letter
+        // away from a component that *is* in scope. Say so in the hint instead of only noting that
+        // the tag was not found.
+        const near = didYouMean(el.tag, [
+          ...this.components.keys(),
+          ...(this.options.externalComponents?.keys() ?? []),
+        ]);
         this.info(
           'PUI2406',
           `"${el.tag}" is not a component in this file, so it is emitted as a Dart constructor call`,
           el.tagSpan,
-          'make sure the constructor is imported and its arguments exist in Dart',
+          near !== undefined
+            ? `${near} Otherwise make sure the constructor is imported and its arguments exist in Dart`
+            : 'make sure the constructor is imported and its arguments exist in Dart',
         );
         for (const arg of el.args) this.checkExpr(arg.value, scope, 'value', false);
         this.checkEvents(el, GENERIC_EVENTS, scope, undefined, true);
         break;
+      }
     }
 
     // Children: any element may contain control flow and nested elements.
