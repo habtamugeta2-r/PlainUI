@@ -22,3 +22,4 @@ tests/fixtures/**/generated/
 
 # scratch
 scratch/
+web/dist/

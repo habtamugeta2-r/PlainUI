@@ -586,75 +586,69 @@ class HtmlEmitter {
   // ---- elements ----------------------------------------------------------------------------
 
   private renderElement(element: import('../ast.ts').ElementNode): void {
-    const spec = widgetSpec(element.tag);
-
     // Components declared in this file are inlined with their arguments bound.
     if (element.callStyle && this.components.has(element.tag)) {
       this.renderComponentCall(element);
       return;
     }
 
-    const tag = element.tag;
-    switch (tag) {
-      case 'text': {
-        const content = element.args[0] === undefined ? '' : this.text(evaluate(element.args[0].value, this.env)) ?? '';
-        this.inline('span', [['class', 'pui-text']], [...this.textStyleFor(element), ...this.universalStyles(element)], content);
+    switch (element.tag) {
+      case 'text':
+        this.inline(
+          'span',
+          [['class', 'pui-text']],
+          [...this.textStyleFor(element), ...this.universalStyles(element)],
+          this.argumentText(element),
+        );
         return;
-      }
-      case 'heading': {
-        const content = element.args[0] === undefined ? '' : this.text(evaluate(element.args[0].value, this.env)) ?? '';
-        this.inline('h2', [['class', 'pui-heading']], [...this.textStyleFor(element), 'font-size: 28px', 'margin: 0'], content);
-        return;
-      }
-      case 'label': {
-        const content = element.args[0] === undefined ? '' : this.text(evaluate(element.args[0].value, this.env)) ?? '';
-        this.inline('span', [['class', 'pui-label']], [...this.textStyleFor(element), 'font-size: 12px', 'opacity: 0.7'], content);
-        return;
-      }
+
       case 'column':
       case 'list': {
-        this.open('div', [['class', `pui-${tag}`]], [
+        const vertical = element.tag === 'column' || this.name(element, 'axis') !== 'horizontal';
+        this.open('div', [['class', `pui-${element.tag}`]], [
           'display: flex',
-          'flex-direction: column',
+          `flex-direction: ${vertical ? 'column' : 'row'}`,
           `gap: ${this.gap(element, '0')}`,
-          ...(this.justify(element) === undefined ? [] : [`justify-content: ${this.justify(element)}`]),
-          ...(this.alignItems(element) === undefined ? [] : [`align-items: ${this.alignItems(element)}`]),
+          ...this.mainAxis(element),
+          ...this.crossAxis(element),
           ...this.universalStyles(element),
         ]);
         this.renderChildren(element.children);
         this.close('div');
         return;
       }
-      case 'row': {
+
+      case 'row':
         this.open('div', [['class', 'pui-row']], [
           'display: flex',
           'flex-direction: row',
           'align-items: center',
           `gap: ${this.gap(element, '8px')}`,
-          ...(this.justify(element) === undefined ? [] : [`justify-content: ${this.justify(element)}`]),
-          ...(this.alignItems(element) === undefined ? [] : [`align-items: ${this.alignItems(element)}`]),
+          ...this.mainAxis(element),
+          ...this.crossAxis(element),
           ...this.universalStyles(element),
         ]);
         this.renderChildren(element.children);
         this.close('div');
         return;
-      }
-      case 'wrap': {
+
+      case 'wrap':
         this.open('div', [['class', 'pui-wrap']], [
           'display: flex',
           'flex-wrap: wrap',
           `gap: ${this.gap(element, '8px')}`,
+          ...this.mainAxis(element),
           ...this.universalStyles(element),
         ]);
         this.renderChildren(element.children);
         this.close('div');
         return;
-      }
-      case 'stack': {
+
+      case 'stack':
         this.open('div', [['class', 'pui-stack']], [
           'display: grid',
           'grid-template-areas: "stack"',
-          `gap: ${this.gap(element, '0')}`,
+          'place-items: center',
           ...this.universalStyles(element),
         ]);
         for (const child of element.children) {
@@ -664,7 +658,7 @@ class HtmlEmitter {
         }
         this.close('div');
         return;
-      }
+
       case 'grid': {
         const columns = this.number(element, 'columns') ?? 2;
         this.open('div', [['class', 'pui-grid']], [
@@ -677,181 +671,100 @@ class HtmlEmitter {
         this.close('div');
         return;
       }
-      case 'card': {
-        this.open('div', [['class', 'pui-card']], [
-          'background: #ffffff',
-          `border-radius: ${this.number(element, 'radius') ?? 12}px`,
-          `padding: ${this.number(element, 'padding') ?? 16}px`,
-          'box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.06)',
-          ...this.universalStyles(element, [], ['padding', 'radius']),
+
+      case 'scroll': {
+        const horizontal = this.name(element, 'axis') === 'horizontal';
+        this.open('div', [['class', 'pui-scroll']], [
+          'display: flex',
+          `flex-direction: ${horizontal ? 'row' : 'column'}`,
+          `overflow-${horizontal ? 'x' : 'y'}: auto`,
+          `gap: ${this.gap(element, '0')}`,
+          'max-height: 360px',
+          ...this.universalStyles(element),
         ]);
         this.renderChildren(element.children);
         this.close('div');
         return;
       }
-      case 'button': {
-        const content = element.args[0] === undefined ? 'Button' : this.text(evaluate(element.args[0].value, this.env)) ?? 'Button';
-        this.open('button', [['class', 'pui-button'], ['type', 'button'], ['data-event', this.eventNames(element)]], [
-          'font: inherit',
-          'border: 0',
-          'border-radius: 10px',
-          'padding: 10px 18px',
-          'background: #2563eb',
-          'color: #ffffff',
-          'font-weight: 600',
-          'cursor: pointer',
-          ...this.universalStyles(element),
+
+      case 'center':
+        this.open('div', [['class', 'pui-center']], ['display: flex', 'align-items: center', 'justify-content: center', ...this.universalStyles(element)]);
+        this.renderChildren(element.children);
+        this.close('div');
+        return;
+
+      case 'align': {
+        const alignment = this.name(element, 'align') ?? 'center';
+        this.open('div', [['class', 'pui-align']], [
+          'display: flex',
+          `justify-content: ${ALIGNMENT_AXIS[alignment]?.x ?? 'center'}`,
+          `align-items: ${ALIGNMENT_AXIS[alignment]?.y ?? 'center'}`,
+          ...this.universalStyles(element, [], ['align']),
         ]);
-        this.line(escapeHtml(content));
-        this.close('button');
-        return;
-      }
-      case 'iconButton': {
-        const icon = element.args[0] === undefined ? 'star' : this.text(evaluate(element.args[0].value, this.env)) ?? 'star';
-        this.open('button', [['class', 'pui-icon-button'], ['type', 'button'], ['title', icon]], [
-          'font: inherit',
-          'border: 0',
-          'border-radius: 999px',
-          'width: 40px',
-          'height: 40px',
-          'background: rgba(15, 23, 42, 0.06)',
-          'cursor: pointer',
-          ...this.universalStyles(element),
-        ]);
-        this.line(ICONS[icon] ?? '★');
-        this.close('button');
-        return;
-      }
-      case 'icon': {
-        const icon = element.args[0] === undefined ? 'star' : this.text(evaluate(element.args[0].value, this.env)) ?? 'star';
-        const size = this.number(element, 'size') ?? 24;
-        this.single('span', [['class', 'pui-icon'], ['title', icon]], [
-          `font-size: ${size}px`,
-          'line-height: 1',
-          ...(this.colour(element, 'color') === undefined ? [] : [`color: ${this.colour(element, 'color')}`]),
-        ]);
-        return;
-      }
-      case 'input': {
-        const label = this.name(element, 'label');
-        const value = element.args[0] === undefined ? '' : this.text(evaluate(element.args[0].value, this.env)) ?? '';
-        const multiline = this.number(element, 'maxLines') !== undefined && (this.number(element, 'maxLines') ?? 1) > 1;
-        this.open('label', [['class', 'pui-field']], ['display: flex', 'flex-direction: column', 'gap: 4px', ...this.universalStyles(element)]);
-        if (label !== undefined) {
-          this.inline('span', [['class', 'pui-field-label']], ['font-size: 12px', 'font-weight: 600', 'opacity: 0.7'], label);
-        }
-        const placeholder = this.name(element, 'hint') ?? this.name(element, 'placeholder') ?? '';
-        if (multiline) {
-          this.open('textarea', [['rows', String(this.number(element, 'maxLines') ?? 3)], ['placeholder', placeholder]], [
-            'font: inherit',
-            'padding: 10px 12px',
-            'border: 1px solid rgba(15, 23, 42, 0.16)',
-            'border-radius: 10px',
-            'background: #ffffff',
-          ]);
-          this.textLine(value);
-          this.close('textarea');
-        } else {
-          this.single('input', [['type', this.bool(element, 'secret') || this.bool(element, 'obscure') ? 'password' : 'text'], ['value', value], ['placeholder', placeholder]], [
-            'font: inherit',
-            'padding: 10px 12px',
-            'border: 1px solid rgba(15, 23, 42, 0.16)',
-            'border-radius: 10px',
-            'background: #ffffff',
-          ]);
-        }
-        this.close('label');
-        return;
-      }
-      case 'checkbox':
-      case 'switch': {
-        const label = element.args[0] === undefined ? '' : this.text(evaluate(element.args[0].value, this.env)) ?? '';
-        this.open('label', [['class', 'pui-check']], ['display: flex', 'align-items: center', 'gap: 8px', ...this.universalStyles(element)]);
-        this.single('input', [['type', 'checkbox'], ['checked', this.bool(element, 'checked') || this.bool(element, 'value') ? '' : undefined]], []);
-        this.textLine(label);
-        this.close('label');
-        return;
-      }
-      case 'image': {
-        const src = this.name(element, 'src') ?? this.name(element, 'url') ?? '';
-        const width = this.number(element, 'width');
-        const height = this.number(element, 'height');
-        this.single('img', [['class', 'pui-image'], ['src', src], ['alt', this.name(element, 'alt') ?? '']], [
-          ...(width === undefined ? [] : [`width: ${width}px`]),
-          ...(height === undefined ? [] : [`height: ${height}px`]),
-          'object-fit: cover',
-          'border-radius: 12px',
-          ...this.universalStyles(element),
-        ]);
-        return;
-      }
-      case 'avatar': {
-        const name = this.name(element, 'name') ?? this.name(element, 'label') ?? 'A';
-        this.open('span', [['class', 'pui-avatar']], [
-          'display: inline-flex',
-          'align-items: center',
-          'justify-content: center',
-          'width: 40px',
-          'height: 40px',
-          'border-radius: 999px',
-          'background: #2563eb',
-          'color: #ffffff',
-          'font-weight: 600',
-          ...this.universalStyles(element),
-        ]);
-        this.line(escapeHtml(name.slice(0, 1).toUpperCase()));
-        this.close('span');
-        return;
-      }
-      case 'chip': {
-        const label = element.args[0] === undefined ? '' : this.text(evaluate(element.args[0].value, this.env)) ?? '';
-        this.open('span', [['class', 'pui-chip']], [
-          'display: inline-flex',
-          'align-items: center',
-          'padding: 4px 10px',
-          'border-radius: 999px',
-          'background: rgba(37, 99, 235, 0.1)',
-          'color: #1d4ed8',
-          'font-size: 12px',
-          'font-weight: 600',
-          ...this.universalStyles(element),
-        ]);
-        this.line(escapeHtml(label));
-        this.close('span');
-        return;
-      }
-      case 'divider':
-        this.single('hr', [['class', 'pui-divider']], ['border: 0', 'border-top: 1px solid rgba(15, 23, 42, 0.12)', 'margin: 8px 0']);
-        return;
-      case 'spacer':
-        this.single('div', [['class', 'pui-spacer']], ['flex: 1']);
-        return;
-      case 'progress': {
-        const value = this.number(element, 'value');
-        this.open('div', [['class', 'pui-progress']], ['height: 6px', 'border-radius: 999px', 'background: rgba(15, 23, 42, 0.1)', 'overflow: hidden']);
-        this.single('div', [['class', 'pui-progress-bar']], [
-          `width: ${value === undefined ? 40 : Math.max(0, Math.min(100, value * (value <= 1 ? 100 : 1)))}%`,
-          'height: 100%',
-          'background: #2563eb',
-        ]);
+        this.renderChildren(element.children);
         this.close('div');
         return;
       }
+
+      case 'expanded':
+        this.open('div', [['class', 'pui-expanded']], [
+          `flex: ${this.number(element, 'flex') ?? 1}`,
+          'min-width: 0',
+          'min-height: 0',
+          ...this.universalStyles(element),
+        ]);
+        this.renderChildren(element.children);
+        this.close('div');
+        return;
+
+      case 'safeArea':
+        this.open('div', [['class', 'pui-safe-area']], [
+          'padding-top: env(safe-area-inset-top)',
+          'padding-left: env(safe-area-inset-left)',
+          'padding-right: env(safe-area-inset-right)',
+          ...(this.bool(element, 'bottom') ? ['padding-bottom: env(safe-area-inset-bottom)'] : []),
+          ...this.universalStyles(element),
+        ]);
+        this.renderChildren(element.children);
+        this.close('div');
+        return;
+
+      case 'spacer':
+        this.single('div', [['class', 'pui-spacer']], [`flex: ${this.number(element, 'flex') ?? 1}`]);
+        return;
+
+      case 'card':
+        this.open('div', [['class', 'pui-card']], [
+          `background: ${this.colour(element, 'background') ?? '#ffffff'}`,
+          `border-radius: ${this.number(element, 'radius') ?? 12}px`,
+          `padding: ${this.number(element, 'padding') ?? 16}px`,
+          `box-shadow: 0 ${this.number(element, 'elevation') ?? 1}px ${(this.number(element, 'elevation') ?? 1) * 4}px rgba(15, 23, 42, 0.10)`,
+          ...this.universalStyles(element, [], ['padding', 'radius', 'background', 'bg']),
+        ]);
+        this.renderChildren(element.children);
+        this.close('div');
+        return;
+
       case 'scaffold': {
         const title = this.name(element, 'title') ?? '';
-        const hasAppBar = this.bool(element, 'appBar') || title.length > 0;
-        this.open('div', [['class', 'pui-scaffold']], ['display: flex', 'flex-direction: column', 'min-height: 100%', ...this.universalStyles(element)]);
-        if (hasAppBar) {
+        this.open('div', [['class', 'pui-scaffold']], [
+          'display: flex',
+          'flex-direction: column',
+          'min-height: 100%',
+          ...(this.colour(element, 'background') === undefined ? [] : [`background: ${this.colour(element, 'background')}`]),
+          ...this.universalStyles(element),
+        ]);
+        if (title.length > 0) {
           this.open('header', [['class', 'pui-appbar']], [
             'display: flex',
             'align-items: center',
-            'gap: 12px',
+            `justify-content: ${this.bool(element, 'centerTitle') ? 'center' : 'flex-start'}`,
             'padding: 12px 16px',
             'background: #2563eb',
             'color: #ffffff',
             'font-weight: 600',
           ]);
-          this.textLine(title);
+          this.line(escapeHtml(title));
           this.close('header');
         }
         this.open('div', [['class', 'pui-scaffold-body']], ['padding: 16px', 'display: flex', 'flex-direction: column', 'gap: 12px']);
@@ -860,25 +773,183 @@ class HtmlEmitter {
         this.close('div');
         return;
       }
-      case 'slot':
+
+      case 'button': {
+        const variant = this.name(element, 'variant');
+        this.open('button', [['class', 'pui-button'], ['type', 'button'], ['data-event', this.eventNames(element)]], [
+          'font: inherit',
+          'border-radius: 10px',
+          'padding: 10px 18px',
+          'font-weight: 600',
+          ...BUTTON_VARIANTS[variant ?? 'filled'] ?? BUTTON_VARIANTS['filled']!,
+          ...(this.bool(element, 'fullWidth') ? ['width: 100%'] : []),
+          ...this.universalStyles(element),
+        ]);
+        this.line(escapeHtml(this.argumentText(element) || 'Button'));
+        this.close('button');
         return;
+      }
+
+      case 'icon': {
+        const name = this.argumentText(element) || 'star';
+        this.inline('span', [['class', 'pui-icon'], ['title', name]], [
+          `font-size: ${this.number(element, 'size') ?? 24}px`,
+          'line-height: 1',
+          ...(this.colour(element, 'color') === undefined ? [] : [`color: ${this.colour(element, 'color')}`]),
+          ...this.universalStyles(element),
+        ], ICONS[name] ?? '★');
+        return;
+      }
+
+      case 'image': {
+        const src = this.argumentText(element);
+        this.void_('img', [
+          ['class', 'pui-image'],
+          ['src', src],
+          ['alt', this.name(element, 'semanticLabel') ?? ''],
+        ], [
+          'max-width: 100%',
+          `object-fit: ${IMAGE_FIT[this.name(element, 'fit') ?? 'cover'] ?? 'cover'}`,
+          ...(this.number(element, 'radius') === undefined ? [] : [`border-radius: ${this.number(element, 'radius')}px`]),
+          ...this.universalStyles(element),
+        ]);
+        return;
+      }
+
+      case 'input': {
+        const label = this.name(element, 'label');
+        const bound = this.boundValue(element);
+        const value = bound === undefined ? '' : asText(bound);
+        const rows = this.number(element, 'maxLines');
+        const multiline = this.bool(element, 'multiline') || (rows !== undefined && rows > 1);
+        this.open('label', [['class', 'pui-field']], ['display: flex', 'flex-direction: column', 'gap: 4px', ...this.universalStyles(element)]);
+        if (label !== undefined) {
+          this.inline('span', [['class', 'pui-field-label']], ['font-size: 12px', 'font-weight: 600', 'opacity: 0.7'], label);
+        }
+        const placeholder = this.name(element, 'placeholder') ?? '';
+        if (multiline) {
+          this.open('textarea', [['rows', String(rows ?? 3)], ['placeholder', placeholder]], [
+            'font: inherit',
+            'padding: 10px 12px',
+            'border: 1px solid rgba(15, 23, 42, 0.16)',
+            'border-radius: 10px',
+            'background: #ffffff',
+          ]);
+          this.line(escapeHtml(value));
+          this.close('textarea');
+        } else {
+          this.void_('input', [
+            ['type', this.bool(element, 'secret') ? 'password' : INPUT_TYPES[this.name(element, 'keyboard') ?? 'text'] ?? 'text'],
+            ['value', value],
+            ['placeholder', placeholder],
+            ['autofocus', this.bool(element, 'autofocus') ? '' : undefined],
+          ], [
+            'font: inherit',
+            'padding: 10px 12px',
+            'border: 1px solid rgba(15, 23, 42, 0.16)',
+            'border-radius: 10px',
+            'background: #ffffff',
+          ]);
+        }
+        const helper = this.name(element, 'helper');
+        if (helper !== undefined) {
+          this.inline('span', [['class', 'pui-field-helper']], ['font-size: 11px', 'opacity: 0.6'], helper);
+        }
+        this.close('label');
+        return;
+      }
+
+      case 'checkbox':
+      case 'toggle': {
+        const label = this.name(element, 'label') ?? '';
+        const bound = this.boundValue(element);
+        const checked = bound !== undefined && truthy(bound) === true;
+        this.open('label', [['class', `pui-${element.tag}`]], ['display: flex', 'align-items: center', 'gap: 8px', ...this.universalStyles(element)]);
+        this.void_('input', [
+          ['type', 'checkbox'],
+          ['checked', checked ? '' : undefined],
+        ], element.tag === 'toggle' ? ['width: 34px', 'height: 20px', 'accent-color: #2563eb'] : []);
+        this.line(escapeHtml(label));
+        this.close('label');
+        return;
+      }
+
+      case 'slider': {
+        const bound = this.boundValue(element);
+        const value = bound !== undefined && bound.kind === 'number' ? bound.value : 0.5;
+        const min = this.number(element, 'min') ?? 0;
+        const max = this.number(element, 'max') ?? 1;
+        this.void_('input', [
+          ['type', 'range'],
+          ['min', String(min)],
+          ['max', String(max)],
+          ['value', String(value)],
+          ['step', this.number(element, 'divisions') === undefined ? 'any' : String((max - min) / (this.number(element, 'divisions') ?? 1))],
+        ], ['width: 100%', 'accent-color: #2563eb', ...this.universalStyles(element)]);
+        return;
+      }
+
+      case 'divider':
+        this.void_('hr', [['class', 'pui-divider']], [
+          'border: 0',
+          `border-top: ${this.number(element, 'thickness') ?? 1}px solid ${this.colour(element, 'color') ?? 'rgba(15, 23, 42, 0.12)'}`,
+          'margin: 8px 0',
+        ]);
+        return;
+
+      case 'progress': {
+        const value = this.number(element, 'value');
+        const indeterminate = this.bool(element, 'indeterminate') || value === undefined;
+        this.void_('progress', [['class', 'pui-progress'], ['max', '1'], ['value', indeterminate ? undefined : String(value)]], [
+          'width: 100%',
+          'height: 8px',
+          `accent-color: ${this.colour(element, 'color') ?? '#2563eb'}`,
+          ...this.universalStyles(element),
+        ]);
+        return;
+      }
+
       default: {
         // Host widgets and unknown tags become a labelled placeholder rather than nothing.
-        if (element.callStyle) {
-          const label = this.name(element, 'title') ?? this.name(element, 'label');
-          this.open('div', [['class', 'pui-host'], ['title', `${element.tag} — host Dart widget`]], this.universalStyles(element));
-          this.textLine(label ?? element.tag);
-          this.renderChildren(element.children);
-          this.close('div');
-          return;
-        }
-        this.open('div', [['class', 'pui-unknown'], ['title', `${element.tag} has no HTML rendering`]], this.universalStyles(element));
-        this.textLine(labelFor(element.tag));
+        const label = this.name(element, 'title') ?? this.name(element, 'label');
+        const host = element.callStyle;
+        this.open('div', [
+          ['class', host ? 'pui-host' : 'pui-unknown'],
+          ['title', host ? `${element.tag} — host Dart widget` : `${element.tag} is not a PlainUI element`],
+        ], this.universalStyles(element));
+        this.line(escapeHtml(label ?? (host ? element.tag : labelFor(element.tag))));
         this.renderChildren(element.children);
         this.close('div');
         return;
       }
     }
+  }
+
+  /** The first positional argument, rendered as text. */
+  private argumentText(element: import('../ast.ts').ElementNode): string {
+    const arg = element.args[0];
+    if (arg === undefined) return '';
+    const value = evaluate(arg.value, this.env);
+    return value.kind === 'unknown' ? '' : asText(value);
+  }
+
+  /** The current value of the state an input is bound to, when it can be known. */
+  private boundValue(element: import('../ast.ts').ElementNode): Value | undefined {
+    const expr = this.prop(element, 'bind');
+    if (expr === undefined) return undefined;
+    return evaluate(expr, this.env);
+  }
+
+  private mainAxis(element: { props: readonly Prop[] }): string[] {
+    const main = this.name(element, 'main');
+    const value = main === undefined ? undefined : JUSTIFY[main];
+    return value === undefined ? [] : [`justify-content: ${value}`];
+  }
+
+  private crossAxis(element: { props: readonly Prop[] }): string[] {
+    const cross = this.name(element, 'cross');
+    const value = cross === undefined ? undefined : ALIGN[cross];
+    return value === undefined ? [] : [`align-items: ${value}`];
   }
 
   private eventNames(element: { events: readonly import('../ast.ts').EventHandler[] }): string | undefined {
@@ -913,7 +984,47 @@ function labelFor(tag: string): string {
   return spec === undefined ? tag : spec.summary;
 }
 
-const VOID_TAGS = new Set(['br', 'hr', 'img', 'input', 'source']);
+const VOID_TAGS = new Set(['br', 'hr', 'img', 'input', 'progress', 'source']);
+
+/** Alignment names used by `align` (mirrors the registry's ALIGNMENT list). */
+const ALIGNMENT_AXIS: Record<string, { readonly x: string; readonly y: string }> = {
+  topLeft: { x: 'flex-start', y: 'flex-start' },
+  topCenter: { x: 'center', y: 'flex-start' },
+  topRight: { x: 'flex-end', y: 'flex-start' },
+  centerLeft: { x: 'flex-start', y: 'center' },
+  center: { x: 'center', y: 'center' },
+  centerRight: { x: 'flex-end', y: 'center' },
+  bottomLeft: { x: 'flex-start', y: 'flex-end' },
+  bottomCenter: { x: 'center', y: 'flex-end' },
+  bottomRight: { x: 'flex-end', y: 'flex-end' },
+};
+
+const BUTTON_VARIANTS: Record<string, string[]> = {
+  filled: ['border: 0', 'background: #2563eb', 'color: #ffffff'],
+  tonal: ['border: 0', 'background: rgba(37, 99, 235, 0.12)', 'color: #1d4ed8'],
+  outlined: ['border: 1px solid rgba(37, 99, 235, 0.5)', 'background: transparent', 'color: #1d4ed8'],
+  text: ['border: 0', 'background: transparent', 'color: #1d4ed8'],
+  danger: ['border: 0', 'background: #dc2626', 'color: #ffffff'],
+};
+
+const IMAGE_FIT: Record<string, string> = {
+  contain: 'contain',
+  cover: 'cover',
+  fill: 'fill',
+  fitWidth: 'cover',
+  fitHeight: 'cover',
+  none: 'none',
+  scaleDown: 'scale-down',
+};
+
+const INPUT_TYPES: Record<string, string> = {
+  text: 'text',
+  email: 'email',
+  number: 'number',
+  phone: 'tel',
+  url: 'url',
+  multiline: 'text',
+};
 
 const ICONS: Record<string, string> = {
   star: '★',
