@@ -23,6 +23,7 @@ import type {
   ScreenDecl,
   ForNode,
   StateDecl,
+  TaskDecl,
   TokenDecl,
 } from '../frontend/ast.ts';
 import type { Analysis } from '../analysis/check.ts';
@@ -46,6 +47,12 @@ const UNKNOWN = (expr: Expr): Value => ({ kind: 'unknown', text: describeExpr(ex
 
 interface Env {
   values: Map<string, Value>;
+  /**
+   * Tasks, as the preview sees them. The preview has no host runtime, so a task is rendered in the
+   * state it will be in once its future completes — and with no data, because there is none to
+   * fetch. Screens that would show a spinner show their loaded layout instead.
+   */
+  tasks: Map<string, { loading: Value; error: Value; value: Value }>;
 }
 
 function lookup(env: Env, name: string): Value | undefined {
@@ -83,8 +90,14 @@ function evaluate(expr: Expr, env: Env): Value {
     case 'Paren':
       return evaluate(expr.inner, env);
     case 'Member': {
-      const object = evaluate(expr.object, env);
-      if (object.kind === 'unknown') return UNKNOWN(expr);
+      // `items.loading` and friends: a task is not a value, its parts are.
+      if (expr.object.kind === 'Ident') {
+        const task = env.tasks.get(expr.object.name);
+        if (task !== undefined) {
+          const part = (task as unknown as Record<string, Value>)[expr.name];
+          return part ?? UNKNOWN(expr);
+        }
+      }
       return UNKNOWN(expr);
     }
     case 'Index': {
@@ -257,7 +270,7 @@ const ALIGN: Record<string, string> = {
 const TEXT_ALIGN: Record<string, string> = { start: 'left', center: 'center', end: 'right', justify: 'justify' };
 
 class HtmlEmitter {
-  private readonly env: Env = { values: new Map() };
+  private readonly env: Env = { values: new Map(), tasks: new Map() };
   private readonly components = new Map<string, ComponentDecl>();
   private readonly styles = new Map<string, TextStyle>();
   private depth = 0;
@@ -308,6 +321,7 @@ class HtmlEmitter {
       return { code: this.document(['<p class="pui-empty">This file has no screen to preview.</p>'], 'PlainUI preview') };
     }
     for (const state of screen.state) this.bindState(state);
+    this.bindTasks(screen);
     const body = this.renderNodes(screen.body, 'pui-screen');
     const title = this.options.title ?? screen.name;
     return { code: this.document(body, title), screen: screen.name };
@@ -394,6 +408,20 @@ class HtmlEmitter {
   }
 
   // ---- state -------------------------------------------------------------------------------
+
+  /**
+   * The preview's stand-in for a task: loaded, with no error and no rows. `loading: false` keeps a
+   * screen from previewing as a spinner that never resolves.
+   */
+  private bindTasks(decl: { tasks: readonly TaskDecl[] }): void {
+    for (const task of decl.tasks) {
+      this.env.tasks.set(task.name, {
+        loading: { kind: 'bool', value: false },
+        error: { kind: 'null' },
+        value: { kind: 'list', items: [] },
+      });
+    }
+  }
 
   private bindState(state: StateDecl): void {
     this.env.values.set(state.name, evaluate(state.init, this.env));

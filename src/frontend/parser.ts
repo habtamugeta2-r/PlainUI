@@ -35,6 +35,7 @@ import type {
   SetAction,
   StateDecl,
   StyleDecl,
+  TaskDecl,
   ThemeDecl,
   TokenCategory,
   TokenDecl,
@@ -250,13 +251,14 @@ class Parser {
     const nameToken = this.expectIdent('for the screen');
     this.expectOp(':', 'to open the screen body');
     const body = this.parseNodeBody();
-    const { state, rest } = splitState(body);
+    const { state, tasks, rest } = splitState(body);
     return {
       kind: 'Screen',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
       name: nameToken.value,
       nameSpan: nameToken.span,
       state,
+      tasks,
       body: rest,
     };
   }
@@ -270,7 +272,7 @@ class Parser {
     }
     this.expectOp(':', 'to open the component body');
     const body = this.parseNodeBody();
-    const { state, rest } = splitState(body);
+    const { state, tasks, rest } = splitState(body);
     return {
       kind: 'Component',
       span: span(keyword.span.start, endOfBody(body, nameToken.span.end)),
@@ -278,6 +280,7 @@ class Parser {
       nameSpan: nameToken.span,
       params,
       state,
+      tasks,
       body: rest,
     };
   }
@@ -522,6 +525,12 @@ class Parser {
 
   private parseNodeStatement(): Node | undefined {
     const token = this.peek();
+
+    // `task items: List<Todo> = loadTodos()` — contextual, like `style`, because `task` is a good
+    // name for other things and the shape is unambiguous: `task` followed by a name.
+    if (token.kind === 'ident' && token.value === 'task' && this.peek(1).kind === 'ident') {
+      return this.parseTask();
+    }
 
     if (token.kind === 'keyword') {
       switch (token.value) {
@@ -793,6 +802,56 @@ class Parser {
   // ------------------------------------------------------------------------------------------
   // State and events
   // ------------------------------------------------------------------------------------------
+
+  /**
+   * `task items: List<Todo> = loadTodos()`
+   *
+   * The type annotation is optional (it defaults to dynamic) but is what makes `items.value`
+   * checkable and what lets a `for` over it know its element type.
+   */
+  private parseTask(): TaskDecl {
+    const keyword = this.advance();
+    const nameToken = this.expectIdent('for the task');
+    let typeText: string | undefined;
+    let typeSpan: Span | undefined;
+
+    if (this.atOp(':')) {
+      this.advance();
+      const collected = this.collectTypeText(new Set(['=']));
+      typeText = collected.text;
+      typeSpan = collected.span;
+      if (typeText.length === 0) {
+        this.error('PUI1023', 'expected a type after ":"', nameToken.span, 'for example: task items: List<Todo> = loadTodos()');
+      }
+    }
+
+    if (!this.atOp('=')) {
+      this.error('PUI1023', `task "${nameToken.value}" needs a value to await`, this.peek().span, 'for example: task items: List<Todo> = loadTodos()');
+      this.skipLine();
+      return {
+        kind: 'Task',
+        span: span(keyword.span.start, nameToken.span.end),
+        name: nameToken.value,
+        nameSpan: nameToken.span,
+        ...(typeText === undefined ? {} : { typeText }),
+        ...(typeSpan === undefined ? {} : { typeSpan }),
+        init: { kind: 'Call', span: nameToken.span, callee: { kind: 'Ident', span: nameToken.span, name: nameToken.value }, args: [] },
+      };
+    }
+    this.advance();
+    const init = this.parseExpression();
+    this.expectNewline('after the task declaration');
+
+    return {
+      kind: 'Task',
+      span: span(keyword.span.start, init.span.end),
+      name: nameToken.value,
+      nameSpan: nameToken.span,
+      ...(typeText === undefined ? {} : { typeText }),
+      ...(typeSpan === undefined ? {} : { typeSpan }),
+      init,
+    };
+  }
 
   private parseState(): StateDecl {
     const keyword = this.advance();
@@ -1251,14 +1310,16 @@ function endOfBody(items: readonly { span: Span }[], fallback: number): number {
   return items.length === 0 ? fallback : items[items.length - 1]!.span.end;
 }
 
-function splitState(body: readonly Node[]): { state: StateDecl[]; rest: Node[] } {
+function splitState(body: readonly Node[]): { state: StateDecl[]; tasks: TaskDecl[]; rest: Node[] } {
   const state: StateDecl[] = [];
+  const tasks: TaskDecl[] = [];
   const rest: Node[] = [];
   for (const node of body) {
     if (node.kind === 'State') state.push(node);
+    else if (node.kind === 'Task') tasks.push(node);
     else rest.push(node);
   }
-  return { state, rest };
+  return { state, tasks, rest };
 }
 
 function propAsNode(prop: Prop): { span: Span } {

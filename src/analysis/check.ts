@@ -101,7 +101,7 @@ export type ResolvedTag =
 export interface VarInfo {
   readonly name: string;
   readonly type: UiType;
-  readonly kind: 'state' | 'param' | 'loop' | 'token';
+  readonly kind: 'state' | 'param' | 'loop' | 'token' | 'task';
   readonly nameSpan: Span;
   used: boolean;
 }
@@ -120,6 +120,8 @@ export interface Analysis {
   readonly componentHasSlot: ReadonlyMap<string, boolean>;
   /** Loop variable types, per `for` node (used by the generator for text conversion). */
   readonly loopTypes: ReadonlyMap<ForNode, ReadonlyMap<string, UiType>>;
+  /** Value types of each screen/component's tasks, per declaration. */
+  readonly taskTypes: ReadonlyMap<string, ReadonlyMap<string, UiType>>;
   /** Design tokens in scope in this file: its own `theme`, plus those of imported files. */
   readonly tokens: ReadonlyMap<string, TokenDecl>;
   /** This file's own `theme` declaration, when it has one. */
@@ -198,6 +200,7 @@ class Checker {
   readonly styles = new Map<string, StyleDecl>();
   readonly resolvedTags = new Map<ElementNode, ResolvedTag>();
   readonly stateTypes = new Map<string, Map<string, UiType>>();
+  readonly taskTypes = new Map<string, Map<string, UiType>>();
   readonly paramTypes = new Map<string, Map<string, UiType>>();
   readonly componentHasSlot = new Map<string, boolean>();
   readonly loopTypes = new Map<ForNode, Map<string, UiType>>();
@@ -233,6 +236,7 @@ class Checker {
       styles: this.styles,
       resolvedTags: this.resolvedTags,
       stateTypes: this.stateTypes,
+      taskTypes: this.taskTypes,
       paramTypes: this.paramTypes,
       componentHasSlot: this.componentHasSlot,
       loopTypes: this.loopTypes,
@@ -467,6 +471,34 @@ class Checker {
       }
       this.stateTypes.set(decl.name, stateMap);
 
+      const taskMap = new Map<string, UiType>();
+      for (const task of decl.tasks) {
+        if (taskMap.has(task.name) || stateMap.has(task.name)) {
+          this.error('PUI2003', `duplicate value "${task.name}"`, task.nameSpan, 'a name is either state or a task, once');
+          continue;
+        }
+        if (task.typeText !== undefined) this.checkTypeSpelling(task.typeText, task.typeSpan ?? task.nameSpan);
+        taskMap.set(task.name, task.typeText === undefined ? DYNAMIC : typeFromText(task.typeText));
+        if (this.tokens.has(task.name)) {
+          this.error('PUI2309', `task "${task.name}" collides with the token of the same name`, task.nameSpan, 'rename one of them');
+        }
+        if (DART_RESERVED_WORDS.has(task.name)) {
+          this.error('PUI2012', `"${task.name}" is a reserved word in Dart`, task.nameSpan, 'choose a different name');
+        }
+        if (FLUTTER_TYPE_NAMES.has(task.name)) {
+          this.error('PUI2011', `task "${task.name}" would shadow the Flutter type of the same name`, task.nameSpan, 'rename it');
+        }
+        if (!isCallExpression(task.init)) {
+          this.error(
+            'PUI2310',
+            `task "${task.name}" must await a call`,
+            task.init.span,
+            'write it as a host call, for example: task items: List<Todo> = loadTodos()',
+          );
+        }
+      }
+      this.taskTypes.set(decl.name, taskMap);
+
       if (decl.kind === 'Component') {
         const params = new Map<string, UiType>();
         for (const param of decl.params) {
@@ -538,6 +570,11 @@ class Checker {
       const type = this.stateTypes.get(decl.name)?.get(state.name) ?? DYNAMIC;
       const varInfo: VarInfo = { name: state.name, type, kind: 'state', nameSpan: state.nameSpan, used: false };
       scope.vars.set(state.name, varInfo);
+    }
+    for (const task of decl.tasks) {
+      const value = this.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
+      const type: UiType = { kind: 'task', value };
+      scope.vars.set(task.name, { name: task.name, type, kind: 'task', nameSpan: task.nameSpan, used: false });
     }
     for (const param of decl.kind === 'Component' ? decl.params : []) {
       const type = this.paramTypes.get(decl.name)?.get(param.name) ?? DYNAMIC;
@@ -1138,6 +1175,13 @@ class Checker {
               action.target.span,
               'copy it into state first: state local: <Type> = ' + action.target.name,
             );
+          } else if (varInfo.kind === 'task') {
+            this.error(
+              'PUI2311',
+              `"${action.target.name}" is a task and cannot be assigned`,
+              action.target.span,
+              'call its retry() to run it again, or keep the mutable value in "state"',
+            );
           } else if (varInfo.kind === 'token') {
             this.error(
               'PUI2114',
@@ -1220,9 +1264,21 @@ class Checker {
         );
         return;
       }
-      case 'Member':
+      case 'Member': {
         this.checkExpr(expr.object, scope, position, allowAwait);
+        if (expr.object.kind !== 'Ident') return;
+        const varInfo = this.resolve(expr.object.name, scope);
+        if (varInfo === undefined || varInfo.type.kind !== 'task') return;
+        if (!TASK_MEMBERS.includes(expr.name)) {
+          this.error(
+            'PUI2312',
+            `"${expr.object.name}" is a task; it has no "${expr.name}"`,
+            expr.span,
+            `a task exposes ${TASK_MEMBERS.join(', ')}`,
+          );
+        }
         return;
+      }
       case 'Call':
         this.checkExpr(expr.callee, scope, 'callee', allowAwait);
         for (const arg of expr.args) this.checkExpr(arg.value, scope, 'value', allowAwait);
@@ -1286,6 +1342,16 @@ class Checker {
       const varInfo = this.resolve(expr.name, scope);
       if (varInfo !== undefined) return varInfo.type;
     }
+    if (expr.kind === 'Member' && expr.object.kind === 'Ident') {
+      const varInfo = this.resolve(expr.object.name, scope);
+      if (varInfo !== undefined && varInfo.type.kind === 'task') {
+        // A list-valued task reads with the list type: the compiler supplies an empty list until
+        // the first load completes, so `for item in items.value` needs no null handling.
+        if (expr.name === 'value') return varInfo.type.value;
+        if (expr.name === 'loading') return BOOL;
+        if (expr.name === 'error') return { kind: 'nullable', inner: STRING };
+      }
+    }
     return inferType(expr);
   }
 }
@@ -1293,6 +1359,9 @@ class Checker {
 // --------------------------------------------------------------------------------------------
 // Helpers
 // --------------------------------------------------------------------------------------------
+
+/** The parts of a task a `.pui` file may read. */
+const TASK_MEMBERS: readonly string[] = ['loading', 'error', 'value', 'retry'];
 
 /** `foo()`, `await foo()`, `(foo())` all count as calls for "this statement does nothing". */
 function isCallExpression(expr: Expr): boolean {
@@ -1372,6 +1441,8 @@ function typeName(type: UiType): string {
       return `${typeName(type.inner)}?`;
     case 'dynamic':
       return 'dynamic';
+    case 'task':
+      return `${typeName(type.value)} (task)`;
   }
 }
 

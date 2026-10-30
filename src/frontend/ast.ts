@@ -180,6 +180,24 @@ export interface Arg {
   readonly value: Expr;
 }
 
+/**
+ * `task items: List<Todo> = loadTodos()` — an async value owned by the screen.
+ *
+ * A task is a value with three readable parts — `items.loading`, `items.error`, `items.value` — and
+ * one action, `items.retry()`. The compiler owns the state machine, so no screen can forget to render
+ * a failure or leave a load flag set.
+ */
+export interface TaskDecl {
+  readonly kind: 'Task';
+  readonly span: Span;
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly typeText?: string;
+  readonly typeSpan?: Span;
+  /** The expression to await. Normally a call to a host function. */
+  readonly init: Expr;
+}
+
 export interface EventHandler {
   readonly kind: 'Event';
   readonly span: Span;
@@ -235,7 +253,7 @@ export interface SlotNode {
 
 /** Nodes may appear in a body. `State`/`Event` are only legal in specific positions and are
  *  checked by the validator rather than the parser, which keeps error messages semantic. */
-export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | EventHandler;
+export type Node = ElementNode | IfNode | ForNode | SlotNode | StateDecl | TaskDecl | EventHandler;
 
 // ---------------------------------------------------------------------------------------------
 // Actions (event bodies)
@@ -281,6 +299,7 @@ export interface ScreenDecl {
   readonly name: string;
   readonly nameSpan: Span;
   readonly state: readonly StateDecl[];
+  readonly tasks: readonly TaskDecl[];
   readonly body: readonly Node[];
 }
 
@@ -291,6 +310,7 @@ export interface ComponentDecl {
   readonly nameSpan: Span;
   readonly params: readonly Param[];
   readonly state: readonly StateDecl[];
+  readonly tasks: readonly TaskDecl[];
   readonly body: readonly Node[];
 }
 
@@ -357,6 +377,7 @@ export type UiType =
   | { readonly kind: 'num' }
   | { readonly kind: 'bool' }
   | { readonly kind: 'list'; readonly element: UiType }
+  | { readonly kind: 'task'; readonly value: UiType }
   | { readonly kind: 'map' }
   | { readonly kind: 'dynamic' }
   | { readonly kind: 'named'; readonly name: string }
@@ -397,6 +418,8 @@ export function typeToText(type: UiType): string {
       return 'double';
     case 'num':
       return 'num';
+    case 'task':
+      return typeToText(type.value);
     case 'bool':
       return 'bool';
     case 'list':

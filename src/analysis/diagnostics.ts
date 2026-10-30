@@ -383,6 +383,24 @@ export const CODES = {
     description: 'A `.pui` file declares one theme; the tokens of that theme are in scope for the whole file.',
     fix: 'Move the extra theme into its own file and import it.',
   },
+  PUI2310: {
+    severity: 'error',
+    title: 'Task does not await a call',
+    description: 'A task is defined by the future it awaits, so its value must be a call that produces one.',
+    fix: 'Write the task as a host call, for example: task items: List<Todo> = loadTodos()',
+  },
+  PUI2311: {
+    severity: 'error',
+    title: 'Assignment to a task',
+    description: 'A task is driven by the compiler: it loads on creation and reloads through retry().',
+    fix: 'Call retry() to load it again, or keep the mutable value in "state".',
+  },
+  PUI2312: {
+    severity: 'error',
+    title: 'Unknown task member',
+    description: 'A task exposes loading, error, value and retry, and nothing else.',
+    fix: 'Use one of loading, error, value or retry.',
+  },
   PUI2309: {
     severity: 'error',
     title: 'State shadowing a token',

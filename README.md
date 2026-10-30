@@ -151,12 +151,13 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | Semantic validation with coded, caret-accurate diagnostics | ✅ |
 | Flutter code generator (screens, components, state, events, loops, conditionals, binding) | ✅ |
 | Design tokens (`theme` blocks, shared by import, lowered per target) | ✅ |
+| `task` — async values with `loading` / `error` / `value` / `retry()` | ✅ |
 | CLI: `build`, `check`, `format`, `watch`, `lsp`, `init`, `ast`, `tokens`, `explain`, `widgets` | ✅ |
 | Browser playground + HTML preview generator | ✅ |
 | Examples (`examples/`), golden files, generated docs | ✅ |
 | Language server (`plainui lsp`) | ✅ diagnostics, formatting, hover |
 | Library API (`@plainui/compiler`) | ✅ compile, format, inspect, with type declarations |
-| `task` (async), navigation, forms, typed interop | 🧭 next — see `docs/06-roadmap.md` |
+| Navigation, list identity, forms, typed interop | 🧭 next — see `docs/06-roadmap.md` |
 | Compose / React generators | 🧭 roadmap — [`docs/09-vision.md`](docs/09-vision.md) names Compose as the second target |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`

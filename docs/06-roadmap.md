@@ -29,8 +29,8 @@ Feature work on the one target we can verify end to end, in this order:
 
 - **design tokens** — a `theme` block: colours, spacing, radii, referenced by name (`padding=md`,
   `color=brand`), resolved by the compiler and lowered per target,
-- **`task`** — async as a language construct with `loading` / `error` / `value`, instead of an
-  `await` in a handler and a nullable field,
+- ~~**`task`** — async as a language construct with `loading` / `error` / `value`~~ — done
+  (`docs/01-language-spec.md` §3.5, `examples/async`, verified by `flutter-verify.yml`),
 - **navigation** — `navigate` / `back` with screen parameters checked at compile time,
 - **list identity** — `for … key=item.id`,
 - **forms** — typed validation on `input`, gated by a `form` scope,

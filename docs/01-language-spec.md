@@ -257,7 +257,47 @@ state items: List<String> = []
 * State is private to the screen or component instance. It is not shared between instances.
 * Duplicate names are errors (`PUI2003`).
 
-### 3.5 Events
+### 3.5 Tasks
+
+Asynchronous values are declared with `task`, not assembled from a flag, a nullable field and a
+`try`/`catch` in a handler.
+
+```
+screen Tasks:
+
+    task items: List<Todo> = loadTodos()
+
+    if items.loading:
+        progress
+
+    elif items.error != null:
+        text items.error color=danger
+        button "Try again":
+            on tap:
+                items.retry()
+
+    else:
+        for item in items.value:
+            text item.title
+```
+
+* `task <name>: <Type> = <call>` is only valid at the **top level** of a screen or component
+  (`PUI2002`), and the value must be a call, because a call is what can be awaited and re-run
+  (`PUI2310`).
+* The type is optional but strongly recommended: it is what `items.value` is typed as, and what a
+  `for` over it uses for the loop variable.
+* A task exposes exactly four parts (`PUI2312`):
+  * `items.loading` — `bool`, true while a load is in flight, including during a retry;
+  * `items.error` — `String?`, the failure text of the last attempt, cleared when a new one starts;
+  * `items.value` — the loaded value. For a `List<T>` it reads as an empty list before the first
+    load finishes, so `for item in items.value` and `items.value.isEmpty` need no null handling;
+    for any other type it is nullable, and `items.value != null` is the gate;
+  * `items.retry()` — runs the load again, resetting the error first.
+* A task starts when its screen is created. It cannot be assigned (`PUI2311`); `retry()` is the
+  only way to run it again. A task and a state variable may not share a name (`PUI2003`).
+* A load that completes after the screen is gone is discarded instead of updating a disposed widget.
+
+### 3.6 Events
 
 ```
 button "Sign In":

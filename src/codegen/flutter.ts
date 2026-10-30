@@ -42,7 +42,7 @@ import type { Analysis } from '../analysis/check.ts';
 import { VALUE_PARAM_NAME, eventValueType } from '../analysis/events.ts';
 import { type SourceFile, positionAt } from '../frontend/source.ts';
 import { BUILTIN_STYLES } from '../analysis/targets.ts';
-import type { ThemeDecl, TokenDecl } from '../frontend/ast.ts';
+import type { TaskDecl, ThemeDecl, TokenDecl } from '../frontend/ast.ts';
 import type { WidgetSpec } from '../analysis/widgets/registry.ts';
 import {
   arg,
@@ -416,7 +416,7 @@ class FlutterGenerator {
 
     this.declName = decl.name;
     const isComponent = decl.kind === 'Component';
-    const hasState = decl.state.length > 0;
+    const hasState = decl.state.length > 0 || decl.tasks.length > 0;
     const stateClassName = `_${decl.name}State`;
 
     // Parameters are fields on the widget; inside a State they are reached through `widget.`.
@@ -427,6 +427,10 @@ class FlutterGenerator {
     for (const state of decl.state) {
       const type = this.analysis.stateTypes.get(decl.name)?.get(state.name) ?? DYNAMIC;
       this.scope.set(state.name, { emittedName: state.name, type });
+    }
+    for (const task of decl.tasks) {
+      const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
+      this.scope.set(task.name, { emittedName: this.taskField(task.name, 'value'), type: { kind: 'task', value } });
     }
 
     // Build the tree first: emitting it records controller requirements.
@@ -524,10 +528,23 @@ class FlutterGenerator {
     for (const state of decl.state) {
       lines.push(`  ${this.stateField(state)}`);
     }
+    for (const field of this.taskFields(decl)) lines.push(field);
     for (const [stateName, controllerName] of controllers) {
       lines.push(`  late final TextEditingController ${controllerName} = TextEditingController(text: ${stateName});`);
     }
     lines.push('');
+
+    if (decl.tasks.length > 0) {
+      // Tasks start when the screen does. This is the whole point of the construct: nobody has to
+      // remember to kick off the load, and nobody can forget to handle its failure.
+      lines.push('  @override');
+      lines.push('  void initState() {');
+      lines.push('    super.initState();');
+      if (controllers.length > 0) lines.push('    _syncControllers();');
+      for (const task of decl.tasks) lines.push(`    ${this.taskLoader(task.name)}();`);
+      lines.push('  }');
+      lines.push('');
+    }
 
     if (controllers.length > 0) {
       lines.push('  @override');
@@ -546,6 +563,11 @@ class FlutterGenerator {
       lines.push('');
     }
 
+    for (const task of decl.tasks) {
+      lines.push(...this.taskLoaderMethod(task));
+      lines.push('');
+    }
+
     lines.push('  @override');
     lines.push('  Widget build(BuildContext context) {');
     if (controllers.length > 0) lines.push('    _syncControllers();');
@@ -553,6 +575,95 @@ class FlutterGenerator {
     lines.push('  }');
     lines.push('}');
     return lines;
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Tasks
+  // ------------------------------------------------------------------------------------------
+
+  /** The three fields a task owns, plus its loader. Names are private to the generated State. */
+  private taskField(name: string, part: 'value' | 'error' | 'loading'): string {
+    const base = `_${sanitizeName(name)}`;
+    if (part === 'value') return base;
+    return `${base}${part === 'error' ? 'Error' : 'Loading'}`;
+  }
+
+  private taskLoader(name: string): string {
+    return `_load${capitalize(sanitizeName(name))}`;
+  }
+
+  /** The declarations of every task: value, error and loading flag. */
+  private taskFields(decl: ScreenDecl | ComponentDecl): string[] {
+    const lines: string[] = [];
+    for (const task of decl.tasks) {
+      const value = this.analysis.taskTypes.get(decl.name)?.get(task.name) ?? DYNAMIC;
+      const valueText = task.typeText ?? typeToText(value);
+      lines.push(`  ${valueText}? ${this.taskField(task.name, 'value')};`);
+      lines.push(`  String? ${this.taskField(task.name, 'error')};`);
+      lines.push(`  bool ${this.taskField(task.name, 'loading')} = true;`);
+    }
+    return lines;
+  }
+
+  /**
+   * The loader for one task. Three details matter more than they look:
+   *
+   *   - the flag and the error are reset on every run, so a retry shows loading rather than the
+   *     previous failure;
+   *   - `mounted` is checked after the await, because a screen can be popped while a load is in
+   *     flight and `setState` after that throws;
+   *   - the error is captured as text, so the tree can render it without a nullable-object dance.
+   */
+  private taskLoaderMethod(task: TaskDecl): string[] {
+    const field = (part: 'value' | 'error' | 'loading'): string => this.taskField(task.name, part);
+    const lines: string[] = [];
+    lines.push(`  Future<void> ${this.taskLoader(task.name)}() async {`);
+    lines.push('    setState(() {');
+    lines.push(`      ${field('loading')} = true;`);
+    lines.push(`      ${field('error')} = null;`);
+    lines.push('    });');
+    lines.push('    try {');
+    lines.push(`      final result = await ${this.expr(task.init)};`);
+    lines.push('      if (!mounted) return;');
+    lines.push('      setState(() {');
+    lines.push(`        ${field('value')} = result;`);
+    lines.push(`        ${field('loading')} = false;`);
+    lines.push('      });');
+    lines.push('    } catch (error) {');
+    lines.push('      if (!mounted) return;');
+    lines.push('      setState(() {');
+    lines.push(`        ${field('error')} = error.toString();`);
+    lines.push(`        ${field('loading')} = false;`);
+    lines.push('      });');
+    lines.push('    }');
+    lines.push('  }');
+    return lines;
+  }
+
+  /** A task member used as a value: `items.loading`, `items.error`, `items.value`, `items.retry`. */
+  private taskMember(expr: Extract<Expr, { kind: 'Member' }>): string | undefined {
+    if (expr.object.kind !== 'Ident') return undefined;
+    const entry = this.scope.get(expr.object.name);
+    if (entry === undefined || entry.type.kind !== 'task') return undefined;
+    switch (expr.name) {
+      case 'value': {
+        // A list-valued task reads as an empty list until its load completes, so `items.value` can
+        // be iterated and asked `.isEmpty` without a null dance in every screen. Other value types
+        // stay nullable, and `items.value != null` is the gate for those.
+        const field = this.taskField(expr.object.name, 'value');
+        const value = entry.type.value;
+        if (value.kind === 'list') return `(${field} ?? const <${typeToText(value.element)}>[])`;
+        return field;
+      }
+      case 'error':
+        return this.taskField(expr.object.name, 'error');
+      case 'loading':
+        return this.taskField(expr.object.name, 'loading');
+      case 'retry':
+        return this.taskLoader(expr.object.name);
+      default:
+        return undefined;
+    }
   }
 
   private stateField(state: StateDecl): string {
@@ -618,7 +729,15 @@ class FlutterGenerator {
   }
 
   private emitForItem(node: ForNode): string {
-    const iterable = this.expr(node.iterable);
+    const raw = this.expr(node.iterable);
+    // `items.value` is nullable until the task finishes, so iterate it defensively rather than
+    // emitting a loop over `List<T>?`, which does not compile. The element type keeps the loop
+    // variable typed, so `text item` still knows it is showing a String.
+    const iterableType = this.typeOf(node.iterable);
+    const iterable =
+      iterableType.kind === 'nullable'
+        ? `(${raw} ?? const <${iterableType.inner.kind === 'list' ? typeToText(iterableType.inner.element) : 'dynamic'}>[])`
+        : raw;
     const types = this.analysis.loopTypes.get(node);
     const savedScope = this.scope;
     this.scope = new Map(savedScope);
@@ -1386,8 +1505,14 @@ class FlutterGenerator {
   private textContent(expr: Expr): string {
     const code = this.expr(expr);
     const type = this.typeOf(expr);
+    // Nullable first: `isStringType` looks through `?`, and a nullable value passed to `Text` is a
+    // compile error in Dart rather than a blank line. A task's `error` is exactly that case.
+    if (type.kind === 'nullable') {
+      if (isStringType(type.inner)) return `(${code} ?? '')`;
+      if (type.inner.kind === 'list') return `${paren(code)}?.join(', ') ?? ''`;
+      return `${paren(code)}?.toString() ?? ''`;
+    }
     if (isStringType(type)) return code;
-    if (type.kind === 'nullable' && isStringType(type.inner)) return `(${code} ?? '')`;
     if (type.kind === 'list') return `${paren(code)}.join(', ')`;
     return `${paren(code)}.toString()`;
   }
@@ -1395,6 +1520,16 @@ class FlutterGenerator {
   private typeOf(expr: Expr): UiType {
     if (expr.kind === 'Ident') {
       return this.scope.get(expr.name)?.type ?? DYNAMIC;
+    }
+    if (expr.kind === 'Member' && expr.object.kind === 'Ident') {
+      const owner = this.scope.get(expr.object.name);
+      if (owner !== undefined && owner.type.kind === 'task') {
+        if (expr.name === 'value') {
+          return owner.type.value.kind === 'list' ? owner.type.value : { kind: 'nullable', inner: owner.type.value };
+        }
+        if (expr.name === 'error') return { kind: 'nullable', inner: STRING };
+        if (expr.name === 'loading') return BOOL;
+      }
     }
     if (expr.kind === 'Paren') return this.typeOf(expr.inner);
     if (expr.kind === 'String') return STRING;
@@ -1451,8 +1586,11 @@ class FlutterGenerator {
         if (token !== undefined) return token.category === 'color' ? this.color(token.value) : this.num(token.value);
         return expr.name;
       }
-      case 'Member':
+      case 'Member': {
+        const task = this.taskMember(expr);
+        if (task !== undefined) return task;
         return `${this.expr(expr.object)}.${expr.name}`;
+      }
       case 'Call': {
         const args = expr.args.map((a) => (a.name === undefined ? this.expr(a.value) : `${a.name}: ${this.expr(a.value)}`));
         return `${this.expr(expr.callee)}(${args.join(', ')})`;

@@ -66,6 +66,9 @@ optional hint and optional related locations. `plainui explain <code>` prints on
 | [`PUI2305`](#pui2305) | error | Duplicate token |
 | [`PUI2306`](#pui2306) | error | Token value has the wrong shape |
 | [`PUI2307`](#pui2307) | error | More than one theme in a file |
+| [`PUI2310`](#pui2310) | error | Task does not await a call |
+| [`PUI2311`](#pui2311) | error | Assignment to a task |
+| [`PUI2312`](#pui2312) | error | Unknown task member |
 | [`PUI2309`](#pui2309) | error | State shadowing a token |
 | [`PUI2402`](#pui2402) | error | Loop over a non-iterable |
 | [`PUI2403`](#pui2403) | warning | Multiple children in a single-child element |
@@ -530,6 +533,30 @@ A colour token needs a colour literal and a space or radius token needs a number
 A `.pui` file declares one theme; the tokens of that theme are in scope for the whole file.
 
 *Fix:* Move the extra theme into its own file and import it.
+
+### PUI2310
+
+**Task does not await a call** — error
+
+A task is defined by the future it awaits, so its value must be a call that produces one.
+
+*Fix:* Write the task as a host call, for example: task items: List<Todo> = loadTodos()
+
+### PUI2311
+
+**Assignment to a task** — error
+
+A task is driven by the compiler: it loads on creation and reloads through retry().
+
+*Fix:* Call retry() to load it again, or keep the mutable value in "state".
+
+### PUI2312
+
+**Unknown task member** — error
+
+A task exposes loading, error, value and retry, and nothing else.
+
+*Fix:* Use one of loading, error, value or retry.
 
 ### PUI2309
 

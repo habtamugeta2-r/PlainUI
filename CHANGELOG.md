@@ -19,6 +19,15 @@ All notable changes to PlainUI are recorded here. The format follows
   error (`PUI2304`) rather than a mistyped literal in the output, and a token cannot be assigned
   (`PUI2114`).
 
+- **`task` — async as a language construct.** `task items: List<Todo> = loadTodos()` declares a
+  value the compiler loads for you, exposing `items.loading`, `items.error`, `items.value` and
+  `items.retry()`. The generated state machine resets the previous error before each attempt and
+  checks `mounted` after the await, so a screen popped mid-load cannot throw; a list-valued task
+  reads as an empty list until its first load completes, so `for item in items.value` needs no null
+  handling. Assigning to a task is an error (`PUI2311`), as is any part it does not expose
+  (`PUI2312`). The new `examples/async` project is analyzed and widget-tested in CI against a real
+  `Future`.
+
 ### Fixed
 
 - **`icon` names are translated to Material's spelling.** `icon heart` used to emit `Icons.heart`,
@@ -27,6 +36,8 @@ All notable changes to PlainUI are recorded here. The format follows
   already correct pass through untouched.
 - **No more unnecessary `package:flutter/services.dart` import.** `TextInputType` comes with
   `material.dart`, so every file with a `keyboard=` hint carried an import the analyzer flagged.
+- **`text` of a nullable string now compiles.** `isStringType` looks through `?`, so `text someString`
+  emitted `Text(String?)`; it now emits `(value ?? '')`.
 - **`plainui watch` no longer misses saves made while the first build runs.** Watching starts
   before the first compile, so a save that lands during it queues a rebuild instead of joining
   polling's baseline snapshot and never being reported.

@@ -1,0 +1,35 @@
+// `task`: the compiler owns loading, error and retry.
+
+screen Tasks:
+
+    task items: List<String> = loadItems()
+
+    state filter: String = ""
+
+    column padding=16 gap=8:
+
+        input bind=filter placeholder="Filter"
+
+        if items.loading:
+
+            progress
+
+        elif items.error != null:
+
+            text items.error color=#dc2626
+
+            button "Retry":
+                on tap:
+                    items.retry()
+
+        elif items.value.isEmpty:
+
+            text "Nothing here"
+
+        else:
+
+            for index, item in items.value:
+
+                row gap=8:
+                    text "${index + 1}" style=caption
+                    text item
