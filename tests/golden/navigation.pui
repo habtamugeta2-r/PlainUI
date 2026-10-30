@@ -1,6 +1,6 @@
 // `navigate` and `back()`, with parameters on the screen being opened.
 
-screen Detail(id: String, title: String="Task"):
+screen Detail(id: String, title: String = "Task"):
 
     column padding=16 gap=12:
 
