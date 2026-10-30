@@ -280,6 +280,81 @@ Three details are deliberate rather than incidental:
 * the flag and the error are reset *before* the await, so a retry shows a spinner rather than the
   previous failure.
 
+## Forms
+
+`form` compiles to `Form` with one generated key per form, and every `input` inside it becomes a
+`TextFormField` with a `validator`:
+
+```dart
+class _SignupState extends State<Signup> {
+  String email = "";
+  /// The validation state of one form in this screen.
+  final GlobalKey<FormState> _puiFormKey = GlobalKey<FormState>();
+
+  @override
+  Widget build(BuildContext context) {
+    return Form(
+      key: _puiFormKey,
+      child: Column(
+        children: <Widget>[
+          TextFormField(
+            controller: _emailController,
+            decoration: InputDecoration(labelText: "Email"),
+            onChanged: (value) => setState(() => email = value),
+            validator: (value) {
+              final text = (value ?? '').trim();
+              if (text.isEmpty) {
+                return 'This field is required';
+              }
+              if (!_puiEmailPattern.hasMatch(text)) {
+                return 'Enter a valid email address';
+              }
+              return null;
+            },
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_puiFormKey.currentState!.validate()) {
+                setState(() {
+                  feedback = "Welcome, ${email}";
+                });
+              }
+            },
+            child: Text("Create account"),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+Four details are deliberate:
+
+* **The gate is inlined.** `submit()` is not a call to a generated method that happens to validate:
+  the handler's actions are emitted *inside* `if (_puiFormKey.currentState!.validate())`. There is
+  no second path to that body, so a later edit cannot run the handler without validating, and the
+  ordering of `set` actions inside the body is unchanged.
+* **The key is state.** A screen that declares no state at all still becomes a `StatefulWidget`
+  when it contains a form, because a `GlobalKey<FormState>` has to live somewhere that outlives a
+  rebuild. Two forms in one screen get `_puiFormKey` and `_puiFormKey2`; each `submit()` validates
+  the form it is written in.
+* **Validators are strings, not widgets.** Each rule becomes a branch that returns a message, in
+  source order, and the empty case is decided first: `required` reports "This field is required",
+  and without it an empty field returns `null` so `min(8)` on an optional field does not fire
+  before anything was typed. The value is trimmed before it is tested, because a field of spaces is
+  empty to a person.
+* **`email` emits one file-level pattern.** `final RegExp _puiEmailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');`
+  appears once per file, not once per field, and only when `email` is used.
+
+`pattern("…")` takes a string literal and is emitted as a Dart *raw* string, picking the quote style
+that does not collide with the text: `r'^[0-9]{9}$'` stays readable and backslashes survive.
+
+The preview (`plainui preview`) has no Dart and no form state, so it states the rules instead of
+enforcing them: `required` and `pattern` become real HTML attributes, everything else travels in
+`data-validate`, and the container is a `<div class="pui-form" data-form="…">` rather than a
+`<form>` that would submit and navigate the preview away.
+
 ## Design tokens
 
 A `theme` block compiles to data, and every use site is inlined:

@@ -8,6 +8,21 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **Forms and validation.** A `form` owns a validation key and an `on submit:` body; an `input` inside
+  it declares its rules with `validate=[required, email]`, `min(8)`, `max(80)` and `pattern("…")`, and
+  `submit()` is the only way into the handler — the Flutter target inlines the actions inside
+  `if (_puiFormKey.currentState!.validate())`, so there is no path that runs the handler against
+  unvalidated input. Validators are a closed, argument-checked set: a misspelt name is `PUI2330` with
+  a suggestion rather than a rule that silently never runs. The arrangements where the pieces would
+  mean nothing are errors, not conventions — `validate=` outside a form (`PUI2332`), `submit()`
+  outside one (`PUI2331`), a `submit()` with no handler (`PUI2333`), a nested form (`PUI2335`), and
+  `submit()` inside the handler it triggers (`PUI2334`). An empty field short-circuits to
+  `required`'s message or to valid, so `min(8)` does not fire on an untouched optional field. The HTML
+  preview states the rules it cannot enforce: `required` and `pattern` become real attributes, the
+  rest travel in `data-validate`, and the container is a `div` with `data-form` rather than a `<form>`
+  that would submit and navigate the preview away. `examples/forms` + the widget tests in
+  `flutter-verify.yml` tap through a failed submit, a per-rule failure, and a successful one.
+
 - **A task's latest load wins.** Every generated loader now takes a sequence number
   (`final request = ++_itemsRequest;`) and drops a result that is no longer current, so retrying a
   slow load cannot be overwritten by the attempt it superseded. The failure this prevents is
