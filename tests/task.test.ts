@@ -78,12 +78,35 @@ test('the generated screen owns the whole state machine', () => {
   assert.match(code, /Future<void> _loadItems\(\) async \{/);
   assert.match(code, /final result = await loadTodos\(\);/);
 
-  // A load that finishes after the screen is gone must not call setState.
-  assert.equal(code.match(/if \(!mounted\) return;/g)?.length, 2, 'one mounted check after the await, one in catch');
+  // A load that finishes after the screen is gone must not call setState — and neither must a
+  // load that has been superseded by a newer one.
+  assert.equal(
+    code.match(/if \(!mounted \|\| request != _itemsRequest\) return;/g)?.length,
+    2,
+    'one guard after the await, one in catch',
+  );
+  assert.match(code, /int _itemsRequest = 0;/);
+  assert.match(code, /final request = \+\+_itemsRequest;/);
 
   // Retry resets the previous failure before running again.
   assert.match(code, /_itemsLoading = true;\n {6}_itemsError = null;/);
   assert.match(code, /onPressed: \(\) \{\s*_loadItems\(\);/);
+});
+
+test('a retry cannot be overwritten by the older load it superseded', () => {
+  const code = compile(SCREEN).code!;
+  // Every run takes a number; a result whose number is stale is dropped before setState. Without
+  // this the most natural thing a user does — retry a slow load — intermittently shows the old
+  // data, which is the failure mode that is hardest to reproduce and easiest to blame on the server.
+  const loader = /Future<void> _loadItems\(\) async \{([\s\S]*?)\n {2}\}/.exec(code)?.[1] ?? '';
+  assert.match(loader, /final request = \+\+_itemsRequest;/);
+  assert.equal(loader.match(/request != _itemsRequest/g)?.length, 2, 'both the success and the error path');
+  // The counter is per task, not per screen: two tasks can be in flight at once.
+  const two = compile(
+    ['screen Two:', '', '    task a: List<String> = loadA()', '    task b: List<String> = loadB()', '', '    column:', '', '        text a.error ?? ""', '        text b.error ?? ""', ''].join('\n'),
+  ).code!;
+  assert.match(two, /int _aRequest = 0;/);
+  assert.match(two, /int _bRequest = 0;/);
 });
 
 test('task members map to those fields, and a missing value reads as an empty list', () => {

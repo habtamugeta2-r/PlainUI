@@ -1,0 +1,32 @@
+// Why every generated loader carries a sequence number: a retry can finish before an older load,
+// and the older result must not win. `loadSlowThenFast()` is a host function whose first call is
+// slow and whose later calls are fast, so tapping Retry races the first load.
+
+import "../data.dart"
+
+screen Race:
+
+    task items: List<String> = loadSlowThenFast()
+
+    column padding=16 gap=12:
+
+        text "Race" style=heading
+        text "Tap Retry while the first load is still running." style=caption
+
+        if items.loading:
+
+            row gap=8:
+                progress
+                text "Loading…"
+
+        elif items.error != null:
+
+            text items.error
+
+        else:
+
+            for item in items.value:
+                text item
+
+        button "Retry":
+            on tap: items.retry()

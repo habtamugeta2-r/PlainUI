@@ -230,6 +230,7 @@ class _TasksState extends State<Tasks> {
   List<String>? _items;
   String? _itemsError;
   bool _itemsLoading = true;
+  int _itemsRequest = 0;
 
   @override
   void initState() {
@@ -238,19 +239,20 @@ class _TasksState extends State<Tasks> {
   }
 
   Future<void> _loadItems() async {
+    final request = ++_itemsRequest;
     setState(() {
       _itemsLoading = true;
       _itemsError = null;
     });
     try {
       final result = await loadItems();
-      if (!mounted) return;
+      if (!mounted || request != _itemsRequest) return;
       setState(() {
         _items = result;
         _itemsLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || request != _itemsRequest) return;
       setState(() {
         _itemsError = error.toString();
         _itemsLoading = false;
@@ -266,10 +268,15 @@ as `(_items ?? const <String>[])`, so a `for` over `items.value` runs before the
 instead of throwing, and `items.error` inside `text` is emitted as `(_itemsError ?? '')` because
 `Text` does not take a nullable string.
 
-Two details are deliberate rather than incidental:
+Three details are deliberate rather than incidental:
 
-* `if (!mounted) return;` after the `await` — a screen can be popped while a load is in flight, and
-  `setState` on a disposed `State` throws;
+* `if (!mounted || request != _itemsRequest) return;` after the `await` — a screen can be popped
+  while a load is in flight (`setState` on a disposed `State` throws), and a retry can start while an
+  older load is still running. The older load finishes later, and without the sequence number its
+  result would overwrite the newer one: the user retries a slow request and ends up looking at the
+  stale answer, intermittently. `examples/async` contains exactly that race, and
+  `flutter-verify.yml` asserts the fresh result survives it;
+* the counter is per task, so two tasks in one screen can be in flight without interfering;
 * the flag and the error are reset *before* the await, so a retry shows a spinner rather than the
   previous failure.
 

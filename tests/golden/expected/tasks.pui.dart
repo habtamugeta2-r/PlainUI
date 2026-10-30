@@ -22,6 +22,7 @@ class _TasksState extends State<Tasks> {
   List<String>? _items;
   String? _itemsError;
   bool _itemsLoading = true;
+  int _itemsRequest = 0;
   late final TextEditingController _filterController = TextEditingController(text: filter);
 
   @override
@@ -44,19 +45,20 @@ class _TasksState extends State<Tasks> {
   }
 
   Future<void> _loadItems() async {
+    final request = ++_itemsRequest;
     setState(() {
       _itemsLoading = true;
       _itemsError = null;
     });
     try {
       final result = await loadItems();
-      if (!mounted) return;
+      if (!mounted || request != _itemsRequest) return;
       setState(() {
         _items = result;
         _itemsLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || request != _itemsRequest) return;
       setState(() {
         _itemsError = error.toString();
         _itemsLoading = false;

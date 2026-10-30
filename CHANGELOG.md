@@ -8,6 +8,13 @@ All notable changes to PlainUI are recorded here. The format follows
 
 ### Added
 
+- **A task's latest load wins.** Every generated loader now takes a sequence number
+  (`final request = ++_itemsRequest;`) and drops a result that is no longer current, so retrying a
+  slow load cannot be overwritten by the attempt it superseded. The failure this prevents is
+  intermittent by nature — the user taps retry, the older request finishes last, and the screen shows
+  stale data — so it is pinned by a real race in `examples/async` (`Race`), asserted in
+  `flutter-verify.yml` with two differently-timed calls.
+
 - **Navigation is a construct, not a route name.** `screen Detail(id: String, title: String = "Task")`
   takes parameters; `navigate Detail(id: item.id)` opens it and `back()` closes it. The checker
   resolves the target through the file's imports (`PUI2320`), checks the arguments against the

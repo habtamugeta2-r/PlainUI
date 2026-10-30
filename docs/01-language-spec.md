@@ -325,6 +325,9 @@ screen Tasks:
 * A task starts when its screen is created. It cannot be assigned (`PUI2311`); `retry()` is the
   only way to run it again. A task and a state variable may not share a name (`PUI2003`).
 * A load that completes after the screen is gone is discarded instead of updating a disposed widget.
+* **The latest load wins.** Every run of a task takes a sequence number, and a result whose number is
+  no longer current is dropped. Retrying a slow load therefore cannot end up showing the older
+  answer, which is what would happen if the two attempts simply raced.
 
 ### 3.6 Events
 
