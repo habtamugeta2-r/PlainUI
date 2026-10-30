@@ -4,6 +4,24 @@ All notable changes to PlainUI are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`icon` names are translated to Material's spelling.** `icon heart` used to emit `Icons.heart`,
+  which does not exist and failed `dart analyze`. Friendly names now map to the real ones (`heart`
+  → `favorite`, `trash` → `delete`, `pencil` → `edit`, `bell` → `notifications`, …); names that are
+  already correct pass through untouched.
+- **No more unnecessary `package:flutter/services.dart` import.** `TextInputType` comes with
+  `material.dart`, so every file with a `keyboard=` hint carried an import the analyzer flagged.
+- **`plainui watch` no longer misses saves made while the first build runs.** Watching starts
+  before the first compile, so a save that lands during it queues a rebuild instead of joining
+  polling's baseline snapshot and never being reported.
+- **`plainui watch` picks up a file created inside a new directory** (`mkdir parts && … >
+  parts/a.pui` gave the file no event of its own), and ignores the generated output directory so a
+  build cannot trigger the next one. `PLAINUI_WATCH_MODE=recursive|per-directory|polling` forces a
+  strategy for network filesystems.
+
 ## [1.0.0] — 2026-10-30
 
 The first release. PlainUI 1.0 is a complete path from an indentation-scoped `.pui` file to Dart

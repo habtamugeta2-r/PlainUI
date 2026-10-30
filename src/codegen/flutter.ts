@@ -150,6 +150,43 @@ const KEYBOARD: Record<string, string> = {
   multiline: 'TextInputType.multiline',
 };
 
+/**
+ * Friendly icon names that Material does not spell the same way. PlainUI's vocabulary is meant to
+ * be guessable, and `heart` is guessable where `favorite` is not. Anything not listed here is a
+ * Material name already (`search`, `menu`, `settings`), so it passes through untouched.
+ */
+const ICON_ALIASES: Readonly<Record<string, string>> = {
+  heart: 'favorite',
+  trash: 'delete',
+  pencil: 'edit',
+  plus: 'add',
+  minus: 'remove',
+  user: 'person',
+  users: 'people',
+  bell: 'notifications',
+  mail: 'email',
+  clock: 'schedule',
+  camera: 'photo_camera',
+  eye: 'visibility',
+  play: 'play_arrow',
+  more: 'more_horiz',
+  back: 'arrow_back',
+  forward: 'arrow_forward',
+  info: 'info_outline',
+  warning: 'warning_amber',
+  error: 'error_outline',
+  help: 'help_outline',
+  refresh: 'refresh',
+  send: 'send',
+  share: 'share',
+  lock: 'lock',
+};
+
+/** The Dart expression for an icon name, honouring the aliases above. */
+export function iconName(name: string): string {
+  return ICON_ALIASES[name] ?? name;
+}
+
 const AXIS: Record<string, string> = { vertical: 'Axis.vertical', horizontal: 'Axis.horizontal' };
 
 const STACK_FIT: Record<string, string> = { loose: 'StackFit.loose', expand: 'StackFit.expand' };
@@ -180,7 +217,6 @@ class FlutterGenerator {
   private readonly file: SourceFile;
   private readonly options: FlutterGenOptions;
 
-  private usesServices = false;
   private scope = new Map<string, ScopeEntry>();
   private uid = 0;
 
@@ -736,8 +772,8 @@ class FlutterGenerator {
     const nameExpr = this.argAt(el, 0);
     let icon: string;
     if (nameExpr === undefined) icon = 'Icons.help_outline';
-    else if (nameExpr.kind === 'Ident') icon = `Icons.${nameExpr.name}`;
-    else if (nameExpr.kind === 'String') icon = `Icons.${nameExpr.value}`;
+    else if (nameExpr.kind === 'Ident') icon = `Icons.${iconName(nameExpr.name)}`;
+    else if (nameExpr.kind === 'String') icon = `Icons.${iconName(nameExpr.value)}`;
     else icon = this.expr(nameExpr);
     return dartCall('Icon', [
       icon,
@@ -798,7 +834,6 @@ class FlutterGenerator {
     ];
 
     const keyboard = this.enumProp(el, 'keyboard', KEYBOARD);
-    if (keyboard !== undefined) this.usesServices = true;
 
     const handlers: string[] = [];
     if (bindName !== undefined) {
@@ -1412,7 +1447,6 @@ class FlutterGenerator {
 
   private computeImports(): string[] {
     const imports = new Set<string>(['package:flutter/material.dart']);
-    if (this.usesServices) imports.add('package:flutter/services.dart');
     for (const imp of this.analysis.program.imports) {
       if (imp.path.startsWith('package:') || imp.path.startsWith('dart:')) {
         imports.add(imp.path);

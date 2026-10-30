@@ -229,7 +229,9 @@ test('input properties map to a TextField', () => {
   assert.match(code, /keyboardType: TextInputType\.emailAddress/);
   assert.match(code, /autofocus: true/);
   assert.match(code, /maxLines: 2/);
-  assert.match(code, /import 'package:flutter\/services\.dart';/);
+  // `TextInputType` comes with material.dart, so importing services.dart here would be flagged by
+  // `dart analyze` as an unnecessary import in every file with a keyboard hint.
+  assert.doesNotMatch(code, /services\.dart/);
 });
 
 test('buttons switch widget type by variant and disable without a handler', () => {
@@ -297,4 +299,17 @@ test('nothing is generated when there are errors', () => {
   const result = compileSource(['screen Home:', '    colum:', '        text "x"', ''].join('\n'));
   assert.equal(result.code, undefined);
   assert.equal(result.ok, false);
+});
+
+test('icon names are translated to the Material spelling', () => {
+  // `Icons.heart` does not exist; `Icons.favorite` does. A DSL whose icon names are guessable has
+  // to carry the translation, and a name that is already correct must pass through untouched.
+  const code = generate(
+    ['screen Home:', '    row:', '        icon heart color=#dc2626', '        icon search', '        icon "photo_camera"', ''].join('\n'),
+  );
+  assert.match(code, /Icon\(Icons\.favorite/);
+  assert.match(code, /Icon\(Icons\.search/);
+  assert.match(code, /Icon\(Icons\.photo_camera/);
+  assert.match(code, /^import 'package:flutter\/material\.dart';$/m);
+  assert.doesNotMatch(code, /services\.dart/, 'material.dart already provides TextInputType');
 });

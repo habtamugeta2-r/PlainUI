@@ -328,7 +328,7 @@ half-built target is worse than none.
 ## Contributing
 
 ```bash
-npm ci && npm test        # 224 tests, no network, no Flutter SDK required
+npm ci && npm test        # 225 tests, no network, no Flutter SDK required
 npm run verify            # typecheck + tests
 ```
 

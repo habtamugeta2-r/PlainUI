@@ -323,7 +323,7 @@ const SPECS: readonly WidgetSpec[] = [
     summary: 'Displays a Material icon.',
     group: 'content',
     children: 'none',
-    args: [{ name: 'name', kind: 'iconName', required: true, summary: 'Material icon name without the "Icons." prefix, e.g. search, add, close.' }],
+    args: [{ name: 'name', kind: 'iconName', required: true, summary: 'Material icon name without the "Icons." prefix, e.g. search, add, close. Friendly aliases exist where Material differs: heart, trash, pencil, plus, minus, user, users, bell, mail, clock, camera, eye, play, more, back, forward, info, warning, error, help.' }],
     props: [
       { name: 'size', kind: 'number', summary: 'Icon size.' },
       { name: 'color', kind: 'color', summary: 'Icon colour.' },
