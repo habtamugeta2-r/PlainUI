@@ -32,7 +32,7 @@ disagree about order, the table wins. The decisions behind both are in
 *(The machine-checked order is [`11-todo.md`](11-todo.md); the sections below are the reasoning
 behind it. Ticked items are the ones already on `main`.)*
 
-### 0. Flutter depth — in progress
+### 0. Flutter depth — complete
 
 Feature work on the one target we can verify end to end, in this order:
 
@@ -58,11 +58,17 @@ Feature work on the one target we can verify end to end, in this order:
 - ~~**`effect on <state>`** — actions that run on mount and when a named state changes, and at no
   other time~~ — done (`docs/01-language-spec.md` §3.7, `docs/03-flutter-codegen.md` §Effects,
   `tests/golden/effect.pui`, tapped through in `flutter-verify.yml`),
-- **the phase gate** — a non-trivial app written in `.pui` alone.
+- ~~**the phase gate** — a non-trivial app written in `.pui` alone~~ — done (`examples/demo`: three
+  screens, a shared theme, host-backed tasks, an effect that searches as you type, two validated
+  forms and a keyed list; driven by widget tests in `flutter-verify.yml`).
 
+The gate the vision document names — navigation + tokens + async + forms + lists, written without
+dropping into Dart for anything routine — is `examples/demo`. Its hand-written Dart is `main.dart`
+(first screen, theme, deep links) and `lib/model/data.dart` (the store). Everything the screens do
+is `.pui`.
 
-The gate for leaving this phase is named in the vision document: a non-trivial app (navigation +
-tokens + async + forms + lists) written without dropping into Dart for anything routine.
+What the phase deliberately does not have is written down in
+[`10-decisions.md`](10-decisions.md) B1–B5; the next phase opens with the `Target` contract.
 
 ### 1. A `build_runner` builder
 

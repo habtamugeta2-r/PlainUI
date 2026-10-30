@@ -9,9 +9,9 @@ This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same
 `plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no
 acceptance criterion, an unknown size, or a phase that does not exist.
 
-**Now:** Phase gate: the demo app (`phase-gate-demo`, M) — One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples.
+**Now:** The `Target` contract (`target-contract`, L) — Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind one interface per target; the front end no longer names a framework.
 
-## Flutter depth — 9/10
+## Flutter depth — 10/10
 
 *Gate to leave this phase:* A demo app — navigation, tokens, async, forms and keyed lists — written without dropping into Dart for anything routine.
 
@@ -26,7 +26,7 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 | ✔ | ~~Typed interop~~ | `M` | Host components and imports are declared with signatures, and calls to them are type-checked rather than passed through. |
 | ✔ | ~~`derived` values~~ | `M` | `derived total = count * 2` recomputes when its inputs change and never stores state; a widget test shows the derived value updating while an unrelated state change leaves it alone. |
 | ✔ | ~~`effect on <state>`~~ | `M` | An effect runs on mount and after a change to the states it names, and not on an unrelated state change; the lowering compares a snapshot of those states in `build` and runs the body after the frame, which is the shape `useEffect` and `LaunchedEffect` share. |
-| ▸ | **Phase gate: the demo app** | `M` | One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples. |
+| ✔ | ~~Phase gate: the demo app~~ | `M` | One app uses navigation, tokens, async, forms and keyed lists with no hand-written Dart beyond `main.dart`, and is verified in CI like the other examples. |
 
 ## v2.0 architecture — 0/4
 
@@ -34,7 +34,7 @@ acceptance criterion, an unknown size, or a phase that does not exist.
 
 | | Item | Size | Acceptance |
 | --- | --- | --- | --- |
-| · | The `Target` contract | `L` | Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind one interface per target; the front end no longer names a framework. |
+| ▸ | **The `Target` contract** | `L` | Flutter and HTML knowledge (keywords, type names, enum maps, icon names, capabilities) lives behind one interface per target; the front end no longer names a framework. |
 | · | Capability matrix and its test | `M` | Every example is compiled for every target; the test asserts which files port and which fail with a code that names the alternative. |
 | · | PlainUI type system | `XL` | `Text`/`Int`/`Float`/`Bool`/`Optional` replace Dart spellings in `.pui`, each target maps them, and `plainui migrate` rewrites existing projects. |
 | · | Jetpack Compose target | `XL` | A `.pui` project generates Kotlin that compiles under Gradle in CI; `state`, `derived` and `task` lower to `remember`, `derivedStateOf` and `produceState` without special cases. |

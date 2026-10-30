@@ -1,0 +1,76 @@
+// One issue and the conversation under it: a task that loads the thread, a form whose rules live on
+// the field, and a submit handler that only runs once the form validates.
+
+import "theme.pui"
+import "../model/data.dart" as data:
+
+    loadComments(id: String) -> Future<List<String>>
+    addComment(id: String, body: String) -> Future<void>
+
+screen Detail(id: String, title: String = "Issue"):
+
+    state note: String = ""
+    state posted: bool = false
+
+    task comments: List<String> = data.loadComments(id)
+
+    // A computed value, not a stored counter: the comment list is the only source of truth, so the
+    // count cannot disagree with what is on screen.
+    derived count = comments.value.length
+    derived heading = count == 1 ? "1 comment" : "${count} comments"
+
+    // The screen is a page, not a fragment: `scaffold` is what gives a pushed screen its own
+    // Material, which `Card`, `TextField` and the rest need wherever they are used.
+    scaffold background=surface:
+
+        column padding=md gap=sm:
+
+            row main=between gap=sm:
+
+                button "Back" variant=text:
+                    on tap: back()
+
+                text title style=heading
+
+            text heading style=caption
+
+            if comments.loading:
+
+                progress
+
+            elif comments.error != null:
+
+                text comments.error color=danger
+
+            else:
+
+                column gap=sm:
+
+                    for comment in comments.value key=comment:
+
+                        card padding=sm radius=card background=surface:
+
+                            text comment
+
+                    if count == 0:
+
+                        text "No comments yet" color=muted
+
+            form:
+
+                column gap=sm:
+
+                    input bind=note placeholder="Add a comment" label="Comment" helper="At least 3 characters" validate=[required, min(3)]
+
+                    if posted:
+
+                        text "Posted" color=success
+
+                    button "Post":
+                        on tap: submit()
+
+                on submit:
+                    await addComment(id, note)
+                    set note = ""
+                    set posted = true
+                    comments.retry()

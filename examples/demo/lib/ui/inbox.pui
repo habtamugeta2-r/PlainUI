@@ -1,0 +1,71 @@
+// The first screen: a task, a filter that names itself as the dependency of a retry, a keyed list
+// of host objects, and navigation whose argument comes from the model.
+
+import "theme.pui"
+import "detail.pui"
+import "new_issue.pui"
+import "../model/data.dart" as data:
+
+    loadIssues(filter: String) -> Future<List<Issue>>
+
+screen Inbox:
+
+    state filter: String = ""
+
+    task issues: List<Issue> = data.loadIssues(filter)
+
+    derived shown = issues.value.length
+    derived filtered = filter != ""
+    derived summary = filtered ? "${shown} matching" : "${shown} issues"
+
+    // Typing re-runs the load. Every keystroke starts a request and the older ones are dropped by
+    // the task's latest-wins rule, so the list always answers the newest query. The effect also
+    // runs once on mount, which is why the task's own start is not the only load: the second one
+    // supersedes the first, and the sequence number means neither can arrive out of order.
+    effect on filter:
+        issues.retry()
+
+    // The screen is a page, not a fragment: `scaffold` is what gives a pushed screen its own
+    // Material, which `Card`, `TextField` and the rest need wherever they are used.
+    scaffold background=surface:
+
+        column padding=md gap=sm:
+
+            row gap=sm main=between:
+
+                text "Beacon" style=heading
+                button "New" variant=text:
+                    on tap: navigate NewIssue()
+
+            input bind=filter placeholder="Filter issues" label="Filter"
+
+            text summary style=caption
+
+            if issues.loading:
+
+                progress
+
+            elif issues.error != null:
+
+                text issues.error color=danger
+                button "Try again":
+                    on tap: issues.retry()
+
+            elif shown == 0:
+
+                text "Nothing matches \"${filter}\"" color=muted
+
+            else:
+
+                column gap=sm:
+
+                    for issue in issues.value key=issue.id:
+
+                        card padding=md radius=card border=1 borderColor=ink:
+
+                            on tap: navigate Detail(id: issue.id, title=issue.title)
+
+                            row gap=sm main=between:
+
+                                text issue.title
+                                text issue.open ? "open" : "closed" color=issue.open ? success : muted

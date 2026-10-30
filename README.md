@@ -162,7 +162,8 @@ properties. [`docs/02-architecture.md`](docs/02-architecture.md) walks the pipel
 | Host surfaces: declared signatures on an import, calls checked against them | ✅ |
 | `derived` — computed values, lowered to getters so they cannot go stale | ✅ |
 | `effect on <state>` — runs on mount and when a named state changes, never otherwise | ✅ |
-| The phase gate: a demo app built from `.pui` alone | 🧭 next — `plainui next` prints the current item |
+| The phase gate: `examples/demo` — navigation, tokens, async, forms and keyed lists, built from `.pui` alone | ✅ |
+| The `Target` contract — Flutter knowledge behind one interface | 🧭 next — `plainui next` prints the current item |
 | Compose / React generators | 🧭 roadmap — [`docs/09-vision.md`](docs/09-vision.md) names Compose as the second target |
 
 Generated Dart is verified by golden-file tests in this repository. Running `flutter analyze`
@@ -325,7 +326,7 @@ src/
   project/        paths.ts · workspace.ts · project.ts (multi-file + cache) · compile.ts · hash.ts
   tooling/        cli.ts · format.ts · watch.ts · lsp.ts · debug.ts
 tests/            unit, registry, docs, golden (tests/golden) and end-to-end tests
-examples/         runnable projects (counter, todo, gallery, async, navigation, forms) with their Dart host
+examples/         runnable projects (counter, todo, gallery, async, navigation, forms, demo) with their Dart host
 web/              browser playground (the same compiler, bundled for the browser)
 scripts/          CLI bundle, playground server, docs generator
 docs/             research, specification, architecture, codegen, CLI, diagnostics,

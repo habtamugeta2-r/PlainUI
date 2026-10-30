@@ -105,12 +105,19 @@ for (const project of projects) {
     assert.equal(existsSync(mainPath), true, `${project.name} needs a lib/main.dart`);
     const main = readFileSync(mainPath, 'utf8');
 
-    const screens = sources(project)
-      .flatMap((source) => [...source.text.matchAll(/^screen ([A-Z]\w*)/gm)].map((match) => match[1]!));
+    const files = sources(project);
+    const screens = files.flatMap((source) => [...source.text.matchAll(/^screen ([A-Z]\w*)/gm)].map((match) => match[1]!));
+    // A screen is reachable two ways: the host program opens it, or another screen navigates to it.
+    // The second is the normal case for a detail screen, and asserting it here keeps the rule about
+    // reachability rather than about where the name happens to be typed.
+    const navigatedTo = new Set(
+      files.flatMap((source) => [...source.text.matchAll(/\bnavigate ([A-Z]\w*)\(/g)].map((match) => match[1]!)),
+    );
 
     assert.ok(screens.length >= 1, `${project.name} declares no screen`);
     for (const screen of screens) {
-      assert.match(main, new RegExp(`\\b${screen}\\b`), `main.dart never uses ${screen}`);
+      const reachable = new RegExp(`\\b${screen}\\b`).test(main) || navigatedTo.has(screen);
+      assert.ok(reachable, `${screen} is neither used by main.dart nor the target of a navigate`);
     }
 
     const imports = [...main.matchAll(/^import '([^']+)'/gm)].map((match) => match[1]!);
