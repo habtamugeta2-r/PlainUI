@@ -3,6 +3,7 @@
  *
  *     docs/07-reference.md    every element, argument, property and event
  *     docs/05-diagnostics.md  every diagnostic code
+ *     docs/11-todo.md         the roadmap, rendered from `src/tooling/todo.ts`
  *
  *     npm run docs:ref          # rewrite the files
  *     npm run docs:ref -- --check   # fail if they are out of date (used by tests and CI)
@@ -13,6 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CODES } from '../src/analysis/diagnostics.ts';
+import { PHASES, TODO, progressOf, type TodoItem, type TodoStatus } from '../src/tooling/todo.ts';
 import { BUILTIN_STYLES, STYLE_PROPS } from '../src/analysis/targets.ts';
 import {
   GENERIC_EVENTS,
@@ -222,9 +224,62 @@ export function severitiesInSource(): Map<string, Set<string>> {
   return map;
 }
 
+const STATUS_MARK: Record<TodoStatus, string> = { done: '✔', next: '▸', todo: '·' };
+
+function todoRow(item: TodoItem): string {
+  const mark = STATUS_MARK[item.status];
+  const title =
+    item.status === 'next' ? `**${item.title}**` : item.status === 'done' ? `~~${item.title}~~` : item.title;
+  return `| ${mark} | ${title} | \`${item.size}\` | ${item.acceptance} |`;
+}
+
+/**
+ * The roadmap page. Everything between the generated markers comes from `src/tooling/todo.ts`, so a
+ * phase cannot be "finished" in prose while the table says otherwise.
+ */
+export function renderTodo(): string {
+  const lines: string[] = [HEADER('Todo and decisions', 'npm run docs:ref')];
+
+  lines.push('This page is rendered from `src/tooling/todo.ts`. `plainui next` prints the same table,');
+  lines.push('`plainui next --json` prints it for a script. `tests/todo.test.ts` refuses an item that has no');
+  lines.push('acceptance criterion, an unknown size, or a phase that does not exist.');
+  lines.push('');
+
+  const current = TODO.find((item) => item.status === 'next') ?? TODO.find((item) => item.status === 'todo');
+  if (current !== undefined) {
+    lines.push(`**Now:** ${current.title} (\`${current.id}\`, ${current.size}) — ${current.acceptance}`);
+    lines.push('');
+  }
+
+  for (const phase of PHASES) {
+    const { done, total } = progressOf(phase.id);
+    lines.push(`## ${phase.title} — ${done}/${total}`);
+    lines.push('');
+    if (phase.gate !== undefined) {
+      lines.push(`*Gate to leave this phase:* ${phase.gate}`);
+      lines.push('');
+    }
+    lines.push('| | Item | Size | Acceptance |');
+    lines.push('| --- | --- | --- | --- |');
+    for (const item of TODO.filter((entry) => entry.phase === phase.id)) lines.push(todoRow(item));
+    lines.push('');
+  }
+
+  lines.push('## Why these, in this order');
+  lines.push('');
+  lines.push(
+    'The phase gate in `docs/09-vision.md` is what decides the order, not preference: the language model',
+    '(`state`, `derived`, `effect`, `task`) has to be settled, and one target has to be genuinely deep,',
+    'before a second target can be judged a faithful lowering rather than a translation table.',
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
 const TARGETS = [
   { path: 'docs/07-reference.md', render: renderReference },
   { path: 'docs/05-diagnostics.md', render: renderDiagnostics },
+  { path: 'docs/11-todo.md', render: renderTodo },
 ];
 
 const check = process.argv.includes('--check');
