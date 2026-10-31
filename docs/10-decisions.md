@@ -72,6 +72,19 @@ only because they read differently).
 
 ## A. Identity
 
+### A0 — The language owns design; targets own rendering — *decided*
+
+PlainUI owns the surface syntax, design semantics, type system, tokens, styles, layout intent,
+motion vocabulary and responsive composition rules. A target owns execution and rendering using
+its platform facilities. A browser runtime may execute PlainUI programs using the DOM; it is not a
+new rendering engine, scene graph, compositor, text shaper or layout solver.
+
+**Why:** owning portable design semantics lets authors express a design independently of its target
+without discarding the existing compiler, generators and platform accessibility and rendering
+facilities. A custom renderer would be a different product rather than a continuation of this one.
+
+**Revisit when:** Reopen if a design construct exists that cannot be lowered to any target without a runtime rendering layer that we control.
+
 ### A1 — PlainUI owns its type system — *provisional, lands in v2.0*
 
 `.pui` files write `Text`, `Int`, `Float`, `Bool`, `Color`, `Duration`, `List<T>`, `Optional<T>`.
